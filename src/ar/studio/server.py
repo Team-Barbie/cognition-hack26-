@@ -142,6 +142,12 @@ class Studio:
         return session
 
 
+# The tab icon: the pixel invader from the UI, lime on the CRT black with its eyes in the accent colour.
+FAVICON = (
+    b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 13 13" shape-rendering="crispEdges"><rect width="13" height="13" rx="2.2" fill="#070a05"/><rect x=".5" y=".5" width="12" height="12" rx="1.8" fill="none" stroke="#2f4a12" stroke-width=".5"/><path d="M3 2h1v1h-1zM9 2h1v1h-1zM4 3h1v1h-1zM8 3h1v1h-1zM3 4h7v1h-7zM2 5h2v1h-2zM5 5h3v1h-3zM9 5h2v1h-2zM1 6h11v1h-11zM1 7h1v1h-1zM3 7h7v1h-7zM11 7h1v1h-1zM1 8h1v1h-1zM3 8h1v1h-1zM9 8h1v1h-1zM11 8h1v1h-1zM4 9h2v1h-2zM7 9h2v1h-2z" fill="#b9f04a"/><path d="M4 5h1v1h-1zM8 5h1v1h-1z" fill="#ff4fa3"/></svg>'
+)
+
+
 def studio_page() -> bytes:
     global _PAGE
     if _PAGE is None:
@@ -220,6 +226,8 @@ def handle(studio: Studio, method: str, path: str, query: str, raw_body: bytes,
     if path.startswith("/api/") and not _authorized(authorization):
         return _json({"error": "password required"}, HTTPStatus.UNAUTHORIZED)
     if method == "GET":
+        if path in ("/favicon.svg", "/favicon.ico"):
+            return 200, "image/svg+xml", FAVICON
         if path in ("/", "/index.html"):
             return 200, "text/html; charset=utf-8", studio_page()
         if path == "/api/info":
