@@ -49,6 +49,7 @@ ROLE_TITLES = {
     "reviewer": "Reviewer",
 }
 MAX_SOURCE_BYTES = 400_000
+SHOWCASE_STEP_DELAY = 1.15
 SCOPE_NOTE = (
     "Scope note: research agents may make evidence claims only from supplied or retrieved document snapshots. "
     "Literature specialists acquire sources and provide accepted claims with access limitations. "
@@ -168,6 +169,11 @@ class StageAgent:
     def run(self, role: Role, packet: Packet) -> AgentResult:
         _, title = self._card(role, packet)
         try:
+            # The deterministic demo is otherwise over before the browser can paint a
+            # single running card. Showcase mode deliberately gives each stage one
+            # visible beat; normal demo and live runs remain unthrottled.
+            if self.session.showcase_mode:
+                time.sleep(SHOWCASE_STEP_DELAY)
             result = self.inner.run(role, packet)
             if role == "planner" and result.outcome != "produced" and result.proposed_tasks:
                 # A plan was proposed; what it still wants (data, catalogues, an audience) are questions for
@@ -223,6 +229,7 @@ class Session:
         self.status = "intake"
         self.report: dict[str, Any] | None = None
         self.runs = 0
+        self.showcase_mode = False
         self._lock = threading.Lock()
         self._events_ready = threading.Condition(self._lock)
         self._thread: threading.Thread | None = None
@@ -342,7 +349,8 @@ class Session:
             self.set_literature_reviews(state["literature_reviews"])
         self.intake.resume(bool(state.get("ready")))
 
-    def use_demo(self) -> None:
+    def use_demo(self, *, showcase: bool = False) -> None:
+        self.showcase_mode = showcase
         for path in sorted((FIXTURE / "input" / "papers").glob("*.md")):
             self.sources[path.stem] = path.read_text(encoding="utf-8")
         if not self.intake.brief.question or self.make_agent is None:

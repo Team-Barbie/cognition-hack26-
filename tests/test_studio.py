@@ -212,6 +212,14 @@ def test_demo_mode_refuses_sources_the_fake_agent_cannot_read(tmp_path):
         s.start()
 
 
+def test_showcase_mode_is_explicit_and_normal_demo_resets_it(tmp_path):
+    s = Session(tmp_path, None)
+    s.use_demo(showcase=True)
+    assert s.showcase_mode is True
+    s.use_demo()
+    assert s.showcase_mode is False
+
+
 def test_demo_run_shows_every_agent_and_a_verified_report(tmp_path):
     s = Session(tmp_path, None)
     s.use_demo()
@@ -237,7 +245,10 @@ def test_demo_run_shows_every_agent_and_a_verified_report(tmp_path):
     assert any(row["n"] == 7 and "Excluding short series" in row["text"] for row in proof["window"])
     assert proof["receipt"]["id"].startswith("read-") and proof["receipt"]["start"] == 1
     assert {x["id"]: x["cited"] for x in r["sources"]} == {"paper-a": True, "paper-b": True, "paper-c": False}
-    assert s.events[-1]["type"] == "chat" and s.events[-1]["text"] == "Done. The report uses 2 verified claims."
+    assert len(r["rejections"]) == 1
+    assert r["rejections"][0]["code"] == "QUOTE_NOT_AT_LOCATOR"
+    assert "improves every weekly demand forecast" in r["rejections"][0]["draft"]["statement"]
+    assert s.events[-1]["type"] == "chat" and s.events[-1]["text"] == "Done. The report uses 2 verified claims. 1 quote rejected."
 
 
 def test_http_api_runs_a_demo_end_to_end(tmp_path):

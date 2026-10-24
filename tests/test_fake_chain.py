@@ -45,6 +45,11 @@ def test_fake_loop_matches_answer_key():
             reads=[_read(sid, FIXTURE / "input" / "papers" / f"{sid}.md")]))
         assert res.outcome == "produced"
         claims += res.claims
+    rejected_statement = key["sources"]["paper-a"]["rejected_claim"]["statement"]
+    assert len(claims) == key["expected_citations"] + 1
+    # This role-only test has no broker. Mirror the real gate by removing the
+    # deliberately forged demo proposal before passing dependencies to Writer.
+    claims = [claim for claim in claims if claim.statement != rejected_statement]
     assert len(claims) == key["expected_citations"]
 
     deps = [DependencyItem(kind="claim", id=f"claim-{i}", claim=ClaimDraft(**c.model_dump()))

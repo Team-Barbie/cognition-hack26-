@@ -278,7 +278,7 @@ def handle(studio: Studio, method: str, path: str, query: str, raw_body: bytes,
         elif path == "/api/source/remove":
             session.remove_source(str(data.get("source", "")))
         elif path == "/api/demo":
-            session.use_demo()
+            session.use_demo(showcase=bool(data.get("showcase")))
         elif path == "/api/search":
             reply["results"] = session.search_web(str(data.get("query", ""))[:500])
         elif path == "/api/literature":

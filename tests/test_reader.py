@@ -41,13 +41,13 @@ def check(result: AgentResult) -> reader.EvidenceExtraction:
 
 
 @pytest.mark.parametrize("source_id", ["paper-a", "paper-b"])
-def test_relevant_papers_yield_one_cited_claim(source_id):
+def test_relevant_papers_yield_expected_claim_drafts(source_id):
     entry = KEY["sources"][source_id]
     result = reader.fake(packet(read_of(source_id)), KEY)
     payload = check(result)
     assert result.outcome == "produced"
     assert payload.relevant and payload.source_id == source_id
-    [claim] = result.claims
+    claim = result.claims[0]
     [link] = claim.evidence_links
     assert claim.statement == entry["statement"]
     assert link.relation == entry["relation"]
@@ -55,6 +55,13 @@ def test_relevant_papers_yield_one_cited_claim(source_id):
     assert link.locator == LineSelector(**entry["locator"])
     assert link.read_receipt_id == f"rr-{source_id}"
     assert link.source_ref.source_id == source_id
+    if rejected := entry.get("rejected_claim"):
+        assert len(result.claims) == 2
+        rejected_draft = result.claims[1]
+        assert rejected_draft.statement == rejected["statement"]
+        assert rejected_draft.evidence_links[0].quote == rejected["quote"]
+    else:
+        assert len(result.claims) == 1
 
 
 def test_off_topic_paper_produces_no_claims():

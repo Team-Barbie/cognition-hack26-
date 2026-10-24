@@ -153,9 +153,23 @@ def fake(packet: Packet, answer_key: dict[str, Any]) -> AgentResult:
         quote=entry["quote"],
         read_receipt_id=read.read_receipt_id,
     )
+    claims = [ClaimDraft(statement=entry["statement"], evidence_links=[link])]
+    # The baseline fixture includes one deliberately fabricated proposal. It is
+    # passed through the same acceptance gate as model output so the demo proves
+    # that an attractive but unsupported statement is rejected and never reaches
+    # the writer.
+    if bad := entry.get("rejected_claim"):
+        bad_link = EvidenceLink(
+            relation=bad["relation"],
+            source_ref=read.source_ref,
+            locator=LineSelector(**bad["locator"]),
+            quote=bad["quote"],
+            read_receipt_id=read.read_receipt_id,
+        )
+        claims.append(ClaimDraft(statement=bad["statement"], evidence_links=[bad_link]))
     return _result(
         packet,
         "produced",
         EvidenceExtraction(source_id=source_id, relevant=True, summary=entry["statement"]),
-        claims=[ClaimDraft(statement=entry["statement"], evidence_links=[link])],
+        claims=claims,
     )

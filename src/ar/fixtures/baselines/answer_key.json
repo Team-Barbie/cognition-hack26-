@@ -6,7 +6,13 @@
       "relation": "supports",
       "statement": "Seasonal naive is a supported default baseline for weekly demand series.",
       "locator": {"start": 7, "end": 7},
-      "quote": "We therefore recommend seasonal naive as the default baseline for weekly demand."
+      "quote": "We therefore recommend seasonal naive as the default baseline for weekly demand.",
+      "rejected_claim": {
+        "statement": "Seasonal naive improves every weekly demand forecast by at least 25 percent.",
+        "relation": "supports",
+        "locator": {"start": 7, "end": 7},
+        "quote": "Seasonal naive improves every weekly demand forecast by at least 25 percent."
+      }
     },
     "paper-b": {
       "relevant": true,

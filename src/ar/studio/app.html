@@ -76,6 +76,19 @@ main { display: grid; grid-template-columns: minmax(0, 1fr); gap: 30px; min-widt
 canvas.px { image-rendering: pixelated; max-width: 100%; filter: drop-shadow(0 0 9px var(--glow-s)); }
 #px-state.run { animation: pulse 1.4s ease-in-out infinite; }
 .hint { position: relative; margin: 6px 0 0; min-height: 1.5em; font: 13px var(--mono); color: var(--ph-2); letter-spacing: .04em; }
+.hero-cta { position: relative; display: flex; align-items: center; gap: 12px; margin-top: 8px; }
+.showcase { border: 2px solid var(--acc); border-radius: 10px; padding: 10px 18px; background: color-mix(in srgb, var(--acc) 10%, transparent); color: var(--acc-hi); cursor: pointer; font: 800 11px var(--mono); letter-spacing: .14em; text-transform: uppercase; box-shadow: 0 0 18px color-mix(in srgb, var(--acc) 24%, transparent); }
+.showcase:hover { background: var(--acc); color: var(--ink); text-shadow: none; }
+.showcase:disabled { opacity: .45; cursor: default; }
+.proof-strip { position: relative; display: flex; justify-content: center; flex-wrap: wrap; gap: 8px 20px; margin-top: 4px; color: var(--ph-2); font: 10px var(--mono); letter-spacing: .1em; text-transform: uppercase; }
+.proof-strip span { padding-left: 12px; border-left: 2px solid var(--ph-3); }
+.proof-strip b { color: var(--ph-hi); }
+.scenario-bar { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: -16px; }
+.scenario-card { min-height: 110px; padding: 16px 18px; border: 1px solid var(--ph-3); border-radius: 12px; background: rgba(6,10,4,.65); text-align: left; cursor: pointer; display: grid; align-content: start; gap: 7px; box-shadow: inset 0 0 24px rgba(0,0,0,.35); }
+.scenario-card:hover { border-color: var(--acc); box-shadow: 0 0 16px color-mix(in srgb, var(--acc) 18%, transparent); }
+.scenario-card b { color: var(--ph-hi); font: 800 12px var(--mono); letter-spacing: .12em; text-transform: uppercase; }
+.scenario-card span { color: var(--ph-2); font: 12px/1.5 var(--mono); }
+@media (max-width: 720px) { .scenario-bar { grid-template-columns: 1fr; } }
 
 /* shelf: source spines and the agent team */
 .shelfrow { position: relative; display: flex; justify-content: safe center; align-items: flex-end; gap: 10px; min-height: 232px; padding: 40px 14px 0; border-bottom: 3px solid var(--ph-2); overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; transition: background .25s; }
@@ -215,6 +228,9 @@ canvas.px { image-rendering: pixelated; max-width: 100%; filter: drop-shadow(0 0
 .cite.unknown { color: var(--ph-3); cursor: default; text-decoration: none; }
 .rail { display: grid; gap: 24px; align-content: start; padding: 18px; border: 1px dashed var(--ph-3); border-radius: 14px; }
 .rail-section { display: grid; gap: 7px; }
+.rail-proof { display: grid; gap: 10px; padding-top: 18px; border-top: 1px dashed var(--sep); }
+.rail-proof p { margin: 0; color: var(--ph-2); font: 12px/1.55 var(--mono); }
+.rail-proof .act { width: 100%; color: var(--acc-hi); border-color: var(--acc); }
 .layer { display: grid; grid-template-columns: minmax(0, 1fr) 46px; gap: 4px 10px; align-items: center; margin-top: 12px; }
 .layer .lbl { grid-column: 1 / -1; font: 12px var(--mono); overflow-wrap: anywhere; }
 .layer .bar { height: 14px; position: relative; overflow: hidden; background: repeating-linear-gradient(90deg, var(--ph-5) 0 8px, transparent 8px 11px); }
@@ -237,6 +253,12 @@ canvas.px { image-rendering: pixelated; max-width: 100%; filter: drop-shadow(0 0
 .notes span { font: 14.5px/1.6 var(--mono); overflow-wrap: anywhere; }
 blockquote { margin: 0; padding: 4px 0 4px 14px; border-left: 3px solid var(--ph-2); font: italic 14.5px/1.6 var(--mono); color: var(--ph-hi); }
 .hd { margin: 0 0 2px; font: 800 11px var(--mono); letter-spacing: .16em; text-transform: uppercase; color: var(--ph-2); }
+.history-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+.history-list li { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 12px 18px; align-items: center; padding: 16px 18px; border: 1px solid var(--ph-4); border-radius: 12px; }
+.history-run { color: var(--acc); font: 800 13px var(--mono); }
+.history-main { min-width: 0; }
+.history-main b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ph-hi); }
+.history-main span { color: var(--ph-2); font-size: 12px; }
 
 /* chat */
 .chat { position: sticky; top: 56px; align-self: start; height: calc(100vh - 2 * var(--bz) - 56px - 52px - 16px); min-height: 440px; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; }
@@ -372,7 +394,15 @@ mark { background: rgba(185,240,74,.16); color: var(--ph-hi); border-bottom: 1px
           <canvas class="px" id="px-sub" aria-hidden="true"></canvas>
           <canvas class="px" id="px-state" aria-hidden="true"></canvas>
           <p class="hint" id="hint"></p>
+          <div class="hero-cta" id="hero-cta"><button class="showcase" id="showcase" type="button">Watch showcase</button></div>
+          <div class="proof-strip" id="proof-strip"><span><b>Verify</b> every claim</span><span><b>Expose</b> contradictions</span><span><b>Trace</b> exact quotes</span></div>
         </div>
+      </section>
+
+      <section class="scenario-bar" id="scenario-bar" aria-label="Start a research scenario">
+        <button class="scenario-card" id="scenario-audit" type="button"><b>Evidence audit</b><span>Watch agents find a contradiction and reject a fabricated quote.</span></button>
+        <button class="scenario-card" id="scenario-literature" type="button"><b>Literature scan</b><span>Configure focused reviews across scholarly search sources.</span></button>
+        <button class="scenario-card" id="scenario-upload" type="button"><b>Your papers</b><span>Upload source text and build a claim-level audit trail.</span></button>
       </section>
 
       <section class="win" id="stage" style="--d:1.45s" aria-label="Research workspace">
@@ -437,6 +467,7 @@ mark { background: rgba(185,240,74,.16); color: var(--ph-hi); border-bottom: 1px
             <aside class="rail" aria-label="Report evidence summary">
               <div class="rail-section"><canvas class="px" id="report-n" aria-label="verified claims used in the answer"></canvas><div class="cap" id="report-cap">verified claims used</div></div>
               <div class="rail-section"><p class="hd">Evidence mix</p><div id="layers"></div></div>
+              <div class="rail-proof"><p class="hd">Audit trail</p><p>Open a claim to see its exact quote, source lines, and read receipt.</p><button class="act" id="inspect-proof" type="button">Inspect first claim</button><button class="act" id="view-evidence" type="button">View all evidence</button><button class="act" id="download-report" type="button">Download report .md</button><button class="act" id="download-audit" type="button">Download audit .json</button></div>
             </aside></div></div>
           <div class="pane" id="pane-evidence" hidden><ul class="list" id="claims"></ul></div>
           <div class="pane" id="pane-rejected" hidden><ul class="list" id="rejections"></ul></div>
@@ -445,6 +476,11 @@ mark { background: rgba(185,240,74,.16); color: var(--ph-hi); border-bottom: 1px
             <section><p class="hd">Limitations</p><ul class="notes" id="limits"></ul></section>
           </div></div>
         </div>
+      </section>
+
+      <section class="win hidden" id="history" aria-label="Run history">
+        <div class="wbar"><span>Run history</span><span id="history-count">0 runs</span></div>
+        <div class="wbody"><ol class="history-list" id="history-list"></ol></div>
       </section>
 
       <section class="win signal" id="signal" style="--d:1.65s" aria-label="Live progress">
@@ -525,6 +561,7 @@ mark { background: rgba(185,240,74,.16); color: var(--ph-hi); border-bottom: 1px
   const ACC = "#ff4fa3", ACC_RGB = [1, 3, 5].map(i => parseInt(ACC.slice(i, i + 2), 16));  // the one accent colour (keep in step with --acc)
   const accA = a => `rgba(${ACC_RGB.join(",")},${a})`, accMix = (to, t) => ACC_RGB.map((v, i) => lerp(v, to[i], t));
   let sid = null, after = 0, report = null, busy = false, returnFocus = null, password = "", attempted = false, streamStarted = false;
+  const runHistory = [];
   try { password = sessionStorage.getItem("studioPassword") || ""; } catch (_) { /* storage can be blocked */ }
 
   // What the page remembers, so a session the server lost can be rebuilt (serverless hosts keep sessions per instance).
@@ -732,9 +769,9 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
     head.off = head.off || document.createElement("canvas"); head.off.width = cv.width; head.off.height = cv.height; head.off.getContext("2d").drawImage(cv, 0, 0);
   }
   function setHeadline(question) {
-    let t = normalize(question || "ASK A QUESTION").replace(/\.+$/, "");
+    let t = normalize(question || "RESEARCH YOU CAN PROVE").replace(/\.+$/, "");
     if (t.length > 140) t = t.slice(0, 137).trim() + "+";
-    $("headline").textContent = question || "Ask a question";
+    $("headline").textContent = question || "Research you can prove";
     if (t === head.text) return; head.text = t; layoutHead();
     const total = head.lines.join("").replace(/ /g, "").length; clearInterval(head.timer);
     if (reduce) { paintHead(1e9); return; }
@@ -873,12 +910,15 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
     let t;
     if (state.running) t = "The team is working. Select an agent to inspect its input.";
     else if (state.reportShown) t = "Research complete. Read the report below.";
-    else if (!state.question) t = narrow.matches ? "Open Chat and ask a research question." : "Ask a research question in the chat.";
+    else if (!state.question) t = "Every answer links back to the exact source lines.";
     else if (!state.sources) t = "Add papers, configure literature reviews, or start a review of your question.";
     else t = "Ready to run the research team.";
     $("hint").textContent = t;
     $("stage-state").textContent = state.running ? "Running" : state.reportShown ? "Done" : "Ready";
-    if (!state.running) { setSub(!state.question ? "TYPE IT IN THE CHAT" : `${state.sources || "NO"} SOURCE${state.sources === 1 ? "" : "S"} ON THE SHELF`); setStateLine(state.reportShown ? "REPORT READY" : "READY", false, state.reportShown ? "done" : "ready"); }
+    $("hero-cta").hidden = !!state.question || state.running;
+    $("proof-strip").hidden = !!state.question || state.running;
+    $("scenario-bar").hidden = !!state.question || state.running;
+    if (!state.running) { setSub(!state.question ? "VERIFIED CLAIMS  EXACT QUOTES" : `${state.sources || "NO"} SOURCE${state.sources === 1 ? "" : "S"} ON THE SHELF`); setStateLine(state.reportShown ? "REPORT READY" : (!state.question ? "WATCH SHOWCASE" : "READY"), false, state.reportShown ? "done" : "ready"); }
   }
   function updateStart() {
     const label = state.running ? "Researching" : (state.reportShown ? "Run again" : "Run research");
@@ -1074,6 +1114,12 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
   }
   function selectTab(name) { document.querySelectorAll(".tab").forEach(t => t.setAttribute("aria-selected", String(t.dataset.pane === name))); document.querySelectorAll(".pane").forEach(p => { p.hidden = p.id !== "pane-" + name; }); }
   document.querySelectorAll(".tab").forEach(t => t.addEventListener("click", () => selectTab(t.dataset.pane)));
+  $("inspect-proof").addEventListener("click", () => { const id = report?.cited?.[0] || report?.claims?.[0]?.id; if (id) openProof(id); });
+  $("view-evidence").addEventListener("click", () => { selectTab("evidence"); $("pane-evidence").scrollIntoView({ block: "start", behavior: "smooth" }); });
+  function downloadText(name, text, type) { const url = URL.createObjectURL(new Blob([text], { type })), a = h("a", { href: url, download: name }); document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000); }
+  const reportSlug = () => (state.question || "research-report").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60) || "research-report";
+  $("download-report").addEventListener("click", () => { if (report) downloadText(`${reportSlug()}.md`, report.markdown || "# No report\n", "text/markdown;charset=utf-8"); });
+  $("download-audit").addEventListener("click", () => { if (!report) return; const audit = { format: "res-loop-audit-v1", exported_at: new Date().toISOString(), question: state.question, outcome: report.outcome, cited_claim_ids: report.cited, claims: report.claims, rejections: report.rejections, sources: report.sources, requirements: report.requirements, limitations: report.limitations, problems: report.problems }; downloadText(`${reportSlug()}-audit.json`, JSON.stringify(audit, null, 2) + "\n", "application/json;charset=utf-8"); });
   const REL = { supports: "[+] supports", contradicts: "[x] contradicts", qualifies: "[~] qualifies" };
   function reportStatus(outcome) {
     const labels = { completed: "Quality checked", blocked: "Blocked", failed: "Stopped", budget_exhausted: "Incomplete", cancelled: "Cancelled" };
@@ -1098,6 +1144,15 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
     $("n-evidence").textContent = r.claims.length ? `[${r.claims.length}]` : ""; $("n-rejected").textContent = r.rejections.length ? `[${r.rejections.length}]` : ""; $("n-open").textContent = caveats ? `[${caveats}]` : "";
     const sec = $("report"); sec.classList.remove("hidden", "focus"); void sec.offsetWidth; sec.classList.add("focus"); state.reportShown = true; selectTab("report"); updateHint(); updateStart();
     const want = location.hash.match(/^#proof-(.+)$/); if (want) openProof(decodeURIComponent(want[1])); else setTimeout(() => sec.scrollIntoView({ block: "start", behavior: "smooth" }), 250);
+  }
+  function recordHistory(e) {
+    if (runHistory.some(item => item.seq === e.seq)) return;
+    const r = e.report, entry = { seq: e.seq, at: e.t, question: state.question || "Research report", report: r };
+    runHistory.push(entry); const box = $("history-list"); box.replaceChildren(...runHistory.slice().reverse().map((item, index) => {
+      const rr = item.report, n = runHistory.length - index, when = new Date(item.at * 1000).toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
+      return h("li", {}, h("span", { class: "history-run" }, `#${n}`), h("div", { class: "history-main" }, h("b", {}, item.question), h("span", {}, `${rr.cited.length} verified · ${rr.rejections.length} rejected · ${rr.sources.length} sources · ${when}`)), h("button", { class: "act", type: "button", onclick: () => { state.question = item.question; setHeadline(item.question); renderReport(rr); } }, "Open"));
+    }));
+    $("history-count").textContent = `${runHistory.length} run${runHistory.length === 1 ? "" : "s"}`; $("history").classList.remove("hidden");
   }
 
   // ================= events, inputs, start =================
@@ -1175,7 +1230,7 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
     else if (e.type === "web_results") renderWebResults(e.results || [], e.query || "", false);
     else if (e.type === "agent") { if (e.id === "scout") upsertAgent(e); }
     else if (e.type === "quality") addTicker(e); else if (e.type === "runtime") applyRuntime(e);
-    else if (e.type === "run") { if (e.status === "started") { report = null; resetTeam(); } setRun(e.status); } else if (e.type === "report") renderReport(e.report);
+    else if (e.type === "run") { if (e.status === "started") { report = null; resetTeam(); } setRun(e.status); } else if (e.type === "report") { recordHistory(e); renderReport(e.report); }
   }
   function applyEvents(events) { for (const e of events) { if (e.seq <= after) continue; apply(e); after = e.seq; } }
   async function pollOnce() {
@@ -1246,7 +1301,7 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
       const data = await api("/api/search", { query: $("web-query").value }); renderWebResults(data.results, $("web-query").value, false);
     } catch (err) { toast(err.message); } finally { button.disabled = false; button.textContent = "Find papers"; }
   });
-  const useDemo = async () => { try { await api("/api/demo", {}); snap.demo = true; } catch (err) { toast(err.message); } };
+  const useDemo = async (showcase = false) => { try { await api("/api/demo", { showcase }); snap.demo = true; return true; } catch (err) { toast(err.message); return false; } };
   $("demo").addEventListener("click", useDemo); $("chip-demo").addEventListener("click", useDemo); $("chip-start").addEventListener("click", () => $("start").click());
   $("chat-fab").addEventListener("click", () => openChat(true)); $("chat-close").addEventListener("click", () => openChat(false));
   $("start").addEventListener("click", async () => {
@@ -1257,6 +1312,15 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
       if (d.status === "running") { state.running = false; updateStart(); toast("This run is taking longer than the host allows. Try fewer or shorter sources."); }
     } catch (err) { state.running = false; updateStart(); toast(err.message); } finally { runPending = false; }
   });
+  $("showcase").addEventListener("click", async () => {
+    if (state.running) return;
+    $("showcase").disabled = true;
+    if (await useDemo(true)) $("start").click();
+    else $("showcase").disabled = false;
+  });
+  $("scenario-audit").addEventListener("click", () => $("showcase").click());
+  $("scenario-literature").addEventListener("click", () => { $("literature-panel").hidden = false; $("literature-toggle").textContent = "Hide literature reviews"; $("stage").scrollIntoView({ block: "start", behavior: "smooth" }); setTimeout(() => $("literature-question").focus(), 350); });
+  $("scenario-upload").addEventListener("click", () => $("file").click());
   async function startStudio() {
     try {
       const attach = new URLSearchParams(location.search).get("session"); const s = attach ? { id: attach, ...(await api("/api/info")) } : await api("/api/session", {});

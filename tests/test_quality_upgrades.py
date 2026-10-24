@@ -302,11 +302,8 @@ def test_fake_run_through_the_broker_matches_the_answer_key(project):
         task = f"t-{p}"
         read = _read(b, task=task, source=p, label=p)
         res = agents.run("evidence_reader", _packet("evidence_reader", task, reads=[read]))
-        drafts = list(res.claims)
-        if p == "paper-b":  # decoy: a quote the paper never says
-            drafts.append(ClaimDraft(statement="Seasonal naive is superior on all short series.",
-                                     evidence_links=[_link(read.read_receipt_id, 7, 7, "Seasonal naive is superior on all short series.")]))
-        accept_claims(conn, b, task_id=task, attempt_id="a1", drafts=drafts, source_lines=source_lines_from(b))
+        accept_claims(conn, b, task_id=task, attempt_id="a1", drafts=list(res.claims),
+                      source_lines=source_lines_from(b))
 
     claims = evidence.list_claims(conn)
     deps = [DependencyItem(kind="claim", id=c.id, claim=ClaimDraft(**c.model_dump(exclude={"id", "origin_task"})))
@@ -337,7 +334,7 @@ def test_fake_run_through_the_broker_matches_the_answer_key(project):
     assert "## Sources read but not cited" in summary and "paper-c" in summary.split("## Sources read but not cited")[1]
     assert "## Rejected evidence" in summary and "QUOTE_NOT_AT_LOCATOR" in summary
     assert "Reviewed at this revision: yes" in summary
-    assert "superior" not in paths[0].read_text()
+    assert "improves every weekly demand forecast" not in paths[0].read_text()
 
 
 def test_answer_key_check_catches_a_cited_miss(project):
