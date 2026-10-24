@@ -15,7 +15,7 @@ import time
 from fastapi import FastAPI, Request
 from fastapi.responses import Response, StreamingResponse
 
-from ar.studio.server import event_stream, handle, prepare_event_stream, vercel_studio
+from ar.studio.server import event_stream, handle, prepare_event_stream, retry_after_header, vercel_studio
 
 RUN_WINDOW = 280  # seconds a hosted request may stay open, just under the function limit
 
@@ -40,16 +40,29 @@ async def _run_stream(session, after: int):
     yield (json.dumps({"done": True, "status": session.status}) + "\n").encode("utf-8")
 
 
+def _client_id(request: Request) -> str:
+    """Use Vercel's sanitized client IP in production; never trust forwarded headers locally."""
+    if os.environ.get("VERCEL") == "1":
+        forwarded = request.headers.get("x-vercel-forwarded-for") or request.headers.get("x-forwarded-for")
+        if forwarded:
+            return forwarded.split(",", 1)[0].strip()[:128]
+    return (request.client.host if request.client else "unknown")[:128]
+
+
 @app.api_route("/", methods=["GET", "POST"])
 @app.api_route("/{full_path:path}", methods=["GET", "POST"])
 async def studio(request: Request) -> Response:
     if request.method == "GET" and request.url.path == "/api/events/stream":
         session, after, error = prepare_event_stream(
-            vercel_studio(), request.url.query, request.headers.get("authorization", "")
+            vercel_studio(), request.url.query, request.headers.get("authorization", ""), _client_id(request)
         )
         if error:
             status, kind, payload = error
-            return Response(content=payload, status_code=status, media_type=kind)
+            headers = {"Cache-Control": "no-store"}
+            retry_after = retry_after_header(status, payload)
+            if retry_after:
+                headers["Retry-After"] = retry_after
+            return Response(content=payload, status_code=status, media_type=kind, headers=headers)
         return StreamingResponse(
             event_stream(session, after),  # type: ignore[arg-type]
             media_type="text/event-stream",
@@ -57,7 +70,7 @@ async def studio(request: Request) -> Response:
         )
     body = await request.body()
     status, kind, payload = handle(vercel_studio(), request.method, request.url.path, request.url.query, body,
-                                      request.headers.get("authorization", ""))
+                                   request.headers.get("authorization", ""), _client_id(request))
     if os.environ.get("VERCEL") == "1" and request.method == "POST" and request.url.path == "/api/run" and status == 200:
         try:
             data = json.loads(body or b"{}")
@@ -71,12 +84,16 @@ async def studio(request: Request) -> Response:
                 media_type="application/x-ndjson",
                 headers={"Cache-Control": "no-cache, no-store", "X-Accel-Buffering": "no"},
             )
+    headers = {
+        "Content-Type": kind,
+        "Cache-Control": "no-store",
+        "X-Content-Type-Options": "nosniff",
+    }
+    retry_after = retry_after_header(status, payload)
+    if retry_after:
+        headers["Retry-After"] = retry_after
     return Response(
         content=payload,
         status_code=status,
-        headers={
-            "Content-Type": kind,
-            "Cache-Control": "no-store",
-            "X-Content-Type-Options": "nosniff",
-        },
+        headers=headers,
     )

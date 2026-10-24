@@ -5,8 +5,11 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import math
 import os
 import threading
+import time
+from collections import deque
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from importlib.resources import files
@@ -21,6 +24,81 @@ MAX_BODY = 1_000_000
 DEFAULT_WORKDIR = Path.home() / ".ar-studio" / "projects"
 _PAGE: bytes | None = None
 _VERCEL: Studio | None = None
+
+
+class SlidingWindowLimiter:
+    """Small, thread-safe, in-process limiter shared by the local and Vercel adapters."""
+
+    def __init__(self, *, clock=time.monotonic, max_buckets: int = 10_000) -> None:
+        self._clock = clock
+        self._max_buckets = max_buckets
+        self._events: dict[tuple[str, str], deque[float]] = {}
+        self._lock = threading.Lock()
+
+    def check(self, rules: list[tuple[str, str, int, float]]) -> int | None:
+        """Consume one request from every rule, or return seconds until all rules allow it."""
+        now = self._clock()
+        with self._lock:
+            requested = {(identity, bucket) for identity, bucket, _, _ in rules}
+            missing = sum(key not in self._events for key in requested)
+            overflow = len(self._events) + missing - self._max_buckets
+            if overflow > 0:
+                # Never evict a bucket involved in this decision; doing so could weaken one rule.
+                victims = sorted(
+                    (key for key in self._events if key not in requested),
+                    key=lambda key: self._events[key][-1] if self._events[key] else float("-inf"),
+                )
+                shed = max(overflow, max(1, self._max_buckets // 10))
+                for victim in victims[:shed]:
+                    del self._events[victim]
+            waits: list[float] = []
+            queues: list[deque[float]] = []
+            for identity, bucket, limit, window in rules:
+                key = (identity, bucket)
+                queue = self._events.get(key)
+                if queue is None:
+                    queue = self._events[key] = deque()
+                cutoff = now - window
+                while queue and queue[0] <= cutoff:
+                    queue.popleft()
+                queues.append(queue)
+                if len(queue) >= limit:
+                    waits.append(queue[0] + window - now)
+            if waits:
+                return max(1, math.ceil(max(waits)))
+            for queue in queues:
+                queue.append(now)
+            return None
+
+
+_RATE_LIMITER = SlidingWindowLimiter()
+
+
+def _rate_limit(client_id: str | None, path: str) -> tuple[int, str, bytes] | None:
+    """Apply a broad API cap plus tighter caps around expensive or connection-heavy routes."""
+    if not client_id or not path.startswith("/api/"):
+        return None
+    rules = [(client_id, "api", 120, 60.0)]
+    if path == "/api/session":
+        rules.append((client_id, "session", 12, 60.0))
+    elif path == "/api/run":
+        rules.append((client_id, "run", 6, 600.0))
+    elif path == "/api/events/stream":
+        rules.append((client_id, "stream", 20, 60.0))
+    retry_after = _RATE_LIMITER.check(rules)
+    if retry_after is None:
+        return None
+    return _json({"error": "rate limit exceeded", "retry_after": retry_after}, HTTPStatus.TOO_MANY_REQUESTS)
+
+
+def retry_after_header(status: int, payload: bytes) -> str | None:
+    """Extract a standard Retry-After header value from our 429 response."""
+    if status != HTTPStatus.TOO_MANY_REQUESTS:
+        return None
+    try:
+        return str(max(1, int(json.loads(payload).get("retry_after", 1))))
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return "1"
 
 
 class Studio:
@@ -96,8 +174,12 @@ def _authorized(authorization: str) -> bool:
     return True
 
 
-def prepare_event_stream(studio: Studio, query: str, authorization: str = "") -> tuple[Session | None, int, tuple[int, str, bytes] | None]:
+def prepare_event_stream(studio: Studio, query: str, authorization: str = "",
+                         client_id: str | None = None) -> tuple[Session | None, int, tuple[int, str, bytes] | None]:
     """Validate an SSE request and return its session and initial cursor."""
+    limited = _rate_limit(client_id, "/api/events/stream")
+    if limited:
+        return None, 0, limited
     if not _authorized(authorization):
         return None, 0, _json({"error": "password required"}, HTTPStatus.UNAUTHORIZED)
     q = parse_qs(query)
@@ -124,12 +206,15 @@ def event_stream(session: Session, after: int):
 
 
 def handle(studio: Studio, method: str, path: str, query: str, raw_body: bytes,
-           authorization: str = "") -> tuple[int, str, bytes]:
+           authorization: str = "", client_id: str | None = None) -> tuple[int, str, bytes]:
     """One router for the local server and the Vercel app. Returns status, content type, body.
 
     With STUDIO_PASSWORD set, the page itself is public (it holds the lock screen) and every
     /api/ route answers 401 until the request carries the password.
     """
+    limited = _rate_limit(client_id, path)
+    if limited:
+        return limited
     if path.startswith("/api/") and not _authorized(authorization):
         return _json({"error": "password required"}, HTTPStatus.UNAUTHORIZED)
     if method == "GET":
@@ -207,6 +292,9 @@ def make_handler(studio: Studio) -> type[BaseHTTPRequestHandler]:
             self.send_header("Content-Length", str(len(body)))
             self.send_header("Cache-Control", "no-store")
             self.send_header("X-Content-Type-Options", "nosniff")
+            retry_after = retry_after_header(status, body)
+            if retry_after:
+                self.send_header("Retry-After", retry_after)
             self.end_headers()
             self.wfile.write(body)
 
@@ -214,7 +302,7 @@ def make_handler(studio: Studio) -> type[BaseHTTPRequestHandler]:
             url = urlparse(self.path)
             if method == "GET" and url.path == "/api/events/stream":
                 session, after, error = prepare_event_stream(
-                    studio, url.query, self.headers.get("Authorization", "")
+                    studio, url.query, self.headers.get("Authorization", ""), self.client_address[0]
                 )
                 if error:
                     status, kind, payload = error
@@ -238,7 +326,7 @@ def make_handler(studio: Studio) -> type[BaseHTTPRequestHandler]:
             else:
                 raw = self.rfile.read(length) if method == "POST" else b""
                 status, kind, payload = handle(studio, method, url.path, url.query, raw,
-                                               self.headers.get("Authorization", ""))
+                                               self.headers.get("Authorization", ""), self.client_address[0])
             self._send(status, payload, kind)
 
         def do_GET(self) -> None:  # noqa: N802
