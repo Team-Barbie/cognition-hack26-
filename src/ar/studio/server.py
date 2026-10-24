@@ -96,6 +96,33 @@ def _authorized(authorization: str) -> bool:
     return True
 
 
+def prepare_event_stream(studio: Studio, query: str, authorization: str = "") -> tuple[Session | None, int, tuple[int, str, bytes] | None]:
+    """Validate an SSE request and return its session and initial cursor."""
+    if not _authorized(authorization):
+        return None, 0, _json({"error": "password required"}, HTTPStatus.UNAUTHORIZED)
+    q = parse_qs(query)
+    try:
+        session = studio.get(q.get("id", [""])[0])
+        after = max(0, int(q.get("after", ["0"])[0]))
+    except (KeyError, ValueError) as exc:
+        return None, 0, _json({"error": str(exc).strip("'")}, HTTPStatus.BAD_REQUEST)
+    return session, after, None
+
+
+def event_stream(session: Session, after: int):
+    """Yield resumable SSE frames from the session's durable event journal."""
+    cursor = after
+    while True:
+        events = session.wait_since(cursor)
+        if not events:
+            yield b": keep-alive\n\n"
+            continue
+        for event in events:
+            cursor = int(event["seq"])
+            payload = json.dumps(event, separators=(",", ":"), ensure_ascii=False)
+            yield f"id: {cursor}\nevent: studio\ndata: {payload}\n\n".encode("utf-8")
+
+
 def handle(studio: Studio, method: str, path: str, query: str, raw_body: bytes,
            authorization: str = "") -> tuple[int, str, bytes]:
     """One router for the local server and the Vercel app. Returns status, content type, body.
@@ -179,6 +206,26 @@ def make_handler(studio: Studio) -> type[BaseHTTPRequestHandler]:
 
         def _dispatch(self, method: str) -> None:
             url = urlparse(self.path)
+            if method == "GET" and url.path == "/api/events/stream":
+                session, after, error = prepare_event_stream(
+                    studio, url.query, self.headers.get("Authorization", "")
+                )
+                if error:
+                    status, kind, payload = error
+                    self._send(status, payload, kind)
+                    return
+                self.send_response(HTTPStatus.OK)
+                self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+                self.send_header("Cache-Control", "no-cache, no-store")
+                self.send_header("X-Accel-Buffering", "no")
+                self.end_headers()
+                try:
+                    for frame in event_stream(session, after):  # type: ignore[arg-type]
+                        self.wfile.write(frame)
+                        self.wfile.flush()
+                except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+                    pass
+                return
             length = int(self.headers.get("Content-Length") or 0) if method == "POST" else 0
             if length > MAX_BODY:
                 status, kind, payload = _json({"error": "request is too large (1 MB max)"}, 400)
