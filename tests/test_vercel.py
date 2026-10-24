@@ -13,6 +13,7 @@ from ar.studio.server import SlidingWindowLimiter, Studio
 @pytest.fixture(autouse=True)
 def fresh_rate_limiter(monkeypatch):
     monkeypatch.setattr(server, "_RATE_LIMITER", SlidingWindowLimiter())
+    monkeypatch.setattr("ar.studio.session.search_crossref", lambda query, limit: [])
 
 
 def test_vercel_app_serves_the_studio_page_and_a_demo_session(tmp_path, monkeypatch):

@@ -14,6 +14,12 @@ from ar.packet import DeliveredRead, Packet
 from ar.studio.session import Session, packet_view
 
 
+@pytest.fixture(autouse=True)
+def no_external_web_search(monkeypatch):
+    """Studio tests exercise orchestration without depending on Crossref's network."""
+    monkeypatch.setattr("ar.studio.session.search_crossref", lambda query, limit: [])
+
+
 class Scripted:
     def __init__(self, *replies):
         self.replies = list(replies)
@@ -183,7 +189,8 @@ def test_demo_run_shows_every_agent_and_a_verified_report(tmp_path):
     s.start()
     s.wait(60)
     assert s.status == "done", [e for e in s.events if e["type"] == "chat"][-1]
-    assert not [e for e in s.events if e["type"] == "agent"]
+    scout = [e for e in s.events if e["type"] == "agent" and e["id"] == "scout"]
+    assert [e["status"] for e in scout] == ["running", "done"]
     assert any(e["type"] == "quality" and e["kind"] == "accepted" for e in s.events)
     runtime = {e["event"] for e in s.events if e["type"] == "runtime"}
     assert {"run.started", "task.created", "attempt.started", "packet.dispatched",

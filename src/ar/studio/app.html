@@ -529,6 +529,14 @@ mark { background: var(--acc); color: var(--ink); text-shadow: none; padding: 0 
   let recovering = false;
   function restarted() { if (recovering) return; recovering = true; toast("The server restarted. Reloading."); setTimeout(() => { location.href = location.pathname; }, 1600); }
   function toast(msg) { const t = $("toast"); t.textContent = msg; t.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => { t.hidden = true; }, 4500); }
+  function renderWebResults(results, query, reveal = true) {
+    const box = $("web-results"); box.replaceChildren(); if (query) $("web-query").value = query;
+    if (reveal) $("web-search").hidden = false;
+    if (!results.length) { box.append(h("p", { class: "web-note" }, "No matching papers found. Try a broader search.")); return; }
+    for (const item of results) box.append(h("article", { class: "web-result" },
+      h("b", {}, item.title), h("small", {}, `${item.authors} · ${item.year || "year unknown"} · ${item.publisher}`),
+      item.url ? h("a", { class: "act", href: item.url, target: "_blank", rel: "noopener noreferrer" }, "Open") : null));
+  }
 
   // ================= pixel font (5x7), sprites and renderers =================
   const FONT = {};
@@ -1066,7 +1074,8 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
     if (e.type === "brief") { snap.brief = e.brief; snap.ready = !!e.ready; }
     else if (e.type === "sources") for (const k of Object.keys(snap.sources)) if (!e.sources.some(x => x.id === k)) delete snap.sources[k];
     if (e.type === "chat") addTurn(e); else if (e.type === "brief") renderBrief(e.brief, e.ready); else if (e.type === "sources") renderSources(e.sources);
-    else if (e.type === "agent") { /* legacy presentation events are deliberately ignored */ }
+    else if (e.type === "web_results") renderWebResults(e.results || [], e.query || "");
+    else if (e.type === "agent") { if (e.id === "scout") upsertAgent(e); }
     else if (e.type === "quality") addTicker(e); else if (e.type === "runtime") applyRuntime(e);
     else if (e.type === "run") { if (e.status === "started") { report = null; resetTeam(); } setRun(e.status); } else if (e.type === "report") renderReport(e.report);
   }
@@ -1119,11 +1128,7 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
   $("web-search").addEventListener("submit", async e => {
     e.preventDefault(); const button = $("web-submit"), box = $("web-results"); button.disabled = true; button.textContent = "Searching"; box.replaceChildren();
     try {
-      const data = await api("/api/search", { query: $("web-query").value });
-      if (!data.results.length) box.append(h("p", { class: "web-note" }, "No matching papers found. Try a broader search."));
-      for (const item of data.results) box.append(h("article", { class: "web-result" },
-        h("b", {}, item.title), h("small", {}, `${item.authors} · ${item.year || "year unknown"} · ${item.publisher}`),
-        item.url ? h("a", { class: "act", href: item.url, target: "_blank", rel: "noopener noreferrer" }, "Open") : null));
+      const data = await api("/api/search", { query: $("web-query").value }); renderWebResults(data.results, $("web-query").value, false);
     } catch (err) { toast(err.message); } finally { button.disabled = false; button.textContent = "Find papers"; }
   });
   const useDemo = async () => { try { await api("/api/demo", {}); snap.demo = true; } catch (err) { toast(err.message); } };

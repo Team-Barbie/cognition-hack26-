@@ -42,8 +42,9 @@ ROLE_TITLES = {
 }
 MAX_SOURCE_BYTES = 400_000
 SCOPE_NOTE = (
-    "Scope note: this run works only from the supplied text. It cannot fetch images, catalogues, or data, and the "
-    "user cannot supply more during the run. Never answer needs_dependency because data is missing: do your part "
+    "Scope note: research agents may make evidence claims only from the supplied full text. A parallel web scout "
+    "may find related paper metadata, but those candidates are not evidence. The agents cannot fetch images or data, "
+    "and the user cannot supply more during the run. Never answer needs_dependency because data is missing: do your part "
     "with what the sources support. For any requirement that needs data work, say what the sources establish, "
     "label the rest UNVERIFIED, and list the missing data work as concrete next steps under Limitations."
 )
@@ -59,8 +60,8 @@ SCOUT_CONSTRAINT = (
     "say so in the limitations and treat every finding as unverified."
 )
 SCOPE_CONSTRAINT = (
-    "This run works only from the supplied text; it cannot access images, catalogues, data, or the internet. "
-    "Answer what the sources support, and list any data work the request needs as concrete next steps."
+    "Research claims must come only from the supplied full text. A parallel web search may find related paper metadata, "
+    "but those candidates are not evidence. List any missing full text or data work as concrete next steps."
 )
 SCOUT_SYSTEM = """You are the source scout for a research team that may only cite text it is given.
 The user supplied no sources, so write background notes about the SUBJECT of the research question:
@@ -193,6 +194,7 @@ class Session:
         self.client = client  # live chat client for intake and the scout; None in demo mode
         self.intake = Intake(client=client)
         self.sources: dict[str, str] = {}
+        self.web_results: list[dict[str, Any]] = []
         self.events: list[dict[str, Any]] = []
         self.cards: dict[str, dict[str, Any]] = {}
         self.open_questions: dict[str, str] = {}
@@ -339,13 +341,34 @@ class Session:
     def source_list(self) -> list[dict[str, Any]]:
         return [{"id": k, "lines": len(v.splitlines())} for k, v in self.sources.items()]
 
-    def search_web(self, query: str, limit: int = 6) -> list[dict[str, Any]]:
+    def search_web(self, query: str, limit: int = 6, *, announce: bool = True) -> list[dict[str, Any]]:
         """Find scholarly candidates without pretending their metadata is full-text evidence."""
         results = [result.as_dict() for result in search_crossref(query, limit)]
-        self.emit("chat", role="assistant", who="Web search",
-                  text=(f"Found {len(results)} paper candidate{'s' if len(results) != 1 else ''}. "
-                        "These are catalogue details, not full papers—open a result and upload its text before the team cites it."))
+        self.web_results = results
+        self.emit("web_results", query=query, results=results)
+        if announce:
+            self.emit("chat", role="assistant", who="Web search",
+                      text=(f"Found {len(results)} paper candidate{'s' if len(results) != 1 else ''}. "
+                            "These are catalogue details, not full papers—open a result and upload its text before the team cites it."))
         return results
+
+    def _search_web_for_run(self) -> None:
+        """Run the non-blocking research-candidate search beside the evidence pipeline."""
+        brief = self.intake.brief
+        query = " ".join(x for x in (brief.question, brief.context) if x).strip()[:500]
+        self.agent("scout", role="scout", title="Web Scout", status="running",
+                   detail="Searching for related research while readers analyse the uploaded papers")
+        try:
+            results = self.search_web(query, announce=False)
+        except Exception as exc:
+            self.agent("scout", status="failed", detail=f"Web search unavailable: {exc}")
+            self.emit("chat", role="assistant", who="Web Scout",
+                      text="The parallel web search was unavailable, but the uploaded-paper analysis continued.")
+            return
+        self.agent("scout", status="done", detail=f"Found {len(results)} related paper candidates")
+        self.emit("chat", role="assistant", who="Web Scout",
+                  text=(f"Found {len(results)} related paper candidate{'s' if len(results) != 1 else ''} while the readers worked. "
+                        "They are metadata only; upload full text before using one as evidence."))
 
     # run
 
@@ -366,6 +389,7 @@ class Session:
         self.cards.clear()
         self.open_questions.clear()
         self.skipped.clear()
+        self.web_results = []
         project = self.root / f"run-{self.runs}"
         self._thread = threading.Thread(target=self._run, args=(project, max_model_calls), daemon=True)
         self._thread.start()
@@ -433,6 +457,8 @@ class Session:
                 self.emit("chat", role="assistant", who="Orchestrator",
                           text=f"The scout couldn't write notes ({exc}). Add a paper and press Start again.")
                 return
+        web_scout = threading.Thread(target=self._search_web_for_run, daemon=True)
+        web_scout.start()
         stop = threading.Event()
         watcher = threading.Thread(target=self._watch, args=(project, stop), daemon=True)
         try:
@@ -449,7 +475,9 @@ class Session:
             stop.set()
             status = "failed"
             self.emit("chat", role="assistant", who="Orchestrator", text=f"The run stopped: {exc}")
+        web_scout.join(14)
         self.report = build_report(project, status, self.open_questions)
+        self.report["web_results"] = self.web_results
         self.report["limitations"] = [*self.skipped, *self.report["limitations"]]
         self.status = "done" if status == "completed" else status
         self.emit("run", status=status, run=self.runs)
