@@ -66,6 +66,7 @@ class AgentRunner(Protocol):
 
 
 PacketBuilder = Callable[[Sequence[AgentResult], str, str], Packet]
+PacketPreparer = Callable[[Role, Packet], Packet]
 
 
 @dataclass(frozen=True)
@@ -110,6 +111,7 @@ def run_workflow(
     resume_run_id: str | None = None,
     finalize: bool = True,
     idempotency_key: str | None = None,
+    packet_preparer: PacketPreparer | None = None,
 ) -> RunResult:
     """Run the fixed Wave 1 sequence and persist each task before dispatch.
 
@@ -184,7 +186,16 @@ def run_workflow(
                 packet = packet.model_copy(update={"task_id": task_id})
             if packet.attempt_id != attempt_id:
                 packet = packet.model_copy(update={"attempt_id": attempt_id})
+            if packet_preparer is not None:
+                packet = packet_preparer(step.role, packet)
             lease = db.start_attempt(database, task_id, attempt_id)
+            db.record_event(
+                database,
+                "packet.dispatched",
+                {"attempt_id": attempt_id, "packet": packet.audit_view()},
+                run_id=run_id,
+                task_id=task_id,
+            )
             result = agent_runner(step.role, packet)
             calls += result.model_calls
             db.record_model_calls(database, run_id, calls)
@@ -429,6 +440,8 @@ def run_project(
             )
         return result
 
+    prepare_packet = getattr(agent, "prepare_packet", None)
+
     db.recover_expired_leases(database)
     active = None if changed else db.latest_active_run(database)
     try:
@@ -441,6 +454,7 @@ def run_project(
             resume_run_id=active,
             finalize=False,
             idempotency_key=idempotency_key,
+            packet_preparer=prepare_packet,
         )
         if run.status == "paused":
             return RunOutcome.CANCELLED
@@ -542,7 +556,16 @@ def run_project(
                 raise RuntimeError(f"task {task_id} cannot run from {task['state']}")
             attempt_id = f"attempt-{uuid4()}"
             packet = make_packet(task_id, attempt_id)
+            if prepare_packet is not None:
+                packet = prepare_packet(role, packet)
             lease = db.start_attempt(database, task_id, attempt_id)
+            db.record_event(
+                database,
+                "packet.dispatched",
+                {"attempt_id": attempt_id, "packet": packet.audit_view()},
+                run_id=run.run_id,
+                task_id=task_id,
+            )
             result = checked_agent(role, packet)
             calls += result.model_calls
             db.record_model_calls(database, run.run_id, calls)
