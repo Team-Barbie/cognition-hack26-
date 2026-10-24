@@ -10,13 +10,16 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import sqlite3
 from pathlib import Path
 from typing import Any
 
 from ar.broker import QUOTE_NORMALIZATION
 from ar.completion import CITATION, CompletionAssessment
-from ar.evidence import claim_attempt, get_claim, list_claims, list_rejections
+from ar.evidence import claim_attempt, get_claim, link_provenance, list_claims, list_rejections
+from ar.experiment import ExperimentRun, get_run, list_runs
+from ar.imports import ImportRecord, get_import, list_imports
 from ar.models import SCHEMA_VERSION, ArtifactVersion, Claim
 from ar.review import list_findings, list_reviews
 
@@ -31,15 +34,36 @@ def _sha(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
-def _footnote(claim: Claim) -> str:
+PROVENANCE_CITATION = re.compile(r"\[(run|import):([^\]\s]+)\]")
+
+
+def _label(conn: sqlite3.Connection, link) -> str:
+    imported = link_provenance(conn, link)
+    return f" [{imported.provenance}: {imported.id}, executor {imported.executor}]" if imported else ""
+
+
+def _footnote(conn: sqlite3.Connection, claim: Claim) -> str:
     if not claim.evidence_links:
         return f"[^{claim.id}]: {claim.statement} ({claim.epistemic_status}; no source passage)"
     cites = "; ".join(
         f"{l.relation}: {l.source_ref.source_id} r{l.source_ref.revision}, "
-        f"lines {l.locator.start}-{l.locator.end}, \"{l.quote}\" (receipt {l.read_receipt_id})"
+        f"lines {l.locator.start}-{l.locator.end}, \"{l.quote}\"{_label(conn, l)} (receipt {l.read_receipt_id})"
         for l in claim.evidence_links
     )
     return f"[^{claim.id}]: {claim.statement} ({cites})"
+
+
+def _run_footnote(run: ExperimentRun) -> str:
+    outputs = ", ".join(f"{p} sha256 {h}" for p, h in run.output_hashes.items()) or "no outputs"
+    verdict = "result acceptable" if run.result_acceptable else "result NOT acceptable"
+    deviations = f"; deviations: {'; '.join(run.deviations)}" if run.deviations else ""
+    return (f"[^{run.id}]: Experiment run {run.id} of {run.spec_id} [{run.provenance}]: {run.outcome}, "
+            f"exit {run.exit_status}, seed {run.seed}, {verdict}; outputs: {outputs}{deviations}. {run.assurance}")
+
+
+def _import_footnote(rec: ImportRecord) -> str:
+    return (f"[^{rec.id}]: Imported {rec.kind} {rec.id} [{rec.provenance}], executor {rec.executor}, "
+            f"sha256 {rec.content_sha256}. {rec.assurance}")
 
 
 def _render_report(
@@ -47,6 +71,7 @@ def _render_report(
 ) -> tuple[str, list[Claim], list[str]]:
     cited: dict[str, Claim] = {}
     unresolved: list[str] = []
+    extra: dict[str, str] = {}
 
     def sub(m) -> str:
         cid = m.group(1)
@@ -58,13 +83,21 @@ def _render_report(
         cited.setdefault(cid, claim)
         return f"[^{cid}]"
 
-    body = CITATION.sub(sub, content).rstrip("\n")
+    def sub_provenance(m) -> str:
+        kind, rid = m.groups()
+        found = get_run(conn, rid) if kind == "run" else get_import(conn, rid)
+        if found is None:
+            return f"[{kind}:{rid} UNRESOLVED]"
+        extra[rid] = _run_footnote(found) if kind == "run" else _import_footnote(found)
+        return f"[^{rid}]"
+
+    body = PROVENANCE_CITATION.sub(sub_provenance, CITATION.sub(sub, content)).rstrip("\n")
     parts = []
     if outcome != "completed":
         parts.append(f"> Draft: the run ended as `{outcome}`. This report is unfinished.\n")
     parts.append(body)
-    if cited:
-        parts += ["", "## Sources", ""] + [_footnote(c) for c in cited.values()]
+    if cited or extra:
+        parts += ["", "## Sources", ""] + [_footnote(conn, c) for c in cited.values()] + list(extra.values())
     return "\n".join(parts) + "\n", list(cited.values()), unresolved
 
 
@@ -178,13 +211,18 @@ def _summary(
     return "\n".join(lines) + "\n"
 
 
+def _provenance(conn: sqlite3.Connection, link) -> str | None:
+    imported = link_provenance(conn, link)
+    return imported.provenance if imported else None
+
+
 def _claim_record(conn: sqlite3.Connection, claim: Claim) -> dict[str, Any]:
     rec = claim.model_dump(exclude={"evidence_links"})
     rec["attempt_id"] = claim_attempt(conn, claim.id)
     rec["evidence_links"] = [
         {"relation": l.relation, "source_id": l.source_ref.source_id, "revision": l.source_ref.revision,
          "line_start": l.locator.start, "line_end": l.locator.end, "quote": l.quote,
-         "read_receipt_id": l.read_receipt_id}
+         "read_receipt_id": l.read_receipt_id, "provenance": _provenance(conn, l)}
         for l in claim.evidence_links
     ]
     return rec
@@ -239,6 +277,8 @@ def export_run(
         "sources": sources, "receipts": _receipts(broker, claims),
         "files": {name: _sha(text) for name, text in texts.items()},
         "cost": cost,
+        "experiments": [r.model_dump() for r in list_runs(conn)],
+        "imports": [r.model_dump() for r in list_imports(conn)],
     }
     texts["provenance.json"] = json.dumps(manifest, indent=2, ensure_ascii=False, sort_keys=True) + "\n"
 
@@ -246,6 +286,6 @@ def export_run(
     for name in ("report.md", "run-summary.md", "provenance.json", exact):
         path = out / name
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(texts[name], encoding="utf-8")
+        path.write_bytes(texts[name].encode("utf-8"))  # bytes, so the manifest hashes match on Windows
         written.append(path)
     return written
