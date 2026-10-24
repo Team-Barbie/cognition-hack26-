@@ -49,3 +49,28 @@ def test_vercel_run_waits_for_the_demo_before_returning(tmp_path, monkeypatch):
     report = next(event["report"] for event in events if event["type"] == "report")
     assert report["outcome"] == "completed" and report["cited"] == ["claim-1", "claim-2"]
     assert json.dumps(report)
+
+
+def test_studio_password_locks_the_api_but_not_the_page(tmp_path, monkeypatch):
+    studio = Studio(tmp_path, fake=True)
+    monkeypatch.setattr("ar.studio.asgi.vercel_studio", lambda: studio)
+    monkeypatch.setenv("STUDIO_PASSWORD", "open sesame")
+    client = TestClient(app)
+
+    assert client.get("/").status_code == 200  # the page holds the lock screen
+    assert client.post("/api/session", json={}).status_code == 401
+    assert client.get("/api/info").status_code == 401
+    wrong = {"Authorization": "Bearer nope"}
+    assert client.post("/api/session", json={}, headers=wrong).status_code == 401
+    assert client.post("/api/session", json={}, headers={"Authorization": "open sesame"}).status_code == 401
+
+    right = {"Authorization": "Bearer open sesame"}
+    assert client.post("/api/session", json={}, headers=right).status_code == 200
+    assert client.get("/api/info", headers=right).status_code == 200
+
+
+def test_no_studio_password_leaves_the_api_open(tmp_path, monkeypatch):
+    studio = Studio(tmp_path, fake=True)
+    monkeypatch.setattr("ar.studio.asgi.vercel_studio", lambda: studio)
+    monkeypatch.delenv("STUDIO_PASSWORD", raising=False)
+    assert TestClient(app).post("/api/session", json={}).status_code == 200

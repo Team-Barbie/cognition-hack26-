@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hmac
 import json
 import os
 import threading
@@ -71,8 +72,24 @@ def _json(data: Any, status: int = 200) -> tuple[int, str, bytes]:
     return status, "application/json", json.dumps(data).encode("utf-8")
 
 
-def handle(studio: Studio, method: str, path: str, query: str, raw_body: bytes) -> tuple[int, str, bytes]:
-    """One router for the local server and the Vercel app. Returns status, content type, body."""
+def _authorized(authorization: str) -> bool:
+    """True when no STUDIO_PASSWORD is set, or the request carries `Authorization: Bearer <it>`."""
+    password = os.environ.get("STUDIO_PASSWORD", "")
+    if not password:
+        return True
+    given = authorization[7:] if authorization.lower().startswith("bearer ") else ""
+    return hmac.compare_digest(given.encode("utf-8"), password.encode("utf-8"))
+
+
+def handle(studio: Studio, method: str, path: str, query: str, raw_body: bytes,
+           authorization: str = "") -> tuple[int, str, bytes]:
+    """One router for the local server and the Vercel app. Returns status, content type, body.
+
+    With STUDIO_PASSWORD set, the page itself is public (it holds the lock screen) and every
+    /api/ route answers 401 until the request carries the password.
+    """
+    if path.startswith("/api/") and not _authorized(authorization):
+        return _json({"error": "password required"}, HTTPStatus.UNAUTHORIZED)
     if method == "GET":
         if path in ("/", "/index.html"):
             return 200, "text/html; charset=utf-8", studio_page()
@@ -152,7 +169,8 @@ def make_handler(studio: Studio) -> type[BaseHTTPRequestHandler]:
                 status, kind, payload = _json({"error": "request is too large (1 MB max)"}, 400)
             else:
                 raw = self.rfile.read(length) if method == "POST" else b""
-                status, kind, payload = handle(studio, method, url.path, url.query, raw)
+                status, kind, payload = handle(studio, method, url.path, url.query, raw,
+                                               self.headers.get("Authorization", ""))
             self._send(status, payload, kind)
 
         def do_GET(self) -> None:  # noqa: N802
