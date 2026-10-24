@@ -1,0 +1,12 @@
+# Capability grants per role. The effective set is the intersection of the role grant, the task's
+# own allowed list, this policy's `denied` list, and host restrictions. Documents never change it.
+version: 1
+roles:
+  planner: [files.read, tasks.submit]
+  evidence_reader: [files.read, tasks.submit]
+  writer: [files.read, artifacts.create, artifacts.revise, tasks.submit]
+  reviewer: [files.read, tasks.submit]
+  scout: [files.read, tasks.submit]
+  theorist: [files.read, artifacts.create, tasks.submit]
+  analyst: [files.read, artifacts.create, tasks.submit]
+denied: []
