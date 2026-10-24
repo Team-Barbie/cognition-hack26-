@@ -114,9 +114,12 @@ class Studio:
         if fake:
             provider = None
         elif provider is None:
-            provider = "codex"
-        if provider not in {None, "codex", "openai", "anthropic"}:
-            raise ValueError("provider must be codex, openai, or anthropic")
+            if os.environ.get("OPENAI_API_KEY"):
+                provider = "openai"
+            elif os.environ.get("ANTHROPIC_API_KEY"):
+                provider = "anthropic"
+        if provider not in {None, "openai", "anthropic"}:
+            raise ValueError("Research provider must be openai or anthropic; use the coding worker for Codex")
         self.provider = provider
         self.model = model
 
@@ -125,16 +128,11 @@ class Studio:
         return f"live · {self.provider}" if self.provider else "demo · fake agent"
 
     def _client(self):
-        return make_client(self.provider, self.model) if self.provider in {"openai", "anthropic"} else None
+        return make_client(self.provider, self.model) if self.provider else None
 
     def new_session(self) -> Session:
-        make_agent = (lambda: LiveAgent(self._client())) if self.provider in {"openai", "anthropic"} else None
-        runtime_factory = None
-        if self.provider == "codex":
-            from ar.codex_runtime import CodexRuntime
-
-            runtime_factory = lambda: CodexRuntime(model=self.model)
-        session = Session(self.workdir, make_agent, client=self._client(), runtime_factory=runtime_factory)
+        make_agent = (lambda: LiveAgent(self._client())) if self.provider else None
+        session = Session(self.workdir, make_agent, client=self._client())
         with self._lock:
             self.sessions[session.id] = session
         return session
@@ -273,8 +271,6 @@ def handle(studio: Studio, method: str, path: str, query: str, raw_body: bytes,
             reply["results"] = session.search_web(str(data.get("query", ""))[:500])
         elif path == "/api/run":
             session.start()
-        elif path == "/api/stop":
-            session.stop()
         else:
             return _json({"error": "not found"}, 404)
         if isinstance(data.get("after"), int):

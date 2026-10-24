@@ -1,7 +1,7 @@
 """A callable Codex worker for any planner, orchestrator or agent harness.
 
 Callers supply an objective and project-relative inputs. They do not have to adopt
-the research role graph, task contracts or broker's evidence schemas.
+the research role graph, task contracts or broker's evidence schemas. This worker handles only coding assignments; the caller retains the research objective.
 """
 
 from __future__ import annotations
@@ -12,7 +12,7 @@ import threading
 import uuid
 from pathlib import Path
 
-from ar.codex_research import run_research
+from ar.codex_coding import run_coding
 from ar.codex_runtime import CodexRuntime, _write_json
 
 EXCLUDED = {".git", ".research", ".venv", "node_modules", "__pycache__", ".pytest_cache"}
@@ -112,7 +112,7 @@ class CodingAgent:
     def _run(self, job_id: str, project: Path, runtime: CodexRuntime) -> None:
         state_path = project / "job.json"
         try:
-            report = run_research(project, runtime)
+            report = run_coding(project, runtime)
             state = json.loads(state_path.read_text(encoding="utf-8"))
             state.update(status=report["outcome"], thread_id=report.get("thread_id"), result_available=True)
         except Exception as exc:
