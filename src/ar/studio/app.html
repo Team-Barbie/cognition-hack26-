@@ -1250,8 +1250,17 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
       updateRuntimeTask(e.task, { role: p.role, status: p.outcome === "produced" && !skipped ? "done" : "failed",
         detail: skipped ? "Skipped after two unsuccessful attempts" : resultDetail(result), calls: p.model_calls, questions: (result.unresolved || []).slice(0, 4) });
     }
+    else if (e.event === "attempt.finished" && p.state === "failed") {
+      const result = p.result || p;
+      updateRuntimeTask(e.task, { role: p.role, status: "failed", detail: resultDetail(result),
+        calls: p.model_calls, questions: (result.unresolved || []).slice(0, 4) });
+    }
     else if (e.event === "run.finished") {
       runFinished = true; const ok = p.status === "completed";
+      for (const [task, current] of Object.entries(runtimeTasks)) {
+        if (current.status === "running" || current.status === "waiting") updateRuntimeTask(task, {
+          status: current.status === "running" ? "failed" : "idle", detail: `Not completed: run ${p.outcome || p.status}` });
+      }
       const literatureCalls = Object.values(cards).filter(card => card.role === "literature_review").reduce((n, card) => n + (card.calls || 0), 0);
       upsertAgent({ id: "orchestrator", role: "orchestrator", title: "Orchestrator", status: ok ? "done" : "failed", detail: `Run ${p.outcome || p.status}, ${(p.model_calls || 0) + literatureCalls} model calls` });
       upsertAgent({ id: "quality", role: "quality", title: "Quality gate", status: ok ? "done" : "failed", detail: `${accepted} accepted, ${rejected} rejected, ${reviews} reviews` });

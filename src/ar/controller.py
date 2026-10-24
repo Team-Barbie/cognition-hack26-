@@ -228,7 +228,7 @@ def run_workflow(
 
         step, task_id, attempt_id, _packet, lease = prepared
         if result.outcome != "produced" and step.role not in NON_BLOCKING_RESEARCH_ROLES:
-            db.finish_attempt(database, task_id, attempt_id, "failed")
+            db.finish_attempt(database, task_id, attempt_id, "failed", result=result)
             return False
         result = result.model_copy(update={"task_id": task_id})
         db.accept_attempt(
@@ -1099,7 +1099,7 @@ def run_project(
             calls += result.model_calls
             db.record_model_calls(database, run.run_id, calls)
             if result.outcome != "produced":
-                db.finish_attempt(database, task_id, attempt_id, "failed")
+                db.finish_attempt(database, task_id, attempt_id, "failed", result=result)
                 db.finish_run(database, run.run_id, "failed", calls)
                 return result, "failed"
             result = result.model_copy(update={"task_id": task_id})

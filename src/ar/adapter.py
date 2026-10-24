@@ -92,7 +92,7 @@ def extract_json(text: str) -> dict[str, Any]:
 
 def _error_text(exc: json.JSONDecodeError | ValidationError) -> str:
     if isinstance(exc, ValidationError):
-        return json.dumps(exc.errors(include_url=False, include_context=False), default=str)
+        return json.dumps(exc.errors(include_url=False, include_context=False, include_input=False), default=str)
     return f"invalid JSON: {exc}"
 
 
@@ -118,7 +118,14 @@ class LiveAgent:
 
     def run(self, role: Role, packet: Packet) -> AgentResult:
         spec = get_role(role)
-        system = f"{spec.SYSTEM}\n\n{ENVELOPE_INSTRUCTIONS}"
+        system = (
+            f"{spec.SYSTEM}\n\n{ENVELOPE_INSTRUCTIONS}\n\n"
+            "The following JSON schemas are authoritative. Put the role output inside payload, "
+            "not at the top level. Do not substitute an outline or a different report structure.\n"
+            f"Payload JSON schema:\n{json.dumps(spec.PAYLOAD.model_json_schema())}\n"
+            f"Each proposed_tasks item JSON schema:\n{json.dumps(ProposedTask.model_json_schema())}\n"
+            "Use proposed_tasks: [] when no supported follow-up task is needed."
+        )
         user = spec.user_message(packet)
         message, errors, calls = user, "", 0
         allowance = 2 if packet.model_call_budget is None else min(2, packet.model_call_budget)

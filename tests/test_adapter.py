@@ -61,7 +61,9 @@ def test_valid_first_reply():
     assert result.unresolved == ["u"]
     assert result.model_calls == 1
     system, user = client.calls[0]
-    assert system == f"STUB SYSTEM\n\n{ENVELOPE_INSTRUCTIONS}"
+    assert system.startswith(f"STUB SYSTEM\n\n{ENVELOPE_INSTRUCTIONS}")
+    assert '"required": ["text"]' in system
+    assert '"research_agent"' in system and '"synthesis_agent"' in system
     assert user == "objective: go"
 
 
@@ -86,6 +88,7 @@ def test_one_repair_then_success():
     assert repair.startswith("objective: go")
     assert '{"payload": {"wrong": 1}}' in repair
     assert "text" in repair and "missing" in repair
+    assert '"input"' not in repair.split("Validation errors:")[1]
 
 
 def test_repair_on_invalid_json():
@@ -126,6 +129,28 @@ def test_only_the_evidence_reader_creates_claims():
     echoed = envelope(claims=[{"claim_id": "claim-1", "evidence_links": [{"claim_id": "claim-1"}]}])
     result = LiveAgent(ScriptedClient([echoed])).run("writer", packet())
     assert result.outcome == "produced" and result.claims == [] and result.model_calls == 1
+
+
+def test_writer_schema_and_invalid_outline_repair():
+    roles.OVERRIDES.clear()
+    invalid = envelope(payload={"thesis": "A report", "sections": []})
+    valid = envelope(payload={"content_markdown": "# Findings\nLimited evidence.", "cited_claim_ids": [],
+                              "coverage": {}, "limitations_stated": True})
+    client = ScriptedClient([invalid, valid])
+    result = LiveAgent(client).run("writer", packet())
+    assert result.outcome == "produced" and result.model_calls == 2
+    assert result.payload["content_markdown"].startswith("# Findings")
+    assert '"required": ["content_markdown", "cited_claim_ids", "coverage", "limitations_stated"]' in client.calls[0][0]
+    assert "content_markdown" in client.calls[1][1] and "extra_forbidden" in client.calls[1][1]
+
+
+def test_unknown_proposed_role_requires_repair():
+    invalid = envelope(proposed_tasks=[{"role": "curator", "objective": "screen"}])
+    client = ScriptedClient([invalid, envelope(proposed_tasks=[])])
+    result = LiveAgent(client).run("writer", packet())
+    assert result.outcome == "produced" and result.model_calls == 2
+    assert result.proposed_tasks == []
+    assert "literal_error" in client.calls[1][1]
 
 
 def test_non_produced_outcome_passes_through():

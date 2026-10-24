@@ -528,6 +528,8 @@ def finish_attempt(
     task_id: str,
     attempt_id: str,
     state: Literal["accepted", "needs_revision", "failed"],
+    *,
+    result: AgentResult | None = None,
 ) -> None:
     """Finish an attempt and move its task to the matching state."""
 
@@ -547,9 +549,12 @@ def finish_attempt(
                 (state, now, task_id),
             )
             run_id = connection.execute("SELECT run_id FROM tasks WHERE id=?", (task_id,)).fetchone()["run_id"]
-            _append_event(connection, "attempt.finished", {
-                "attempt_id": attempt_id, "state": state,
-            }, run_id=run_id, task_id=task_id, created_at=now)
+            payload = {"attempt_id": attempt_id, "state": state}
+            if result is not None:
+                payload.update(role=result.role, outcome=result.outcome, model_calls=result.model_calls,
+                               result=result.model_dump(mode="json"))
+            _append_event(connection, "attempt.finished", payload,
+                          run_id=run_id, task_id=task_id, created_at=now)
     finally:
         connection.close()
 

@@ -450,6 +450,28 @@ def test_writer_gets_the_scope_note_and_a_nudge_when_it_balks(tmp_path):
     assert not any("Scope note" in e.get("text", "") for e in s.events if e["type"] == "chat")  # the user never sees it
 
 
+def test_failed_writer_journals_reason_and_model_calls_for_the_ui(tmp_path):
+    from ar.agents.fake import FakeAgent
+    from ar.models import AgentResult
+
+    class FailedWriter:
+        def run(self, role, packet):
+            if role == "writer":
+                return AgentResult(role=role, task_id=packet.task_id, outcome="unable_to_complete",
+                                   unresolved=["Writer payload did not match its schema"], model_calls=1)
+            return FakeAgent().run(role, packet)
+
+    s = Session(tmp_path, make_agent=FailedWriter)
+    s.use_demo()
+    s.start()
+    s.wait(60)
+    assert s.status == "failed"
+    failure = next(e["payload"] for e in s.events if e["type"] == "runtime"
+                   and e["event"] == "attempt.finished" and e["payload"]["state"] == "failed")
+    assert failure["role"] == "writer" and failure["model_calls"] == 2
+    assert failure["result"]["unresolved"] == ["Writer payload did not match its schema"]
+
+
 def test_the_page_has_a_tab_icon_served_by_the_app(tmp_path):
     studio = Studio(tmp_path, fake=True)
     page = handle(studio, "GET", "/", "", b"")[2].decode()
