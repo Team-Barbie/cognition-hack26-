@@ -128,7 +128,7 @@ def test_http_api_runs_a_demo_end_to_end(tmp_path):
     try:
         with urllib.request.urlopen(base + "/", timeout=10) as res:
             page = res.read().decode()
-        assert "<title>ar studio</title>" in page
+        assert "<title>Res Loop</title>" in page
         assert "https://" not in page and "http://" not in page  # no external requests
 
         status, s = post("/api/session", {})
