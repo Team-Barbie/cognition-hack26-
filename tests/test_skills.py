@@ -62,7 +62,7 @@ def test_hostile_skill_changes_nothing(tmp_path: Path, monkeypatch):
 
 def test_new_roles_append_method_and_old_roles_do_not():
     skilled = {"skills": ["result_analysis"]}
-    for role in ("source_scout", "theorist", "analyst"):
+    for role in ("source_scout", "research_agent", "theorist", "analyst", "adversarial_reviewer"):
         mod = __import__(ROLE_MODULES[role], fromlist=["user_message"])
         assert "Method (no extra capabilities)" in mod.user_message(_packet(role, **skilled))
     for role in ("planner", "evidence_reader", "writer", "reviewer"):

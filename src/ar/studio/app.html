@@ -184,13 +184,6 @@ canvas.px { image-rendering: pixelated; max-width: 100%; filter: drop-shadow(0 0
 .rbody { padding: 28px 30px 34px; }
 .rtitle { margin: 0 0 4px; font: 800 clamp(20px, 2.4vw, 28px)/1.2 var(--mono); letter-spacing: .08em; text-transform: uppercase; text-shadow: 0 0 12px var(--glow); }
 #report.focus .rtitle { animation: focus 1s cubic-bezier(.2,.8,.2,1) backwards; }
-.rlede { max-width: 78ch; margin: 10px 0 0; color: var(--ph-2); font: 14px/1.65 var(--mono); }
-.report-overview { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 18px; }
-.report-stat { min-height: 86px; padding: 12px 14px; border: 1px solid var(--ph-4); border-radius: 10px; background: rgba(0,0,0,.18); display: grid; align-content: start; gap: 4px; }
-.report-stat .label { color: var(--ph-3); font: 800 10px var(--mono); letter-spacing: .16em; text-transform: uppercase; }
-.report-stat strong { color: var(--ph-hi); font: 800 17px/1.3 var(--mono); overflow-wrap: anywhere; }
-.report-stat small { color: var(--ph-2); font: 11.5px/1.45 var(--mono); }
-@media (max-width: 680px) { .report-overview { grid-template-columns: minmax(0, 1fr); } .report-stat { min-height: 0; } }
 .tabs { display: flex; gap: 10px; margin: 22px 0 0; padding-bottom: 18px; border-bottom: 1px dashed var(--sep); overflow-x: auto; }
 .tab { background: none; border: 1px solid var(--ph-3); border-radius: 10px; padding: 8px 16px; cursor: pointer; font: 700 12px var(--mono); letter-spacing: .08em; color: var(--ph-2); white-space: nowrap; transition: background .15s, color .15s; }
 .tab:hover { color: var(--ph-hi); border-color: var(--ph); }
@@ -216,10 +209,6 @@ canvas.px { image-rendering: pixelated; max-width: 100%; filter: drop-shadow(0 0
 .cite.unknown { color: var(--ph-3); cursor: default; text-decoration: none; }
 .rail { display: grid; gap: 24px; align-content: start; padding: 18px; border: 1px dashed var(--ph-3); border-radius: 14px; }
 .rail-section { display: grid; gap: 7px; }
-.rail-copy { margin: 0; color: var(--ph-2); font: 11.5px/1.55 var(--mono); }
-.read-guide { margin: 0; padding-left: 1.5em; color: var(--ph-2); font: 11.5px/1.55 var(--mono); }
-.read-guide li { margin-top: 6px; padding-left: 3px; }
-.read-guide b { color: var(--ph-hi); }
 .layer { display: grid; grid-template-columns: minmax(0, 1fr) 46px; gap: 4px 10px; align-items: center; margin-top: 12px; }
 .layer .lbl { grid-column: 1 / -1; font: 12px var(--mono); overflow-wrap: anywhere; }
 .layer .bar { height: 14px; position: relative; overflow: hidden; background: repeating-linear-gradient(90deg, var(--ph-5) 0 8px, transparent 8px 11px); }
@@ -420,13 +409,6 @@ mark { background: rgba(185,240,74,.16); color: var(--ph-hi); border-bottom: 1px
         <div class="wbar"><span>3 · Report</span><span><span id="report-outcome"></span> · <span id="report-meta"></span></span></div>
         <div class="rbody">
           <h2 class="rtitle" id="report-title">Report</h2>
-          <p class="rlede" id="report-lede">A checked answer built from source-linked claims. Select any numbered citation to inspect the exact supporting text.</p>
-          <div class="report-overview" aria-label="Report at a glance">
-            <div class="report-stat"><span class="label">Review status</span><strong id="overview-status">—</strong><small id="overview-status-note">Quality gate result</small></div>
-            <div class="report-stat"><span class="label">Evidence used</span><strong id="overview-evidence">—</strong><small id="overview-evidence-note">Verified claims and cited sources</small></div>
-            <div class="report-stat"><span class="label">Known caveats</span><strong id="overview-caveats">—</strong><small id="overview-caveats-note">Open questions, limitations, and quality problems</small></div>
-          </div>
-          <p class="subhead">Report views</p>
           <div class="tabs" role="tablist" aria-label="Report views">
             <button class="tab" role="tab" data-pane="report" aria-controls="pane-report" aria-selected="true">Answer</button>
             <button class="tab" role="tab" data-pane="evidence" aria-controls="pane-evidence" aria-selected="false">Verified evidence <span id="n-evidence"></span></button>
@@ -434,10 +416,9 @@ mark { background: rgba(185,240,74,.16); color: var(--ph-hi); border-bottom: 1px
             <button class="tab" role="tab" data-pane="open" aria-controls="pane-open" aria-selected="false">Gaps &amp; limits <span id="n-open"></span></button>
           </div>
           <div class="pane" id="pane-report"><div class="rep-grid"><article class="article" id="article"></article>
-            <aside class="rail" aria-label="How to read this report">
-              <div class="rail-section"><canvas class="px" id="report-n" aria-label="verified claims used in the answer"></canvas><div class="cap" id="report-cap">verified claims used</div><p class="rail-copy">These are source-linked statements that passed the evidence checks and appear in the answer.</p></div>
-              <div class="rail-section"><p class="hd">Evidence mix</p><p class="rail-copy">Share of citation links by source. This shows reliance, not source quality.</p><div id="layers"></div></div>
-              <div class="rail-section"><p class="hd">How to read it</p><ol class="read-guide"><li><b>Read the answer</b> for the recommendation.</li><li><b>Open a citation</b> to see its exact source lines.</li><li><b>Check gaps &amp; limits</b> before acting on the result.</li></ol></div>
+            <aside class="rail" aria-label="Report evidence summary">
+              <div class="rail-section"><canvas class="px" id="report-n" aria-label="verified claims used in the answer"></canvas><div class="cap" id="report-cap">verified claims used</div></div>
+              <div class="rail-section"><p class="hd">Evidence mix</p><div id="layers"></div></div>
             </aside></div></div>
           <div class="pane" id="pane-evidence" hidden><ul class="list" id="claims"></ul></div>
           <div class="pane" id="pane-rejected" hidden><ul class="list" id="rejections"></ul></div>
@@ -696,8 +677,8 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
     skull: [parse(`.XXXXXXXX.\nXXXXXXXXXX\nXX..XX..XX\nXX..XX..XX\nXXXXXXXXXX\n.XXX..XXX.\n..XXXXXX..\n..X.XX.X..`), parse(`.XXXXXXXX.\nXXXXXXXXXX\nXX..XX..XX\nXX..XX..XX\nXXXXXXXXXX\n.XXXXXXXX.\n..X.XX.X..\n..XXXXXX..`)],
     cannon: [parse(`......X......\n.....XXX.....\n.....XXX.....\n.XXXXXXXXXXX.\nXXXXXXXXXXXXX\nXXXXXXXXXXXXX\nXXXXXXXXXXXXX\nXXXXXXXXXXXXX`), parse(`.............\n......X......\n.....XXX.....\n.XXXXXXXXXXX.\nXXXXXXXXXXXXX\nXXXXXXXXXXXXX\nXXXXXXXXXXXXX\nXXXXXXXXXXXXX`)],
   };
-  const ROLE_SPR = { orchestrator: "crab", scout: "ufo", planner: "squid", source_scout: "ufo", evidence_reader: "octo", theorist: "squid", experiment_runner: "cannon", reproducer: "cannon", analyst: "crab", writer: "ant", reviewer: "skull", quality: "cannon" };
-  const ROLE_NAME = { orchestrator: "Orchestrator", scout: "Scout", planner: "Planner", source_scout: "Source scout", evidence_reader: "Reader", theorist: "Theorist", experiment_runner: "Experiment", reproducer: "Reproducer", analyst: "Analyst", writer: "Writer", reviewer: "Reviewer", quality: "Quality gate" };
+  const ROLE_SPR = { orchestrator: "crab", scout: "ufo", planner: "squid", source_scout: "ufo", evidence_reader: "octo", research_agent: "crab", theorist: "squid", experiment_runner: "cannon", reproducer: "cannon", analyst: "crab", writer: "ant", reviewer: "skull", adversarial_reviewer: "skull", quality: "cannon" };
+  const ROLE_NAME = { orchestrator: "Orchestrator", scout: "Scout", planner: "Planner", source_scout: "Source scout", evidence_reader: "Reader", research_agent: "Research agent", theorist: "Theorist", experiment_runner: "Experiment", reproducer: "Reproducer", analyst: "Analyst", writer: "Writer", reviewer: "Reviewer", adversarial_reviewer: "Adversarial review", quality: "Quality gate" };
   function drawSprite(ctx, rows, x, y, s) { for (let r = 0; r < rows.length; r++) for (let c = 0; c < rows[r].length; c++) if (rows[r][c] === "X") ctx.fillRect(x + c * s, y + r * s, s, s); }
 
   // ================= boot, clock, hud =================
@@ -911,8 +892,8 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
     });
     renderTeam(); updateHint(); updateStart(); hudStats();
   }
-  const ROLE_RANK = { source_scout: 3, theorist: 5, experiment_runner: 6, reproducer: 7, analyst: 8 };
-  const rankOf = (key, src) => key === "orchestrator" ? [0, 0] : key === "scout" ? [1, 0] : key === "planner" ? [2, 0] : key.startsWith("reader:") ? [4, Math.max(0, src.indexOf(key.slice(7)))] : ROLE_RANK[key] ? [ROLE_RANK[key], 0] : key.startsWith("writer:") ? [9, +key.split(":")[1] || 1] : key === "reviewer" ? [10, 0] : [11, 0];
+  const ROLE_RANK = { source_scout: 3, research_agent: 5, theorist: 6, experiment_runner: 7, reproducer: 8, analyst: 9 };
+  const rankOf = (key, src) => key === "orchestrator" ? [0, 0] : key === "scout" ? [1, 0] : key === "planner" ? [2, 0] : key.startsWith("reader:") ? [4, Math.max(0, src.indexOf(key.slice(7)))] : ROLE_RANK[key] ? [ROLE_RANK[key], 0] : key.startsWith("writer:") ? [10, +key.split(":")[1] || 1] : key === "reviewer" ? [11, 0] : [12, 0];
   function teamKeys() {
     const src = state.sourceList.map(s => s.id), set = new Set(["orchestrator", "planner", "writer:1", "reviewer", "quality"]);
     if (!src.length) { set.add("scout"); set.add("reader:*"); } else src.forEach(id => set.add("reader:" + id));
@@ -933,7 +914,7 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
 
   // ================= signal: live log, counters, block loader =================
   const seenStatus = {};
-  const FN = { orchestrator: "orchestrator.dispatch", scout: "scout.write", planner: "planner.plan", source_scout: "source_scout.screen", evidence_reader: "reader.read", theorist: "theorist.hypothesize", experiment_runner: "experiment.run", reproducer: "experiment.repeat", analyst: "analyst.interpret", writer: "writer.draft", reviewer: "reviewer.check", quality: "gate.check" };
+  const FN = { orchestrator: "orchestrator.dispatch", scout: "scout.write", planner: "planner.plan", source_scout: "source_scout.screen", evidence_reader: "reader.read", research_agent: "research_agent.assess", theorist: "theorist.hypothesize", experiment_runner: "experiment.run", reproducer: "experiment.repeat", analyst: "analyst.interpret", writer: "writer.draft", reviewer: "reviewer.check", adversarial_reviewer: "adversary.check", quality: "gate.check" };
   const IDLE = ["1  Define the research question", "2  Read each source", "3  Build the evidence", "4  Write and review", "5  Verify every citation"];
   function setCode(lines) { $("code").replaceChildren(...lines.map(t => h("div", { class: "ln2" }, t))); }
   function pushLog(text, cls, full) {
@@ -1066,7 +1047,6 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
   function selectTab(name) { document.querySelectorAll(".tab").forEach(t => t.setAttribute("aria-selected", String(t.dataset.pane === name))); document.querySelectorAll(".pane").forEach(p => { p.hidden = p.id !== "pane-" + name; }); }
   document.querySelectorAll(".tab").forEach(t => t.addEventListener("click", () => selectTab(t.dataset.pane)));
   const REL = { supports: "[+] supports", contradicts: "[x] contradicts", qualifies: "[~] qualifies" };
-  const plural = (n, one, many = one + "s") => `${n} ${n === 1 ? one : many}`;
   function reportStatus(outcome) {
     const labels = { completed: "Quality checked", blocked: "Blocked", failed: "Stopped", budget_exhausted: "Incomplete", cancelled: "Cancelled" };
     return labels[outcome] || outcome.replace(/_/g, " ");
@@ -1075,16 +1055,8 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
     report = r; r.claimMap = Object.fromEntries(r.claims.map(c => [c.id, c])); r.numbers = {}; let k = 0;
     for (const m of (r.markdown || "").matchAll(CITE)) if (r.claimMap[m[1]] && !r.numbers[m[1]]) r.numbers[m[1]] = ++k; for (const id of r.cited) if (!r.numbers[id] && r.claimMap[id]) r.numbers[id] = ++k;
     const h1 = (r.markdown.match(/^#\s+(.+)$/m) || [])[1]; $("report-title").textContent = h1 || state.question || "Report";
-    const citedSources = r.sources.filter(s => s.cited).length;
     const caveats = r.open_questions.length + r.limitations.length + r.problems.length;
     $("report-outcome").textContent = reportStatus(r.outcome); $("report-meta").textContent = `${r.sources.length} reviewed / ${r.rejections.length} rejected`;
-    $("report-lede").textContent = `${plural(r.cited.length, "verified claim")} ${r.cited.length === 1 ? "supports" : "support"} this answer, drawing on ${plural(citedSources, "cited source")}. Select any numbered citation to inspect the exact source text.`;
-    $("overview-status").textContent = reportStatus(r.outcome);
-    $("overview-status-note").textContent = r.outcome === "completed" ? "The final draft passed the research quality gate." : "The report may be unfinished; review the caveats before use.";
-    $("overview-evidence").textContent = `${r.cited.length} claims / ${citedSources} sources`;
-    $("overview-evidence-note").textContent = `${r.sources.length} total sources were reviewed.`;
-    $("overview-caveats").textContent = caveats ? plural(caveats, "separate item") : "See answer details";
-    $("overview-caveats-note").textContent = r.rejections.length ? `Also: ${plural(r.rejections.length, "evidence item")} rejected during checking.` : "No evidence items were rejected during checking.";
     $("article").replaceChildren(r.markdown ? markdown(r.markdown) : h("p", {}, "No report. See Rejected and Open."));
     setCount($("report-n"), r.cited.length, 8); $("report-cap").textContent = `verified claim${r.cited.length === 1 ? "" : "s"} used`; layers(r);
     const claimItem = c => h("li", {}, h("div", { class: "top2" }, h("span", { class: "id" }, r.numbers[c.id] ? `[${r.numbers[c.id]}]` : "-"), c.links.map(l => h("span", { class: `rel ${l.relation}` }, REL[l.relation] || l.relation)),
@@ -1107,7 +1079,7 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
     if (current.role === "planner" || current.role === "reviewer") current.id = current.role;
     else if (current.role === "writer") current.id = `writer:${++writerPasses}`;
     else if (current.role === "evidence_reader" && current.packet) current.id = `reader:${current.packet.reads[0]?.label || task}`;
-    else if (["source_scout", "theorist", "experiment_runner", "reproducer", "analyst"].includes(current.role)) current.id = current.role;
+    else if (["source_scout", "research_agent", "theorist", "experiment_runner", "reproducer", "analyst", "adversarial_reviewer"].includes(current.role)) current.id = current.role;
     return current.id;
   }
   function runtimeTitle(role, id) {

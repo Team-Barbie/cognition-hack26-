@@ -23,6 +23,8 @@ Plan only from the packet. The brief must have been read; if it was not supplied
 Use only roles justified by the objective:
 - source_scout screens local candidate sources when relevance must be decided;
 - evidence_reader extracts evidence from named local sources;
+- research_agent integrates bounded evidence, gaps, falsifiable hypotheses, and next steps when the run
+  needs a primary research assessment before writing;
 - theorist develops competing hypotheses and falsifiers when explanation or theory is needed;
 - experiment_runner executes a configured experiment (only when an experiment_spec dependency is present);
 - reproducer independently repeats that configured experiment when replication is requested;
@@ -36,7 +38,7 @@ Reply with ONE JSON object and nothing else, matching this schema:
 {
   "outcome": "produced" | "needs_dependency" | "unable_to_complete",
   "payload": {"rationale": str, "coverage": {requirement_id: [planned task role or objective, ...]}},
-  "proposed_tasks": [{"role": "source_scout" | "evidence_reader" | "theorist" | "experiment_runner" |
+  "proposed_tasks": [{"role": "source_scout" | "evidence_reader" | "research_agent" | "theorist" | "experiment_runner" |
                                 "reproducer" | "analyst" | "writer" | "reviewer",
                        "objective": str, "source_ids": [str]}],
   "limitations": [str],

@@ -38,6 +38,7 @@ ROLE_TITLES = {
     "planner": "Planner",
     "source_scout": "Source scout",
     "evidence_reader": "Reader",
+    "research_agent": "Research agent",
     "theorist": "Theorist",
     "experiment_runner": "Experiment runner",
     "reproducer": "Reproducer",
@@ -121,6 +122,8 @@ class StageAgent:
             return f"Screening {len(packet.available_sources)} candidate sources"
         if role == "theorist":
             return f"Building hypotheses from {len(packet.claim_items())} accepted claims"
+        if role == "research_agent":
+            return f"Integrating {len(packet.claim_items())} claims into a nine-check research assessment"
         if role in {"experiment_runner", "reproducer"}:
             return "Running the configured experiment" if role == "experiment_runner" else "Repeating the configured experiment"
         if role == "analyst":
@@ -154,6 +157,10 @@ class StageAgent:
         if role == "theorist":
             hypotheses = p.get("hypotheses", [])
             return f"Proposed {len(hypotheses)} testable hypothes{'is' if len(hypotheses) == 1 else 'es'}"
+        if role == "research_agent":
+            checks = p.get("checks", [])
+            blocked = [c for c in checks if c.get("status") == "blocked"]
+            return f"Completed {len(checks)} research checks" + (f", {len(blocked)} blocked" if blocked else "")
         if role in {"experiment_runner", "reproducer"}:
             record = p.get("analysis_record", {})
             return f"{record.get('run_id', 'Run')} {record.get('status', 'recorded')}"

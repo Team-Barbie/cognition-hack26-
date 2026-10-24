@@ -13,6 +13,8 @@ ROLE_MODULES = {
     "source_scout": "ar.agents.scout",
     "theorist": "ar.agents.theorist",
     "analyst": "ar.agents.analyst",
+    "research_agent": "ar.agents.research_agent",
+    "adversarial_reviewer": "ar.agents.adversarial_reviewer",
 }
 
 OVERRIDES: dict[str, ModuleType] = {}
