@@ -57,3 +57,42 @@ class Packet(Record):
 
     def claim_items(self) -> list[DependencyItem]:
         return [d for d in self.dependencies if d.kind == "claim"]
+
+    def audit_view(self) -> dict:
+        """JSON-safe view of the exact bounded context delivered to an agent attempt."""
+        reads = []
+        for read in self.reads:
+            reads.append({
+                "label": read.label,
+                "source": read.source_ref.source_id,
+                "revision": read.source_ref.revision,
+                "start": read.selector.start,
+                "end": read.selector.end,
+                "receipt": read.read_receipt_id,
+                "lines": [
+                    {"n": read.selector.start + offset, "text": line}
+                    for offset, line in enumerate(read.content.splitlines())
+                ],
+            })
+        dependencies = []
+        for dep in self.dependencies:
+            dependencies.append({
+                "kind": dep.kind,
+                "id": dep.id,
+                "revision": dep.revision,
+                "content": dep.content,
+                "claim": dep.claim.model_dump(mode="json") if dep.claim else None,
+            })
+        return {
+            "id": self.packet_id,
+            "task": self.task_id,
+            "attempt": self.attempt_id,
+            "role": self.role,
+            "objective": self.objective,
+            "requirements": [requirement.model_dump(mode="json") for requirement in self.requirements],
+            "reads": reads,
+            "dependencies": dependencies,
+            "available_sources": [source.model_dump(mode="json") for source in self.available_sources],
+            "review_feedback": list(self.review_feedback),
+            "skills": list(self.skills),
+        }

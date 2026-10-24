@@ -5,7 +5,6 @@ optional OPENAI_BASE_URL for a local server). Not part of pytest: it calls a rea
 """
 
 import argparse
-import json
 import sys
 from pathlib import Path
 
@@ -13,6 +12,7 @@ ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 
 from ar.adapter import PROVIDERS, LiveAgent, make_client  # noqa: E402
+from ar.agents.fake import load_answer_key  # noqa: E402
 from ar.models import LineSelector, SourceRef  # noqa: E402
 from ar.packet import DeliveredRead, Packet  # noqa: E402
 
@@ -20,7 +20,7 @@ FIXTURE = ROOT / "fixtures" / "baselines"
 
 
 def main() -> int:
-    key = json.loads((FIXTURE / "answer_key.json").read_text())
+    key = load_answer_key()
     parser = argparse.ArgumentParser()
     parser.add_argument("--provider", default="anthropic", choices=PROVIDERS)
     parser.add_argument("--model")

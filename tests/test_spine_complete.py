@@ -19,7 +19,8 @@ from ar.db import (
     request_pause,
     start_attempt,
 )
-from ar.models import AgentResult, ReviewFinding, ReviewResult
+from ar.experiment import list_runs
+from ar.models import AgentResult, ProposedTask, ReviewFinding, ReviewResult
 
 
 FIXTURE = Path(__file__).parent.parent / "fixtures" / "baselines"
@@ -211,7 +212,8 @@ def test_planner_proposals_are_recorded_once(tmp_path):
             "SELECT payload_json FROM events WHERE kind='planner_proposals'"
         ).fetchall()
         assert len(row) == 1
-        assert '"clamped": true' in row[0]["payload_json"]
+        assert '"clamped": false' in row[0]["payload_json"]
+        assert '"selected"' in row[0]["payload_json"]
     finally:
         conn.close()
 
@@ -274,3 +276,75 @@ def test_end_to_end_idempotency_key_reuses_completed_run(tmp_path):
         assert conn.execute("SELECT COUNT(*) FROM artifacts").fetchone()[0] == 1
     finally:
         conn.close()
+
+
+class DynamicResearchAgent:
+    def __init__(self):
+        self.fake = FakeAgent()
+        self.packets = {}
+
+    def run(self, role, packet):
+        self.packets.setdefault(role, []).append(packet)
+        result = self.fake.run(role, packet)
+        if role != "planner":
+            return result
+        readers = [task for task in result.proposed_tasks if task.role == "evidence_reader"]
+        return result.model_copy(update={"proposed_tasks": [
+            *readers,
+            ProposedTask(role="theorist", objective="Develop a falsifiable explanation."),
+            ProposedTask(role="experiment_runner", objective="Run the configured pilot.", source_ids=["spec-1"]),
+            ProposedTask(role="reproducer", objective="Repeat the configured pilot.", source_ids=["spec-1"]),
+            ProposedTask(role="analyst", objective="Compare the recorded runs."),
+            ProposedTask(role="writer", objective="Synthesize all accepted work."),
+            ProposedTask(role="reviewer", objective="Review the synthesis."),
+        ]})
+
+
+def test_planner_drives_theory_experiment_reproduction_and_analysis(tmp_path):
+    project = fixture_project(tmp_path)
+    shutil.copytree(
+        Path(__file__).parent.parent / "fixtures" / "experiment",
+        project / "fixtures" / "experiment",
+    )
+    (project / "input" / "experiment.yaml").write_text(
+        """id: spec-1
+question: Seasonal-naive MAE on weekly demand
+status: pilot
+input_files:
+  - fixtures/experiment/data.csv
+  - fixtures/experiment/baseline_mae.py
+command: [python, baseline_mae.py, --seed, '7']
+working_dir: fixtures/experiment
+seed: 7
+metrics: [mae]
+success_criteria: [mae computed]
+expected_outputs: [results.json]
+timeout_seconds: 60
+""",
+        encoding="utf-8",
+    )
+
+    agent = DynamicResearchAgent()
+    assert run_project(project, agent) is RunOutcome.COMPLETED
+
+    assert "Planner assignment: Develop a falsifiable explanation." in agent.packets["theorist"][0].objective
+    assert "Planner assignment: Compare the recorded runs." in agent.packets["analyst"][0].objective
+
+    conn = connect(project)
+    try:
+        roles = [row["role"] for row in conn.execute(
+            "SELECT role FROM tasks ORDER BY created_at, id"
+        ).fetchall()]
+        assert roles == [
+            "planner", "evidence_reader", "evidence_reader", "evidence_reader", "theorist",
+            "experiment_runner", "reproducer", "analyst", "writer", "reviewer",
+        ]
+        runs = list_runs(conn)
+        assert len(runs) == 2
+        assert all(run.result_acceptable for run in runs)
+        assert runs[0].output_hashes == runs[1].output_hashes
+    finally:
+        conn.close()
+    report = (project / "output" / "report.md").read_text(encoding="utf-8")
+    assert "Experiment and analysis" in report
+    assert "Experiment run exp-001" in report and "Experiment run exp-002" in report

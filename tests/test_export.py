@@ -2,14 +2,14 @@ import hashlib
 import json
 import re
 import sqlite3
-from pathlib import Path
 
 from ar import evidence
+from ar.agents.fake import load_answer_key
 from ar.completion import CompletionAssessment, RequirementRow
 from ar.export import ASSURANCE, ExportError, export_run
 from ar.models import ArtifactVersion, ClaimDraft, EvidenceLink, LineSelector, SourceRef
 
-KEY = json.loads((Path(__file__).parent.parent / "fixtures" / "baselines" / "answer_key.json").read_text())
+KEY = load_answer_key()
 REPORT = """# Report
 
 ## Supported baseline

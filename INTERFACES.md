@@ -94,17 +94,20 @@ def run_project(project_root: Path, agent: Agent, *, max_tasks: int = 12,
 def build_packet(...)  # assembles agents.packet.Packet from broker.read results; the controller never calls a model
 ```
 
-Loop (fixed, clamped): planner -> one `evidence_reader` per source file (planner proposals beyond
-that are stored in `events` and ignored) -> writer -> reviewer; the reviewer may send the writer back
-once (`needs_revision`), then the controller finishes with remaining blocking findings listed as
-limitations. Task states: `pending, ready, running, accepted, needs_revision, failed`. Each execution
-is a new `attempts` row. Accepted tasks are skipped on a second `run_project` and their artifact is
-not duplicated. A stopped run (killed mid-loop) resumes from committed state. `max_model_calls` is
-checked before every dispatch; hitting it keeps the draft and returns `budget_exhausted`.
+Loop: the planner is committed first, then its proposals are validated and normalized into dependency
+order. The bounded middle may contain one `source_scout`, one `evidence_reader` per known source, one
+`theorist`, an `experiment_runner`, one `reproducer`, and one `analyst`; `writer -> reviewer` remains
+mandatory. Execution roles require a user-authored `input/experiment.yaml` and never execute a command
+invented by the planner. Invalid and budget-clamped proposals are stored in `events`. The literature-only
+sequence remains the fallback. The reviewer may send the writer back once (`needs_revision`), then the
+controller finishes with remaining blocking findings listed as limitations. Task states remain
+`pending, ready, running, accepted, needs_revision, failed`. Each execution is a new `attempts` row.
+Accepted tasks are skipped on resume and their artifacts are not duplicated. `max_model_calls` is checked
+before every dispatch; hitting it keeps the draft and returns `budget_exhausted`.
 
 The controller calls, in order, for each task: `broker.read` (packet build) -> `agents.run` ->
 `broker.check_required_reads` -> role-specific accept step:
-- planner: store proposed tasks (clamped).
+- planner: store proposed, selected, and rejected tasks; dispatch only the validated bounded graph.
 - evidence_reader: `evidence.accept_claims(...)`.
 - writer: `broker.create_artifact` / `broker.revise_artifact`.
 - reviewer: `review.gate(...)`.

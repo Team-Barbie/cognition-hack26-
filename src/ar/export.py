@@ -16,8 +16,8 @@ from pathlib import Path
 from typing import Any
 
 from ar.broker import QUOTE_NORMALIZATION
-from ar.completion import CITATION, CompletionAssessment
-from ar.evidence import claim_attempt, get_claim, link_provenance, list_claims, list_rejections
+from ar.completion import CompletionAssessment
+from ar.evidence import CITATION, claim_attempt, get_claim, link_provenance, list_claims, list_rejections
 from ar.experiment import ExperimentRun, get_run, list_runs
 from ar.imports import ImportRecord, get_import, list_imports
 from ar.models import SCHEMA_VERSION, ArtifactVersion, Claim

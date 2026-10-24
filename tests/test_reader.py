@@ -1,14 +1,14 @@
-import json
 from pathlib import Path
 
 import pytest
 
 from ar.agents import reader
+from ar.agents.fake import load_answer_key
 from ar.models import AgentResult, LineSelector, SourceRef
 from ar.packet import DeliveredRead, Packet
 
 FIXTURE = Path(__file__).parent.parent / "fixtures" / "baselines"
-KEY = json.loads((FIXTURE / "answer_key.json").read_text())
+KEY = load_answer_key()
 
 
 def read_of(source_id: str, content: str | None = None, start: int = 1) -> DeliveredRead:

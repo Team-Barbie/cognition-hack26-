@@ -8,10 +8,16 @@ import urllib.request
 import pytest
 
 from ar.studio.intake import Brief, Intake
-from ar.studio.server import serve
+from ar.studio.server import SlidingWindowLimiter, Studio, event_stream, handle, serve
 from ar.models import LineSelector, Requirement, SourceRef
 from ar.packet import DeliveredRead, Packet
 from ar.studio.session import Session, packet_view
+
+
+@pytest.fixture(autouse=True)
+def no_external_web_search(monkeypatch):
+    """Studio tests exercise orchestration without depending on Crossref's network."""
+    monkeypatch.setattr("ar.studio.session.search_crossref", lambda query, limit: [])
 
 
 class Scripted:
@@ -25,6 +31,41 @@ class Scripted:
         if isinstance(reply, Exception):
             raise reply
         return json.dumps(reply)
+
+
+def test_sliding_window_limiter_blocks_then_recovers():
+    now = [100.0]
+    limiter = SlidingWindowLimiter(clock=lambda: now[0])
+    rules = [("client-a", "api", 2, 10.0)]
+    assert limiter.check(rules) is None
+    assert limiter.check(rules) is None
+    assert limiter.check(rules) == 10
+    now[0] += 10
+    assert limiter.check(rules) is None
+
+
+def test_sliding_window_limiter_bounds_identity_buckets_without_weakening_active_rules():
+    limiter = SlidingWindowLimiter(max_buckets=2)
+    assert limiter.check([("old", "api", 1, 60.0)]) is None
+    rules = [("new", "api", 1, 60.0), ("new", "run", 1, 60.0)]
+    assert limiter.check(rules) is None
+    assert limiter.check(rules) == 60
+    assert len(limiter._events) == 2
+
+
+def test_run_endpoint_has_a_per_client_limit(tmp_path, monkeypatch):
+    import ar.studio.server as server
+
+    monkeypatch.setattr(server, "_RATE_LIMITER", SlidingWindowLimiter())
+    studio = server.Studio(tmp_path, fake=True)
+    for _ in range(6):
+        status, _, _ = handle(studio, "POST", "/api/run", "", b"{}", client_id="192.0.2.1")
+        assert status == 400  # Invalid sessions are still attempts and must be limited.
+    status, _, payload = handle(studio, "POST", "/api/run", "", b"{}", client_id="192.0.2.1")
+    assert status == 429
+    assert json.loads(payload)["retry_after"] > 0
+    other_status, _, _ = handle(studio, "POST", "/api/run", "", b"{}", client_id="192.0.2.2")
+    assert other_status == 400
 
 
 def test_packet_view_exposes_the_exact_bounded_context():
@@ -42,6 +83,17 @@ def test_packet_view_exposes_the_exact_bounded_context():
     assert view["reads"] == [{"label": "paper-b", "source": "paper-b", "revision": 2,
                                "start": 7, "end": 8, "receipt": "read-7",
                                "lines": [{"n": 7, "text": "first"}, {"n": 8, "text": "second"}]}]
+
+
+def test_session_events_are_durable_and_sse_resumable(tmp_path):
+    session = Session(tmp_path, None)
+    session.emit("runtime", event="packet.dispatched", task="task-1")
+    events = session.since(0)
+    assert session.event_database.is_file()
+    assert events[-1]["event"] == "packet.dispatched"
+    frame = next(event_stream(session, events[-2]["seq"]))
+    assert f"id: {events[-1]['seq']}\n".encode() in frame
+    assert b'"event":"packet.dispatched"' in frame
 
 
 def test_scripted_intake_collects_every_field_and_writes_requirements():
@@ -137,16 +189,17 @@ def test_demo_run_shows_every_agent_and_a_verified_report(tmp_path):
     s.start()
     s.wait(60)
     assert s.status == "done", [e for e in s.events if e["type"] == "chat"][-1]
-    cards = {e["id"]: e for e in s.events if e["type"] == "agent"}
-    assert {"orchestrator", "planner", "reader:paper-a", "reader:paper-b", "reader:paper-c",
-            "writer:1", "reviewer", "quality"} <= set(cards)
-    assert all(cards[c]["status"] == "done" for c in cards)
-    assert cards["reader:paper-c"]["detail"] == "Not relevant, no claims"
-    assert cards["planner"]["packet"]["reads"][0]["label"] == "brief"
-    assert cards["reader:paper-b"]["packet"]["reads"][0]["receipt"].startswith("read-")
-    assert len(cards["writer:1"]["packet"]["dependencies"]) == 2
-    assert cards["reviewer"]["packet"]["dependencies"][0]["kind"] == "artifact"
+    scout = [e for e in s.events if e["type"] == "agent" and e["id"] == "scout"]
+    assert [e["status"] for e in scout] == ["running", "done"]
     assert any(e["type"] == "quality" and e["kind"] == "accepted" for e in s.events)
+    runtime = {e["event"] for e in s.events if e["type"] == "runtime"}
+    assert {"run.started", "task.created", "attempt.started", "packet.dispatched",
+            "attempt.accepted", "run.finished"} <= runtime
+    dispatched = [e for e in s.events if e["type"] == "runtime" and e["event"] == "packet.dispatched"]
+    accepted = [e for e in s.events if e["type"] == "runtime" and e["event"] == "attempt.accepted"]
+    assert next(e for e in dispatched if e["payload"]["packet"]["role"] == "planner")["payload"]["packet"]["reads"][0]["label"] == "brief"
+    assert len(next(e for e in dispatched if e["payload"]["packet"]["role"] == "writer")["payload"]["packet"]["dependencies"]) == 2
+    assert next(e for e in accepted if e["payload"]["role"] == "reviewer")["payload"]["result"]["payload"]["disposition"] == "accept"
 
     r = s.report
     assert r["outcome"] == "completed" and r["cited"] == ["claim-1", "claim-2"]
@@ -178,13 +231,14 @@ def test_http_api_runs_a_demo_end_to_end(tmp_path):
             page = res.read().decode()
         assert "<title>Res Loop</title>" in page
         assert "https://" not in page and "http://" not in page  # no external requests
+        assert "/api/events/stream" in page
 
         status, s = post("/api/session", {})
         assert status == 200 and s["mode"] == "demo · fake agent"
         assert post("/api/run", {"id": s["id"]})[0] == 400  # nothing to run yet
         assert post("/api/chat", {"id": "nope", "message": "hi"})[0] == 400
         assert post("/api/demo", {"id": s["id"]}) == (200, {"ok": True})
-        assert post("/api/source", {"id": s["id"], "name": "oops.md", "text": "wrong file"}) == (200, {"ok": True})
+        assert post("/api/source", {"id": s["id"], "name": "oops.md", "text": "wrong file"}) == (200, {"ok": True, "id": "oops"})
         assert post("/api/source/remove", {"id": s["id"], "source": "oops"}) == (200, {"ok": True})
         assert post("/api/source/remove", {"id": s["id"], "source": "oops"})[0] == 400
         assert post("/api/run", {"id": s["id"]}) == (200, {"ok": True})
@@ -274,9 +328,9 @@ def test_a_reader_that_balks_is_retried_then_skipped_without_killing_the_run(tmp
     s.start()
     s.wait(60)
     assert s.status == "done" and flaky.calls["paper-a"] == 2 and flaky.calls["paper-c"] == 2
-    cards = {e["id"]: e for e in s.events if e["type"] == "agent"}
-    assert cards["reader:paper-c"]["status"] == "failed" and "Skipped" in cards["reader:paper-c"]["detail"]
-    assert cards["reader:paper-a"]["status"] == "done"
+    accepted = [e for e in s.events if e["type"] == "runtime" and e["event"] == "attempt.accepted"]
+    skipped = next(e for e in accepted if e["payload"]["result"]["payload"].get("source_id") == "paper-c")
+    assert skipped["payload"]["result"]["payload"]["summary"].startswith("Skipped:")
     assert any("paper-c could not complete" in lim for lim in s.report["limitations"])
     assert len(s.report["cited"]) == 2
 
@@ -303,8 +357,9 @@ def test_a_planner_that_proposes_a_plan_but_wants_more_inputs_does_not_stop_the_
     s.start()
     s.wait(60)
     assert s.status == "done" and agent.planner_calls == 1  # no wasted retry
-    planner = next(e for e in s.events if e["type"] == "agent" and e["id"] == "planner" and e["status"] == "done")
-    assert planner["questions"] == ["Supply the LoTSS DR3 catalogue.", "Who is the audience?"]
+    planner = next(e for e in s.events if e["type"] == "runtime" and e["event"] == "attempt.accepted"
+                   and e["payload"]["role"] == "planner")
+    assert planner["payload"]["result"]["unresolved"] == ["Supply the LoTSS DR3 catalogue.", "Who is the audience?"]
     assert "Supply the LoTSS DR3 catalogue." in s.open_questions
 
 
@@ -335,4 +390,17 @@ def test_writer_gets_the_scope_note_and_a_nudge_when_it_balks(tmp_path):
     assert all("Scope note" in p.objective for ps in agent.seen.values() for p in ps)
     writers = agent.seen["writer"]
     assert len(writers) == 2 and "previous reply asked for inputs" in writers[1].review_feedback[-1]
+    dispatched = [e for e in s.events if e["type"] == "runtime" and e["event"] == "packet.dispatched"]
+    assert all("Scope note" in e["payload"]["packet"]["objective"] for e in dispatched
+               if e["payload"]["packet"]["role"] in ("planner", "writer", "reviewer"))
     assert not any("Scope note" in e.get("text", "") for e in s.events if e["type"] == "chat")  # the user never sees it
+
+
+def test_the_page_has_a_tab_icon_served_by_the_app(tmp_path):
+    studio = Studio(tmp_path, fake=True)
+    page = handle(studio, "GET", "/", "", b"")[2].decode()
+    assert '<link rel="icon" href="/favicon.svg"' in page
+    assert "http://" not in page and "https://" not in page  # the page itself still makes no external requests
+    for path in ("/favicon.svg", "/favicon.ico"):
+        status, kind, body = handle(studio, "GET", path, "", b"")
+        assert (status, kind) == (200, "image/svg+xml") and body.startswith(b"<svg")

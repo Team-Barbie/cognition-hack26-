@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Res Loop</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <style>
 /* Res Loop. A green phosphor CRT: monitor bezel, scanlines, glow, chunky pixel type, invader sprites for the agent team,
    book spines for the sources. No round markers anywhere: state is shown with bars, brackets, blocks and motion.
@@ -33,8 +34,9 @@ a { color: inherit; }
 #screen.poweron { animation: poweron .95s cubic-bezier(.2,.7,.2,1) backwards; }
 #screen::-webkit-scrollbar { width: 8px; } #screen::-webkit-scrollbar-thumb { background: var(--ph-3); border-radius: 4px; }
 .fx { position: fixed; inset: var(--bz); border-radius: var(--rad); pointer-events: none; }
-.scan { z-index: 800; background: repeating-linear-gradient(to bottom, rgba(0,0,0,.27) 0 1px, transparent 1px 3px); mix-blend-mode: multiply; }
-.roll { z-index: 801; background: linear-gradient(to bottom, transparent, rgba(185,240,74,.075) 50%, transparent) 0 -30% / 100% 26% no-repeat; animation: roll 7.5s linear infinite; }
+.scan { z-index: 800; background: repeating-linear-gradient(to bottom, rgba(0,0,0,.27) 0 1px, transparent 1px 3px); }
+.roll { z-index: 801; overflow: hidden; }
+.roll::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 26%; background: linear-gradient(to bottom, transparent, rgba(185,240,74,.075) 50%, transparent); animation: roll 7.5s linear infinite; will-change: transform; }
 .vig { z-index: 802; background: radial-gradient(ellipse at center, transparent 52%, rgba(0,0,0,.42) 100%); box-shadow: inset 0 0 90px 18px rgba(0,0,0,.6); }
 .flick { z-index: 803; background: #000; opacity: 0; animation: flick 6s steps(1) infinite; }
 .bezel { position: fixed; inset: 0; z-index: 900; pointer-events: none; border: 2px solid #2b2d27; }
@@ -136,6 +138,12 @@ canvas.px { image-rendering: pixelated; max-width: 100%; filter: drop-shadow(0 0
 .paste input, .paste textarea { padding: 10px 12px; border: 1px solid var(--ph-3); border-radius: 10px; background: rgba(0,0,0,.4); color: var(--ph); font: 14px var(--mono); }
 .paste textarea { min-height: 100px; resize: vertical; }
 .paste input:focus, .paste textarea:focus { outline: none; border-color: var(--ph-hi); box-shadow: 0 0 14px var(--glow-s); }
+.web-results { display: grid; gap: 8px; }
+.web-result { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 5px 14px; padding: 11px 12px; border: 1px solid var(--ph-4); border-radius: 9px; background: rgba(0,0,0,.25); }
+.web-result b { color: var(--ph-hi); font-size: 14px; }
+.web-result small { color: var(--ph-2); font: 11px/1.45 var(--mono); }
+.web-result a { grid-row: 1 / span 2; grid-column: 2; align-self: center; }
+.web-note { margin: 0; color: var(--ph-3); font: 11px/1.45 var(--mono); }
 
 /* brief */
 .brief dl { margin: 0; display: grid; grid-template-columns: 130px minmax(0, 1fr); gap: 0 22px; }
@@ -173,19 +181,27 @@ canvas.px { image-rendering: pixelated; max-width: 100%; filter: drop-shadow(0 0
 .rbody { padding: 22px 24px 26px; }
 .rtitle { margin: 0 0 4px; font: 800 clamp(20px, 2.4vw, 28px)/1.2 var(--mono); letter-spacing: .08em; text-transform: uppercase; text-shadow: 0 0 12px var(--glow); }
 #report.focus .rtitle { animation: focus 1s cubic-bezier(.2,.8,.2,1) backwards; }
+.rlede { max-width: 78ch; margin: 10px 0 0; color: var(--ph-2); font: 14px/1.65 var(--mono); }
+.report-overview { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 18px; }
+.report-stat { min-height: 86px; padding: 12px 14px; border: 1px solid var(--ph-4); border-radius: 10px; background: rgba(0,0,0,.18); display: grid; align-content: start; gap: 4px; }
+.report-stat .label { color: var(--ph-3); font: 800 10px var(--mono); letter-spacing: .16em; text-transform: uppercase; }
+.report-stat strong { color: var(--ph-hi); font: 800 17px/1.3 var(--mono); overflow-wrap: anywhere; }
+.report-stat small { color: var(--ph-2); font: 11.5px/1.45 var(--mono); }
+@media (max-width: 680px) { .report-overview { grid-template-columns: minmax(0, 1fr); } .report-stat { min-height: 0; } }
 .tabs { display: flex; gap: 8px; margin: 18px 0 0; padding-bottom: 14px; border-bottom: 1px dashed var(--ph-4); overflow-x: auto; }
-.tab { background: none; border: 1px solid var(--ph-3); border-radius: 10px; padding: 8px 16px; cursor: pointer; font: 700 12px var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--ph-2); white-space: nowrap; transition: background .15s, color .15s; }
+.tab { background: none; border: 1px solid var(--ph-3); border-radius: 10px; padding: 8px 16px; cursor: pointer; font: 700 12px var(--mono); letter-spacing: .08em; color: var(--ph-2); white-space: nowrap; transition: background .15s, color .15s; }
 .tab:hover { color: var(--ph-hi); border-color: var(--ph); }
 .tab[aria-selected="true"] { background: var(--ph); color: var(--ink); border-color: var(--ph); text-shadow: none; }
 .pane { padding-top: 22px; } .pane[hidden] { display: none; }
 .rep-grid { display: grid; grid-template-columns: minmax(0, 1fr) 260px; gap: 40px; }
 @media (max-width: 960px) { .rep-grid { grid-template-columns: minmax(0, 1fr); } }
-.article { font: 15.5px/1.8 var(--mono); min-width: 0; }
+.article { font: 16px/1.85 var(--mono); min-width: 0; }
 .article h1 { display: none; }
 .article h2 { font: 800 15px/1.3 var(--mono); letter-spacing: .16em; text-transform: uppercase; margin: 34px 0 10px; padding-bottom: 6px; border-bottom: 1px dashed var(--ph-4); color: var(--ph-hi); }
 .article h2:first-child { margin-top: 0; }
 .article h3 { font: 800 15px var(--mono); margin: 22px 0 6px; color: var(--ph-hi); }
 .article p { margin: 0 0 14px; max-width: 70ch; }
+.article h2:first-of-type + p { color: var(--ph-hi); font-size: 1.04em; padding: 12px 14px; border-left: 3px solid var(--ph); background: linear-gradient(90deg, rgba(185,240,74,.08), transparent 70%); }
 .article ul, .sheet ul { list-style: none; padding-left: 0; margin: 0 0 14px; max-width: 70ch; }
 .article ul > li, .sheet ul > li { position: relative; padding-left: 20px; margin: 0 0 8px; }
 .article ul > li::before, .sheet ul > li::before { content: ">"; position: absolute; left: 0; color: var(--ph-3); font-weight: 800; }
@@ -196,6 +212,11 @@ canvas.px { image-rendering: pixelated; max-width: 100%; filter: drop-shadow(0 0
 .cite:hover { background: var(--acc); color: var(--ink); text-shadow: none; text-decoration: none; }
 .cite.unknown { color: var(--ph-3); cursor: default; text-decoration: none; }
 .rail { display: grid; gap: 24px; align-content: start; padding: 18px; border: 1px dashed var(--ph-3); border-radius: 14px; }
+.rail-section { display: grid; gap: 7px; }
+.rail-copy { margin: 0; color: var(--ph-2); font: 11.5px/1.55 var(--mono); }
+.read-guide { margin: 0; padding-left: 1.5em; color: var(--ph-2); font: 11.5px/1.55 var(--mono); }
+.read-guide li { margin-top: 6px; padding-left: 3px; }
+.read-guide b { color: var(--ph-hi); }
 .layer { display: grid; grid-template-columns: minmax(0, 1fr) 46px; gap: 4px 10px; align-items: center; margin-top: 12px; }
 .layer .lbl { grid-column: 1 / -1; font: 12px var(--mono); overflow-wrap: anywhere; }
 .layer .bar { height: 14px; position: relative; overflow: hidden; background: repeating-linear-gradient(90deg, var(--ph-5) 0 8px, transparent 8px 11px); }
@@ -294,7 +315,7 @@ mark { background: var(--acc); color: var(--ink); text-shadow: none; padding: 0 
 @keyframes poweron { 0% { transform: scale(.14, .004); filter: brightness(5); } 32% { transform: scale(1, .004); filter: brightness(3.5); } 62% { transform: scale(1, .7); filter: brightness(1.7); } 100% { transform: none; filter: none; } }
 @keyframes bootout { to { opacity: 0; visibility: hidden; } }
 @keyframes winon { 0% { opacity: .1; transform: scaleY(.04); filter: brightness(2.4); } 55% { opacity: 1; transform: scaleY(1.02); } 100% { transform: none; filter: none; } }
-@keyframes roll { to { background-position: 0 150%; } }
+@keyframes roll { from { transform: translateY(-100%); } to { transform: translateY(385%); } }
 @keyframes flick { 0%, 100% { opacity: 0; } 48% { opacity: 0; } 49% { opacity: .035; } 50% { opacity: 0; } }
 @keyframes blink { 50% { opacity: .2; } }
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
@@ -305,7 +326,7 @@ mark { background: var(--acc); color: var(--ink); text-shadow: none; padding: 0 
 @keyframes scanbar { from { top: -18px; } to { top: 100%; } }
 @keyframes typein { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
 @keyframes lineup { from { opacity: .1; transform: translateY(10px); } to { opacity: 1; transform: none; } }
-@keyframes focus { from { letter-spacing: .5em; opacity: .1; filter: blur(4px); } to { letter-spacing: .08em; opacity: 1; filter: none; } }
+@keyframes focus { from { opacity: .1; transform: scale(1.05); transform-origin: left center; } to { opacity: 1; transform: none; } }
 @keyframes slidein { from { transform: translateX(60px); opacity: .2; } to { transform: none; opacity: 1; } }
 @media (max-width: 760px) {
   :root { --bz: 6px; --rad: 20px; }
@@ -352,6 +373,7 @@ mark { background: var(--acc); color: var(--ink); text-shadow: none; padding: 0 
             <label class="act" for="file" tabindex="0" id="upload-label">Upload</label>
             <input id="file" type="file" accept=".md,.txt,.markdown,text/plain,text/markdown" multiple hidden>
             <button class="act" id="paste-toggle" type="button">Paste text</button>
+            <button class="act" id="search-toggle" type="button">Search web</button>
             <button class="act" id="demo" type="button">Demo papers</button>
             <span class="sp"></span>
             <button class="go" id="start" type="button">Start</button>
@@ -360,6 +382,12 @@ mark { background: var(--acc); color: var(--ink); text-shadow: none; padding: 0 
             <input id="paste-name" placeholder="name, e.g. smith-2024" required aria-label="Source name">
             <textarea id="paste-text" placeholder="paste the text here" required aria-label="Source text"></textarea>
             <div><button class="act" type="submit">Add</button></div>
+          </form>
+          <form class="paste" id="web-search" hidden>
+            <input id="web-query" placeholder="paper topic or title" required minlength="3" maxlength="500" aria-label="Web search query">
+            <div><button class="act" id="web-submit" type="submit">Find papers</button></div>
+            <p class="web-note">Searches Crossref. Results are paper details only; upload the full text before running the research team.</p>
+            <div class="web-results" id="web-results" aria-live="polite"></div>
           </form>
         </div>
       </section>
@@ -389,15 +417,24 @@ mark { background: var(--acc); color: var(--ink); text-shadow: none; padding: 0 
         <div class="wbar"><span>Report</span><span><span id="report-outcome"></span> / <span id="report-meta"></span></span></div>
         <div class="rbody">
           <h2 class="rtitle" id="report-title">Report</h2>
+          <p class="rlede" id="report-lede">A checked answer built from source-linked claims. Select any numbered citation to inspect the exact supporting text.</p>
+          <div class="report-overview" aria-label="Report at a glance">
+            <div class="report-stat"><span class="label">Review status</span><strong id="overview-status">—</strong><small id="overview-status-note">Quality gate result</small></div>
+            <div class="report-stat"><span class="label">Evidence used</span><strong id="overview-evidence">—</strong><small id="overview-evidence-note">Verified claims and cited sources</small></div>
+            <div class="report-stat"><span class="label">Known caveats</span><strong id="overview-caveats">—</strong><small id="overview-caveats-note">Open questions, limitations, and quality problems</small></div>
+          </div>
           <div class="tabs" role="tablist">
-            <button class="tab" role="tab" data-pane="report" aria-selected="true">Report</button>
-            <button class="tab" role="tab" data-pane="evidence" aria-selected="false">Evidence <span id="n-evidence"></span></button>
-            <button class="tab" role="tab" data-pane="rejected" aria-selected="false">Rejected <span id="n-rejected"></span></button>
-            <button class="tab" role="tab" data-pane="open" aria-selected="false">Open <span id="n-open"></span></button>
+            <button class="tab" role="tab" data-pane="report" aria-controls="pane-report" aria-selected="true">Answer</button>
+            <button class="tab" role="tab" data-pane="evidence" aria-controls="pane-evidence" aria-selected="false">Verified evidence <span id="n-evidence"></span></button>
+            <button class="tab" role="tab" data-pane="rejected" aria-controls="pane-rejected" aria-selected="false">Rejected evidence <span id="n-rejected"></span></button>
+            <button class="tab" role="tab" data-pane="open" aria-controls="pane-open" aria-selected="false">Gaps &amp; limits <span id="n-open"></span></button>
           </div>
           <div class="pane" id="pane-report"><div class="rep-grid"><article class="article" id="article"></article>
-            <aside class="rail"><div><canvas class="px" id="report-n" aria-label="claims in the report"></canvas><div class="cap" id="report-cap">claims in the report</div></div>
-              <div><p class="hd">Where it came from</p><div id="layers"></div></div></aside></div></div>
+            <aside class="rail" aria-label="How to read this report">
+              <div class="rail-section"><canvas class="px" id="report-n" aria-label="verified claims used in the answer"></canvas><div class="cap" id="report-cap">verified claims used</div><p class="rail-copy">These are source-linked statements that passed the evidence checks and appear in the answer.</p></div>
+              <div class="rail-section"><p class="hd">Evidence mix</p><p class="rail-copy">Share of citation links by source. This shows reliance, not source quality.</p><div id="layers"></div></div>
+              <div class="rail-section"><p class="hd">How to read it</p><ol class="read-guide"><li><b>Read the answer</b> for the recommendation.</li><li><b>Open a citation</b> to see its exact source lines.</li><li><b>Check gaps &amp; limits</b> before acting on the result.</li></ol></div>
+            </aside></div></div>
           <div class="pane" id="pane-evidence" hidden><ul class="list" id="claims"></ul></div>
           <div class="pane" id="pane-rejected" hidden><ul class="list" id="rejections"></ul></div>
           <div class="pane" id="pane-open" hidden><div class="rep-grid"><ul class="notes" id="open"></ul><ul class="notes" id="limits"></ul></div></div>
@@ -464,16 +501,50 @@ mark { background: var(--acc); color: var(--ink); text-shadow: none; padding: 0 
   const lerp = (a, b, t) => a + (b - a) * t;
   const ACC = "#ff4fa3", ACC_RGB = [1, 3, 5].map(i => parseInt(ACC.slice(i, i + 2), 16));  // the one accent colour (keep in step with --acc)
   const accA = a => `rgba(${ACC_RGB.join(",")},${a})`, accMix = (to, t) => ACC_RGB.map((v, i) => lerp(v, to[i], t));
-  let sid = null, after = 0, report = null, busy = false, returnFocus = null, password = "", attempted = false;
+  let sid = null, after = 0, report = null, busy = false, returnFocus = null, password = "", attempted = false, streamStarted = false;
   try { password = sessionStorage.getItem("studioPassword") || ""; } catch (_) { /* storage can be blocked */ }
 
-  async function api(path, body) {
+  // What the page remembers, so a session the server lost can be rebuilt (serverless hosts keep sessions per instance).
+  const snap = { brief: {}, ready: false, sources: {}, demo: false };
+  const attached = !!new URLSearchParams(location.search).get("session");
+  let runPending = false, restoring = null;
+  async function api(path, body, retried) {
     const headers = { "Content-Type": "application/json", ...(password ? { Authorization: `Bearer ${password}` } : {}) };
-    const res = await fetch(path, { method: body === undefined ? "GET" : "POST", headers, body: body === undefined ? undefined : JSON.stringify({ id: sid, ...body }) });
+    const res = await fetch(path, { method: body === undefined ? "GET" : "POST", headers, body: body === undefined ? undefined : JSON.stringify({ id: sid, after, ...body }) });
+    if (res.ok && (res.headers.get("Content-Type") || "").includes("ndjson")) return readRun(res);
     const data = await res.json().catch(() => ({}));
     if (res.status === 401) lock();
-    if (!res.ok) { if (/unknown session/.test(data.error || "")) restarted(); throw new Error(data.error || `HTTP ${res.status}`); }
+    if (!res.ok) {
+      if (/unknown session/.test(data.error || "") && body !== undefined && path !== "/api/session" && !retried && await recover()) return api(path, body, true);
+      throw new Error(data.error || `HTTP ${res.status}`);
+    }
+    if (Array.isArray(data.events)) applyEvents(data.events);
     return data;
+  }
+  // A hosted run answers with a stream, one JSON event per line, so progress still animates.
+  async function readRun(res) {
+    const reader = res.body.getReader(), decoder = new TextDecoder(); let buffer = "", final = {};
+    const line = text => { if (!text.trim()) return; const m = JSON.parse(text); if (m.done) final = m; else applyEvents([m]); };
+    while (true) {
+      const { value, done } = await reader.read(); if (done) break;
+      buffer += decoder.decode(value, { stream: true }); let nl;
+      while ((nl = buffer.indexOf("\n")) >= 0) { line(buffer.slice(0, nl)); buffer = buffer.slice(nl + 1); }
+    }
+    line(buffer);
+    return { ok: true, status: final.status };
+  }
+  // Start a fresh session on the server and refill it from the page. Quiet when it works.
+  function recover() {
+    if (attached) { restarted(); return Promise.resolve(false); }
+    restoring = restoring || (async () => {
+      try {
+        const d = await api("/api/session", { restore: snap });
+        sid = d.id; after = d.seen || 0;
+        if (state.running && !runPending) { state.running = false; updateStart(); toast("The server restarted and the run stopped. Press Run again."); }
+        return true;
+      } catch (err) { restarted(); return false; }
+    })().finally(() => { restoring = null; });
+    return restoring;
   }
   // The lock appears only if the server asks for a password (HTTP 401).
   function lock() { password = ""; try { sessionStorage.removeItem("studioPassword"); } catch (_) {} $("lock").hidden = false; $("screen").setAttribute("aria-hidden", "true"); $("screen").inert = true; setTimeout(() => $("password").focus(), 0); }
@@ -481,6 +552,14 @@ mark { background: var(--acc); color: var(--ink); text-shadow: none; padding: 0 
   let recovering = false;
   function restarted() { if (recovering) return; recovering = true; toast("The server restarted. Reloading."); setTimeout(() => { location.href = location.pathname; }, 1600); }
   function toast(msg) { const t = $("toast"); t.textContent = msg; t.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => { t.hidden = true; }, 4500); }
+  function renderWebResults(results, query, reveal = true) {
+    const box = $("web-results"); box.replaceChildren(); if (query) $("web-query").value = query;
+    if (reveal) $("web-search").hidden = false;
+    if (!results.length) { box.append(h("p", { class: "web-note" }, "No matching papers found. Try a broader search.")); return; }
+    for (const item of results) box.append(h("article", { class: "web-result" },
+      h("b", {}, item.title), h("small", {}, `${item.authors} · ${item.year || "year unknown"} · ${item.publisher}`),
+      item.url ? h("a", { class: "act", href: item.url, target: "_blank", rel: "noopener noreferrer" }, "Open") : null));
+  }
 
   // ================= pixel font (5x7), sprites and renderers =================
   const FONT = {};
@@ -592,8 +671,8 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
     skull: [parse(`.XXXXXXXX.\nXXXXXXXXXX\nXX..XX..XX\nXX..XX..XX\nXXXXXXXXXX\n.XXX..XXX.\n..XXXXXX..\n..X.XX.X..`), parse(`.XXXXXXXX.\nXXXXXXXXXX\nXX..XX..XX\nXX..XX..XX\nXXXXXXXXXX\n.XXXXXXXX.\n..X.XX.X..\n..XXXXXX..`)],
     cannon: [parse(`......X......\n.....XXX.....\n.....XXX.....\n.XXXXXXXXXXX.\nXXXXXXXXXXXXX\nXXXXXXXXXXXXX\nXXXXXXXXXXXXX\nXXXXXXXXXXXXX`), parse(`.............\n......X......\n.....XXX.....\n.XXXXXXXXXXX.\nXXXXXXXXXXXXX\nXXXXXXXXXXXXX\nXXXXXXXXXXXXX\nXXXXXXXXXXXXX`)],
   };
-  const ROLE_SPR = { orchestrator: "crab", scout: "ufo", planner: "squid", evidence_reader: "octo", writer: "ant", reviewer: "skull", quality: "cannon" };
-  const ROLE_NAME = { orchestrator: "Orchestrator", scout: "Scout", planner: "Planner", evidence_reader: "Reader", writer: "Writer", reviewer: "Reviewer", quality: "Quality gate" };
+  const ROLE_SPR = { orchestrator: "crab", scout: "ufo", planner: "squid", source_scout: "ufo", evidence_reader: "octo", theorist: "squid", experiment_runner: "cannon", reproducer: "cannon", analyst: "crab", writer: "ant", reviewer: "skull", quality: "cannon" };
+  const ROLE_NAME = { orchestrator: "Orchestrator", scout: "Scout", planner: "Planner", source_scout: "Source scout", evidence_reader: "Reader", theorist: "Theorist", experiment_runner: "Experiment", reproducer: "Reproducer", analyst: "Analyst", writer: "Writer", reviewer: "Reviewer", quality: "Quality gate" };
   function drawSprite(ctx, rows, x, y, s) { for (let r = 0; r < rows.length; r++) for (let c = 0; c < rows[r].length; c++) if (rows[r][c] === "X") ctx.fillRect(x + c * s, y + r * s, s, s); }
 
   // ================= boot, clock, hud =================
@@ -705,14 +784,14 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
     if (cv.width !== w || cv.height !== hgt) { cv.width = w; cv.height = hgt; } const ctx = cv.getContext("2d"); ctx.clearRect(0, 0, w, hgt); if (!state.running) return;
     const rel = el => { const b = el.getBoundingClientRect(); return { l: b.left - r.left, t: b.top - r.top, r: b.right - r.left, b: b.bottom - r.top, cx: (b.left + b.right) / 2 - r.left, cy: (b.top + b.bottom) / 2 - r.top }; };
     const run = Object.entries(spines).filter(([k, el]) => el.classList.contains("running") && k !== "orchestrator"), orch = spines.orchestrator;
-    ctx.shadowColor = accA(.9); ctx.shadowBlur = 8; ctx.fillStyle = ACC;
+    ctx.fillStyle = ACC;
     for (const [k, el] of run) {
       const a = rel(el); let from, to;
       if (k.startsWith("reader:") && srcSpines[k.slice(7)]) { const sp = rel(srcSpines[k.slice(7)]); from = { x: a.cx, y: a.t }; to = { x: sp.cx, y: sp.b }; } else continue;
       const dx = to.x - from.x, dy = to.y - from.y, len = Math.hypot(dx, dy) || 1, ux = dx / len, uy = dy / len, step = 18, ph = (t * .07) % step;
-      ctx.strokeStyle = ACC; ctx.lineWidth = 3; ctx.lineCap = "butt"; ctx.beginPath();
-      for (let d = -step + ph; d < len; d += step) { const a0 = Math.max(0, d), b0 = Math.min(len, d + 10); if (b0 > a0) { ctx.moveTo(from.x + ux * a0, from.y + uy * a0); ctx.lineTo(from.x + ux * b0, from.y + uy * b0); } }
-      ctx.stroke();
+      ctx.lineCap = "butt"; const dashes = () => { ctx.beginPath(); for (let d = -step + ph; d < len; d += step) { const a0 = Math.max(0, d), b0 = Math.min(len, d + 10); if (b0 > a0) { ctx.moveTo(from.x + ux * a0, from.y + uy * a0); ctx.lineTo(from.x + ux * b0, from.y + uy * b0); } } ctx.stroke(); };
+      ctx.strokeStyle = accA(.3); ctx.lineWidth = 8; dashes();  // a wide faint pass stands in for a blur glow
+      ctx.strokeStyle = ACC; ctx.lineWidth = 3; dashes();
       const bk = 11 + Math.round(Math.abs(Math.sin(t * .008)) * 5), bc = 7; ctx.beginPath();
       for (const [sx, sy] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) { ctx.moveTo(to.x + sx * bk, to.y + sy * (bk - bc)); ctx.lineTo(to.x + sx * bk, to.y + sy * bk); ctx.lineTo(to.x + sx * (bk - bc), to.y + sy * bk); }
       ctx.stroke();
@@ -726,13 +805,13 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
     if (st === "done") { ctx.fillStyle = "#0c1207"; const cx = w - 12, cy = hh - 12; [[0, 4], [2, 6], [4, 8], [6, 6], [8, 4], [10, 2], [12, 0]].forEach(([x, y]) => ctx.fillRect(cx + x - 4, cy + y - 4, 3, 3)); }
   }
   const visible = { signal: true };
-  let lastScene = 0, lastTick = 0, frameN = 0, lastGlitch = 0, lastScope = 0;
+  let lastScene = 0, lastTick = 0, frameN = 0, lastGlitch = 0, lastScope = 0, lastBeams = 0;
   function loop(t) {
     requestAnimationFrame(loop); if (document.hidden) return;
     if (t - lastScene > (state.running ? 55 : 80)) { lastScene = t; drawScene(t); }
     if (t - lastScope > 90) { lastScope = t; if (visible.signal) drawScope(t); }
     if (t - lastTick > (state.running ? 230 : 640)) { lastTick = t; frameN++; for (const k of Object.keys(spines)) paintAgent(k, frameN); }
-    if (state.running) { drawBeams(t); state.beamsOn = true; } else if (state.beamsOn) { drawBeams(t); state.beamsOn = false; }
+    if (state.running) { if (t - lastBeams > 33) { lastBeams = t; drawBeams(t); } state.beamsOn = true; } else if (state.beamsOn) { drawBeams(t); state.beamsOn = false; }
     if (t - lastGlitch > 11000 + Math.random() * 6000) { lastGlitch = t; glitchHead(); }
   }
   function startLoop() {
@@ -784,8 +863,8 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
   const SPINE_COL = ["#b9f04a", "#8cc03a", "#a6d63e"];
   const hash = s => { let x = 7; for (const c of s) x = (x * 31 + c.charCodeAt(0)) >>> 0; return x; };
   const roleOf = key => key.startsWith("reader:") ? "evidence_reader" : key.startsWith("writer:") ? "writer" : key;
-  const cards = {}, spines = {}, srcSpines = {};
-  let accepted = 0, rejected = 0;
+  const cards = {}, spines = {}, srcSpines = {}, runtimeTasks = {};
+  let accepted = 0, rejected = 0, reviews = 0, writerPasses = 0, runFinished = false;
   function syncRow(parent, sel, keys, map, make) {
     keys.forEach((key, i) => {
       let el = map[key]; if (!el) { el = map[key] = make(key, i); el.style.setProperty("--i", i); }
@@ -807,7 +886,8 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
     });
     renderTeam(); updateHint(); updateStart(); hudStats();
   }
-  const rankOf = (key, src) => key === "orchestrator" ? [0, 0] : key === "scout" ? [1, 0] : key === "planner" ? [2, 0] : key.startsWith("reader:") ? [3, Math.max(0, src.indexOf(key.slice(7)))] : key.startsWith("writer:") ? [4, +key.split(":")[1] || 1] : key === "reviewer" ? [5, 0] : [6, 0];
+  const ROLE_RANK = { source_scout: 3, theorist: 5, experiment_runner: 6, reproducer: 7, analyst: 8 };
+  const rankOf = (key, src) => key === "orchestrator" ? [0, 0] : key === "scout" ? [1, 0] : key === "planner" ? [2, 0] : key.startsWith("reader:") ? [4, Math.max(0, src.indexOf(key.slice(7)))] : ROLE_RANK[key] ? [ROLE_RANK[key], 0] : key.startsWith("writer:") ? [9, +key.split(":")[1] || 1] : key === "reviewer" ? [10, 0] : [11, 0];
   function teamKeys() {
     const src = state.sourceList.map(s => s.id), set = new Set(["orchestrator", "planner", "writer:1", "reviewer", "quality"]);
     if (!src.length) { set.add("scout"); set.add("reader:*"); } else src.forEach(id => set.add("reader:" + id));
@@ -828,7 +908,7 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
 
   // ================= signal: live log, counters, block loader =================
   const seenStatus = {};
-  const FN = { orchestrator: "orchestrator.dispatch", scout: "scout.write", planner: "planner.plan", evidence_reader: "reader.read", writer: "writer.draft", reviewer: "reviewer.check", quality: "gate.check" };
+  const FN = { orchestrator: "orchestrator.dispatch", scout: "scout.write", planner: "planner.plan", source_scout: "source_scout.screen", evidence_reader: "reader.read", theorist: "theorist.hypothesize", experiment_runner: "experiment.run", reproducer: "experiment.repeat", analyst: "analyst.interpret", writer: "writer.draft", reviewer: "reviewer.check", quality: "gate.check" };
   const IDLE = ["plan(question);", "read(each paper);", "write(claims);", "review(draft);", "gate.check(every quote);"];
   function setCode(lines) { $("code").replaceChildren(...lines.map(t => h("div", { class: "ln2" }, t))); }
   function pushLog(text, cls, full) {
@@ -844,7 +924,10 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
     const id = (e.text.match(/^(\S+)/) || [])[1] || "";
     if (e.kind === "accepted") { accepted++; setCount($("stat-claims"), accepted, 6); pushLog(`gate.accept("${id}");`, "", e.text); }
     else if (e.kind === "rejected") { rejected++; setCount($("stat-rejected"), rejected, 6); pushLog(`gate.reject("${id}");  // ${(e.text.match(/\(([A-Z_]+)\)/) || [])[1] || "rejected"}`, "bad", e.text); }
-    else pushLog(`// ${e.text}`, "c", e.text); hudStats();
+    else { reviews++; pushLog(`// ${e.text}`, "c", e.text); }
+    const quality = cards.quality;
+    if (quality) upsertAgent({ ...quality, status: runFinished ? quality.status : "running", detail: `${accepted} accepted, ${rejected} rejected, ${reviews} reviews` });
+    hudStats();
   }
   const BLOCKS = 24; $("blocks").append(...Array.from({ length: BLOCKS }, () => h("i")));
   function progress(final) {
@@ -860,7 +943,8 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
   }
   function resetTeam() {
     for (const k of Object.keys(cards)) delete cards[k]; for (const k of Object.keys(seenStatus)) delete seenStatus[k]; for (const [k, el] of Object.entries(spines)) { el.remove(); delete spines[k]; }
-    accepted = rejected = 0; setCount($("stat-claims"), 0, 6); setCount($("stat-rejected"), 0, 6); setCode([]); $("now").textContent = ""; progress(false);
+    for (const k of Object.keys(runtimeTasks)) delete runtimeTasks[k];
+    accepted = rejected = reviews = writerPasses = 0; runFinished = false; setCount($("stat-claims"), 0, 6); setCount($("stat-rejected"), 0, 6); setCode([]); $("now").textContent = ""; progress(false);
     $("report").classList.add("hidden"); state.reportShown = false; state.t0 = Date.now(); state.tEnd = 0; renderTeam(); hudStats();
   }
   function setRun(status) {
@@ -942,13 +1026,27 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
   function selectTab(name) { document.querySelectorAll(".tab").forEach(t => t.setAttribute("aria-selected", String(t.dataset.pane === name))); document.querySelectorAll(".pane").forEach(p => { p.hidden = p.id !== "pane-" + name; }); }
   document.querySelectorAll(".tab").forEach(t => t.addEventListener("click", () => selectTab(t.dataset.pane)));
   const REL = { supports: "[+] supports", contradicts: "[x] contradicts", qualifies: "[~] qualifies" };
+  const plural = (n, one, many = one + "s") => `${n} ${n === 1 ? one : many}`;
+  function reportStatus(outcome) {
+    const labels = { completed: "Quality checked", blocked: "Blocked", failed: "Stopped", budget_exhausted: "Incomplete", cancelled: "Cancelled" };
+    return labels[outcome] || outcome.replace(/_/g, " ");
+  }
   function renderReport(r) {
     report = r; r.claimMap = Object.fromEntries(r.claims.map(c => [c.id, c])); r.numbers = {}; let k = 0;
     for (const m of (r.markdown || "").matchAll(CITE)) if (r.claimMap[m[1]] && !r.numbers[m[1]]) r.numbers[m[1]] = ++k; for (const id of r.cited) if (!r.numbers[id] && r.claimMap[id]) r.numbers[id] = ++k;
     const h1 = (r.markdown.match(/^#\s+(.+)$/m) || [])[1]; $("report-title").textContent = h1 || state.question || "Report";
-    $("report-outcome").textContent = r.outcome.replace(/_/g, " "); $("report-meta").textContent = `${r.sources.length} sources, ${r.rejections.length} rejected`;
+    const citedSources = r.sources.filter(s => s.cited).length;
+    const caveats = r.open_questions.length + r.limitations.length + r.problems.length;
+    $("report-outcome").textContent = reportStatus(r.outcome); $("report-meta").textContent = `${r.sources.length} reviewed / ${r.rejections.length} rejected`;
+    $("report-lede").textContent = `${plural(r.cited.length, "verified claim")} ${r.cited.length === 1 ? "supports" : "support"} this answer, drawing on ${plural(citedSources, "cited source")}. Select any numbered citation to inspect the exact source text.`;
+    $("overview-status").textContent = reportStatus(r.outcome);
+    $("overview-status-note").textContent = r.outcome === "completed" ? "The final draft passed the research quality gate." : "The report may be unfinished; review the caveats before use.";
+    $("overview-evidence").textContent = `${r.cited.length} claims / ${citedSources} sources`;
+    $("overview-evidence-note").textContent = `${r.sources.length} total sources were reviewed.`;
+    $("overview-caveats").textContent = caveats ? plural(caveats, "separate item") : "See answer details";
+    $("overview-caveats-note").textContent = r.rejections.length ? `Also: ${plural(r.rejections.length, "evidence item")} rejected during checking.` : "No evidence items were rejected during checking.";
     $("article").replaceChildren(r.markdown ? markdown(r.markdown) : h("p", {}, "No report. See Rejected and Open."));
-    setCount($("report-n"), r.cited.length, 8); $("report-cap").textContent = `claim${r.cited.length === 1 ? "" : "s"} in the report`; layers(r);
+    setCount($("report-n"), r.cited.length, 8); $("report-cap").textContent = `verified claim${r.cited.length === 1 ? "" : "s"} used`; layers(r);
     const claimItem = c => h("li", {}, h("div", { class: "top2" }, h("span", { class: "id" }, r.numbers[c.id] ? `[${r.numbers[c.id]}]` : "-"), c.links.map(l => h("span", { class: `rel ${l.relation}` }, REL[l.relation] || l.relation)),
       h("span", { class: "src" }, c.links.map(l => `${l.source} lines ${l.start}-${l.end}`).join("   ")), h("span", { class: "sp" }), h("button", { class: "act", type: "button", onclick: () => openProof(c.id) }, "Proof")), h("span", { class: "stmt" }, c.statement));
     $("claims").replaceChildren(...(r.claims.length ? r.claims.map(claimItem) : [h("li", {}, h("span", { class: "why" }, "No claims."))]));
@@ -957,44 +1055,147 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
     const note = (b, t) => h("li", {}, h("b", {}, b), h("span", {}, t));
     $("open").replaceChildren(...(r.open_questions.length ? r.open_questions.map(q => note(q.by, q.text)) : [note("Open questions", "None.")]));
     $("limits").replaceChildren(...[...r.problems.map(p => note("Problem", p)), ...r.limitations.map(p => note("Limitation", p))]); if (!$("limits").children.length) $("limits").append(note("Limitations", "None."));
-    $("n-evidence").textContent = r.claims.length ? `[${r.claims.length}]` : ""; $("n-rejected").textContent = r.rejections.length ? `[${r.rejections.length}]` : ""; $("n-open").textContent = r.open_questions.length ? `[${r.open_questions.length}]` : "";
+    $("n-evidence").textContent = r.claims.length ? `[${r.claims.length}]` : ""; $("n-rejected").textContent = r.rejections.length ? `[${r.rejections.length}]` : ""; $("n-open").textContent = caveats ? `[${caveats}]` : "";
     const sec = $("report"); sec.classList.remove("hidden", "focus"); void sec.offsetWidth; sec.classList.add("focus"); state.reportShown = true; selectTab("report"); updateHint(); updateStart();
     const want = location.hash.match(/^#proof-(.+)$/); if (want) openProof(decodeURIComponent(want[1])); else setTimeout(() => sec.scrollIntoView({ block: "start", behavior: "smooth" }), 250);
   }
 
   // ================= events, inputs, start =================
+  function runtimeCard(task) {
+    const current = runtimeTasks[task] || (runtimeTasks[task] = {});
+    if (current.id) return current.id;
+    if (current.role === "planner" || current.role === "reviewer") current.id = current.role;
+    else if (current.role === "writer") current.id = `writer:${++writerPasses}`;
+    else if (current.role === "evidence_reader" && current.packet) current.id = `reader:${current.packet.reads[0]?.label || task}`;
+    else if (["source_scout", "theorist", "experiment_runner", "reproducer", "analyst"].includes(current.role)) current.id = current.role;
+    return current.id;
+  }
+  function runtimeTitle(role, id) {
+    if (role === "evidence_reader") return `Reader ${id?.slice(7) || "source"}`;
+    if (role === "writer") return id === "writer:1" ? "Writer" : `Writer rewrite ${Math.max(1, Number(id?.split(":")[1]) - 1)}`;
+    return ROLE_NAME[role] || role || "Agent";
+  }
+  function resultDetail(result) {
+    const p = result.payload || {};
+    if (result.outcome !== "produced") return `Stopped: ${String(result.outcome || "unknown").replaceAll("_", " ")}`;
+    if (result.role === "planner") { const tasks = result.proposed_tasks || []; return `Proposed ${tasks.length} tasks (${tasks.filter(t => t.role === "evidence_reader").length} readers)`; }
+    if (result.role === "evidence_reader") return p.relevant === false ? "Not relevant, no claims" : `Produced ${(result.claims || []).length} claim${(result.claims || []).length === 1 ? "" : "s"}`;
+    if (result.role === "source_scout") return `Screened ${(p.screened || []).length} source${(p.screened || []).length === 1 ? "" : "s"}`;
+    if (result.role === "theorist") return `Proposed ${(p.hypotheses || []).length} testable hypothes${(p.hypotheses || []).length === 1 ? "is" : "es"}`;
+    if (["experiment_runner", "reproducer"].includes(result.role)) return `${p.analysis_record?.run_id || "Run"}: ${p.analysis_record?.status || "recorded"}`;
+    if (result.role === "analyst") return `Interpreted ${(p.observations || []).length} observation${(p.observations || []).length === 1 ? "" : "s"}`;
+    if (result.role === "writer") return `Draft ready, ${new Set(Array.from(String(p.content_markdown || "").matchAll(/\[claim:([^\]\s]+)\]/g), m => m[1])).size} claims cited`;
+    if (result.role === "reviewer") return `Verdict: ${p.disposition || "recorded"}`;
+    return "Done";
+  }
+  function updateRuntimeTask(task, patch) {
+    const current = runtimeTasks[task] = { ...(runtimeTasks[task] || {}), ...patch };
+    const id = runtimeCard(task); if (!id) return;
+    upsertAgent({ id, role: current.role, title: runtimeTitle(current.role, id), status: current.status || "waiting",
+      detail: current.detail || "Waiting", packet: current.packet, calls: current.calls || 0, questions: current.questions || [] });
+  }
+  function applyRuntime(e) {
+    const p = e.payload || {};
+    if (e.event === "run.started") {
+      upsertAgent({ id: "orchestrator", role: "orchestrator", title: "Orchestrator", status: "running", detail: "Run committed to SQLite" });
+      upsertAgent({ id: "quality", role: "quality", title: "Quality gate", status: "waiting", detail: "Waiting for committed evidence" });
+    } else if (e.event === "planner_proposals") {
+      for (const chosen of (p.selected || [])) {
+        const role = chosen.role, id = role === "evidence_reader" ? `reader:${chosen.source_id}` : role;
+        if (!id || role === "evidence_reader") continue;
+        upsertAgent({ id, role, title: runtimeTitle(role, id), status: "waiting", detail: "Selected by planner" });
+      }
+    } else if (e.event === "task.created") updateRuntimeTask(e.task, { role: p.role, status: "waiting", detail: "Task committed" });
+    else if (e.event === "attempt.started") updateRuntimeTask(e.task, { status: "running", detail: `Attempt ${p.number} started` });
+    else if (e.event === "packet.dispatched") updateRuntimeTask(e.task, { role: p.packet?.role, status: "running", packet: p.packet, detail: "Exact context packet dispatched" });
+    else if (e.event === "attempt.accepted") {
+      const result = p.result || p, skipped = p.role === "evidence_reader" && String(result.payload?.summary || "").startsWith("Skipped:");
+      updateRuntimeTask(e.task, { role: p.role, status: p.outcome === "produced" && !skipped ? "done" : "failed",
+        detail: skipped ? "Skipped after two attempts" : resultDetail(result), calls: p.model_calls, questions: (result.unresolved || []).slice(0, 4) });
+    }
+    else if (e.event === "run.finished") {
+      runFinished = true; const ok = p.status === "completed";
+      upsertAgent({ id: "orchestrator", role: "orchestrator", title: "Orchestrator", status: ok ? "done" : "failed", detail: `Run ${p.outcome || p.status}, ${p.model_calls} model calls` });
+      upsertAgent({ id: "quality", role: "quality", title: "Quality gate", status: ok ? "done" : "failed", detail: `${accepted} accepted, ${rejected} rejected, ${reviews} reviews` });
+    }
+  }
   function apply(e) {
+    if (e.type === "brief") { snap.brief = e.brief; snap.ready = !!e.ready; }
+    else if (e.type === "sources") for (const k of Object.keys(snap.sources)) if (!e.sources.some(x => x.id === k)) delete snap.sources[k];
     if (e.type === "chat") addTurn(e); else if (e.type === "brief") renderBrief(e.brief, e.ready); else if (e.type === "sources") renderSources(e.sources);
-    else if (e.type === "agent") upsertAgent(e); else if (e.type === "quality") addTicker(e);
+    else if (e.type === "web_results") renderWebResults(e.results || [], e.query || "");
+    else if (e.type === "agent") { if (e.id === "scout") upsertAgent(e); }
+    else if (e.type === "quality") addTicker(e); else if (e.type === "runtime") applyRuntime(e);
     else if (e.type === "run") { if (e.status === "started") { report = null; resetTeam(); } setRun(e.status); } else if (e.type === "report") renderReport(e.report);
   }
-  async function poll() {
-    if (sid && !busy) { busy = true; try { const d = await api(`/api/events?id=${encodeURIComponent(sid)}&after=${after}`); for (const e of d.events) { apply(e); after = e.seq; } } catch (err) { /* server restarting; keep polling */ } busy = false; }
-    setTimeout(poll, state.running ? 400 : 900);
+  function applyEvents(events) { for (const e of events) { if (e.seq <= after) continue; apply(e); after = e.seq; } }
+  async function pollOnce() {
+    if (!sid || busy) return; busy = true;
+    try { const d = await api(`/api/events?id=${encodeURIComponent(sid)}&after=${after}`); applyEvents(d.events); } catch (err) { if (/unknown session/.test(err.message) && state.running && !runPending) await recover(); /* else the stream reconnects */ }
+    busy = false;
+  }
+  async function streamEvents() {
+    if (!sid || streamStarted) return; streamStarted = true; let fails = 0, retryIn = 0;
+    while (sid) {
+      try {
+        const headers = password ? { Authorization: `Bearer ${password}` } : {};
+        const res = await fetch(`/api/events/stream?id=${encodeURIComponent(sid)}&after=${after}`, { headers, cache: "no-store" });
+        if (res.status === 401) { lock(); throw new Error("unauthorized"); }
+        if (res.status === 429) { retryIn = Math.max(1, Number(res.headers.get("Retry-After")) || 5) * 1000; throw new Error("rate limited"); }
+        if (!res.ok || !res.body) throw new Error(`event stream HTTP ${res.status}`);
+        fails = 0;
+        const reader = res.body.getReader(), decoder = new TextDecoder(); let buffer = "";
+        while (true) {
+          const { value, done } = await reader.read(); if (done) break;
+          buffer += decoder.decode(value, { stream: true }).replace(/\r\n/g, "\n"); let boundary;
+          while ((boundary = buffer.indexOf("\n\n")) >= 0) {
+            const frame = buffer.slice(0, boundary); buffer = buffer.slice(boundary + 2);
+            const data = frame.split("\n").filter(line => line.startsWith("data:")).map(line => line.slice(5).trimStart()).join("\n");
+            if (data) applyEvents([JSON.parse(data)]);
+          }
+        }
+      } catch (_) {
+        if (!runPending) await pollOnce();
+        fails = Math.min(fails + 1, 5); const wait = retryIn || Math.min(30000, 1000 * 2 ** fails); retryIn = 0;
+        await new Promise(resolve => setTimeout(resolve, wait));
+      }
+    }
+    streamStarted = false;
   }
   $("composer").addEventListener("submit", async e => { e.preventDefault(); const text = $("input").value.trim(); if (!text) return; $("input").value = ""; $("input").style.height = ""; typing(true); try { await api("/api/chat", { message: text }); } catch (err) { typing(false); toast(err.message); } });
   $("input").addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); $("composer").requestSubmit(); } });
   $("input").addEventListener("input", e => { e.target.style.height = "auto"; e.target.style.height = Math.min(140, e.target.scrollHeight) + "px"; });
   for (const id of ["upload-label", "chip-upload"]) $(id).addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); $("file").click(); } });
-  async function addFiles(files) { for (const f of files) { try { await api("/api/source", { name: f.name, text: await f.text() }); } catch (err) { toast(err.message); } } }
+  async function addFiles(files) { for (const f of files) { try { const text = await f.text(); snap.sources[(await api("/api/source", { name: f.name, text })).id] = text; } catch (err) { toast(err.message); } } }
   $("file").addEventListener("change", async e => { await addFiles(e.target.files); e.target.value = ""; });
   const stage = $("stage");
   stage.addEventListener("dragover", e => { e.preventDefault(); stage.classList.add("drop"); }); stage.addEventListener("dragleave", e => { if (!stage.contains(e.relatedTarget)) stage.classList.remove("drop"); });
   stage.addEventListener("drop", async e => { e.preventDefault(); stage.classList.remove("drop"); await addFiles(e.dataTransfer.files); });
   $("paste-toggle").addEventListener("click", () => { $("paste").hidden = !$("paste").hidden; if (!$("paste").hidden) $("paste-name").focus(); });
-  $("paste").addEventListener("submit", async e => { e.preventDefault(); try { await api("/api/source", { name: $("paste-name").value, text: $("paste-text").value }); $("paste").reset(); $("paste").hidden = true; } catch (err) { toast(err.message); } });
-  const useDemo = async () => { try { await api("/api/demo", {}); } catch (err) { toast(err.message); } };
+  $("paste").addEventListener("submit", async e => { e.preventDefault(); try { const text = $("paste-text").value; snap.sources[(await api("/api/source", { name: $("paste-name").value, text })).id] = text; $("paste").reset(); $("paste").hidden = true; } catch (err) { toast(err.message); } });
+  $("search-toggle").addEventListener("click", () => { $("web-search").hidden = !$("web-search").hidden; if (!$("web-search").hidden) { $("web-query").value ||= state.question; $("web-query").focus(); } });
+  $("web-search").addEventListener("submit", async e => {
+    e.preventDefault(); const button = $("web-submit"), box = $("web-results"); button.disabled = true; button.textContent = "Searching"; box.replaceChildren();
+    try {
+      const data = await api("/api/search", { query: $("web-query").value }); renderWebResults(data.results, $("web-query").value, false);
+    } catch (err) { toast(err.message); } finally { button.disabled = false; button.textContent = "Find papers"; }
+  });
+  const useDemo = async () => { try { await api("/api/demo", {}); snap.demo = true; } catch (err) { toast(err.message); } };
   $("demo").addEventListener("click", useDemo); $("chip-demo").addEventListener("click", useDemo); $("chip-start").addEventListener("click", () => $("start").click());
   $("chat-fab").addEventListener("click", () => openChat(true)); $("chat-close").addEventListener("click", () => openChat(false));
   $("start").addEventListener("click", async () => {
     const why = missing(); if (why) { addTurn({ role: "assistant", who: "Res Loop", text: why }); openChat(true); toast(why); return; }
-    state.running = true; updateStart(); try { await api("/api/run", {}); } catch (err) { state.running = false; updateStart(); toast(err.message); }
+    state.running = true; updateStart(); runPending = true;
+    try {
+      const d = await api("/api/run", {});  // hosted: the answer carries the run's events
+      if (d.status === "running") { state.running = false; updateStart(); toast("This run is taking longer than the host allows. Try fewer or shorter sources."); }
+    } catch (err) { state.running = false; updateStart(); toast(err.message); } finally { runPending = false; }
   });
   async function startStudio() {
     try {
       const attach = new URLSearchParams(location.search).get("session"); const s = attach ? { id: attach, ...(await api("/api/info")) } : await api("/api/session", {});
       sid = s.id; const live = String(s.mode || "").startsWith("live"), label = live ? String(s.mode).replace(/^live\W+/, "") : "demo"; $("chat-mode").textContent = label; $("hud-mode").textContent = label.toUpperCase();
-      unlock(); renderBrief({}, false); poll(); if (location.hash === "#chat") openChat(true); else if (!narrow.matches) $("input").focus();
+      unlock(); renderBrief({}, false); streamEvents(); if (location.hash === "#chat") openChat(true); else if (!narrow.matches) $("input").focus();
     } catch (err) { if (!$("lock").hidden) { if (attempted) $("lock-error").textContent = "Incorrect password."; } else toast("Could not reach the studio server."); }
   }
   $("unlock-form").addEventListener("submit", async e => { e.preventDefault(); $("lock-error").textContent = ""; attempted = true; password = $("password").value; try { sessionStorage.setItem("studioPassword", password); } catch (_) {} await startStudio(); });

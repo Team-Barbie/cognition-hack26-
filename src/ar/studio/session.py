@@ -25,6 +25,7 @@ from ar.evidence import CITATION
 from ar.models import AgentResult, Role
 from ar.packet import Packet
 from ar.studio.intake import Brief, Intake
+from ar.web_search import search_crossref
 
 FIXTURE = Path(__file__).resolve().parents[3] / "fixtures" / "baselines"
 DEMO_BRIEF = Brief(
@@ -35,14 +36,20 @@ DEMO_BRIEF = Brief(
 )
 ROLE_TITLES = {
     "planner": "Planner",
+    "source_scout": "Source scout",
     "evidence_reader": "Reader",
+    "theorist": "Theorist",
+    "experiment_runner": "Experiment runner",
+    "reproducer": "Reproducer",
+    "analyst": "Analyst",
     "writer": "Writer",
     "reviewer": "Reviewer",
 }
 MAX_SOURCE_BYTES = 400_000
 SCOPE_NOTE = (
-    "Scope note: this run works only from the supplied text. It cannot fetch images, catalogues, or data, and the "
-    "user cannot supply more during the run. Never answer needs_dependency because data is missing: do your part "
+    "Scope note: research agents may make evidence claims only from the supplied full text. A parallel web scout "
+    "may find related paper metadata, but those candidates are not evidence. The agents cannot fetch images or data, "
+    "and the user cannot supply more during the run. Never answer needs_dependency because data is missing: do your part "
     "with what the sources support. For any requirement that needs data work, say what the sources establish, "
     "label the rest UNVERIFIED, and list the missing data work as concrete next steps under Limitations."
 )
@@ -58,8 +65,8 @@ SCOUT_CONSTRAINT = (
     "say so in the limitations and treat every finding as unverified."
 )
 SCOPE_CONSTRAINT = (
-    "This run works only from the supplied text; it cannot access images, catalogues, data, or the internet. "
-    "Answer what the sources support, and list any data work the request needs as concrete next steps."
+    "Research claims must come only from the supplied full text. A parallel web search may find related paper metadata, "
+    "but those candidates are not evidence. List any missing full text or data work as concrete next steps."
 )
 SCOUT_SYSTEM = """You are the source scout for a research team that may only cite text it is given.
 The user supplied no sources, so write background notes about the SUBJECT of the research question:
@@ -78,42 +85,7 @@ Reply with ONE JSON object and nothing else:
 
 def packet_view(packet: Packet) -> dict[str, Any]:
     """A JSON-safe audit view of the exact context dispatched to one agent attempt."""
-    reads = []
-    for read in packet.reads:
-        reads.append({
-            "label": read.label,
-            "source": read.source_ref.source_id,
-            "revision": read.source_ref.revision,
-            "start": read.selector.start,
-            "end": read.selector.end,
-            "receipt": read.read_receipt_id,
-            "lines": [
-                {"n": read.selector.start + offset, "text": line}
-                for offset, line in enumerate(read.content.splitlines())
-            ],
-        })
-    dependencies = []
-    for dep in packet.dependencies:
-        dependencies.append({
-            "kind": dep.kind,
-            "id": dep.id,
-            "revision": dep.revision,
-            "content": dep.content,
-            "claim": dep.claim.model_dump(mode="json") if dep.claim else None,
-        })
-    return {
-        "id": packet.packet_id,
-        "task": packet.task_id,
-        "attempt": packet.attempt_id,
-        "role": packet.role,
-        "objective": packet.objective,
-        "requirements": [requirement.model_dump(mode="json") for requirement in packet.requirements],
-        "reads": reads,
-        "dependencies": dependencies,
-        "available_sources": [source.model_dump(mode="json") for source in packet.available_sources],
-        "review_feedback": list(packet.review_feedback),
-        "skills": list(packet.skills),
-    }
+    return packet.audit_view()
 
 
 def _slug(name: str) -> str:
@@ -149,9 +121,24 @@ class StageAgent:
             n = len(packet.claim_items())
             extra = f", addressing {len(packet.review_feedback)} review findings" if packet.review_feedback else ""
             return f"Drafting from {n} claims{extra}"
+        if role == "source_scout":
+            return f"Screening {len(packet.available_sources)} candidate sources"
+        if role == "theorist":
+            return f"Building hypotheses from {len(packet.claim_items())} accepted claims"
+        if role in {"experiment_runner", "reproducer"}:
+            return "Running the configured experiment" if role == "experiment_runner" else "Repeating the configured experiment"
+        if role == "analyst":
+            return "Interpreting recorded experiment outputs"
         if role == "reviewer":
             return "Checking the draft"
         return "Working"
+
+    @staticmethod
+    def prepare_packet(role: Role, packet: Packet) -> Packet:
+        """Apply Studio scope guidance before the controller journals the dispatch."""
+        if role in ROLES_WITH_SCOPE:
+            return packet.model_copy(update={"objective": f"{packet.objective}\n\n{SCOPE_NOTE}"})
+        return packet
 
     @staticmethod
     def _done_detail(role: Role, result: AgentResult) -> str:
@@ -165,6 +152,18 @@ class StageAgent:
             if p.get("relevant") is False:
                 return "Not relevant, no claims"
             return f"Proposed {len(result.claims)} claim{'s' if len(result.claims) != 1 else ''}"
+        if role == "source_scout":
+            screened = p.get("screened", [])
+            return f"Screened {len(screened)} source{'s' if len(screened) != 1 else ''}"
+        if role == "theorist":
+            hypotheses = p.get("hypotheses", [])
+            return f"Proposed {len(hypotheses)} testable hypothes{'is' if len(hypotheses) == 1 else 'es'}"
+        if role in {"experiment_runner", "reproducer"}:
+            record = p.get("analysis_record", {})
+            return f"{record.get('run_id', 'Run')} {record.get('status', 'recorded')}"
+        if role == "analyst":
+            observations = p.get("observations", [])
+            return f"Interpreted {len(observations)} observation{'s' if len(observations) != 1 else ''}"
         if role == "writer":
             cited = len(set(CITATION.findall(p.get("content_markdown", ""))))
             return f"Draft ready, {cited} claims cited"
@@ -175,13 +174,7 @@ class StageAgent:
         return "Done"
 
     def run(self, role: Role, packet: Packet) -> AgentResult:
-        card, title = self._card(role, packet)
-        if role in ROLES_WITH_SCOPE:
-            packet = packet.model_copy(update={"objective": f"{packet.objective}\n\n{SCOPE_NOTE}"})
-        # The audit view shows the packet exactly as dispatched, scope note included.
-        self.session.agent(card, role=role, title=title, status="running", detail=self._start_detail(role, packet),
-                           packet=packet_view(packet))
-        self.session.agent("orchestrator", status="running", detail=f"Dispatched {title}")
+        _, title = self._card(role, packet)
         try:
             result = self.inner.run(role, packet)
             if role == "planner" and result.outcome != "produced" and result.proposed_tasks:
@@ -190,14 +183,12 @@ class StageAgent:
                 plan = ResearchPlan(rationale="Plan proposed. Inputs the planner asked for are listed as open questions.")
                 result = result.model_copy(update={"outcome": "produced", "payload": plan.model_dump()})
             if result.outcome != "produced":  # live models occasionally balk; one retry
-                self.session.agent(card, status="running", detail=f"Retrying once after: {result.outcome.replace('_', ' ')}")
                 again = packet
                 if role == "writer":
                     again = packet.model_copy(update={"review_feedback": [*packet.review_feedback, RETRY_NUDGE]})
                 retry = self.inner.run(role, again)
                 result = retry.model_copy(update={"model_calls": retry.model_calls + result.model_calls})
-        except Exception as exc:
-            self.session.agent(card, status="failed", detail=f"Error: {exc}")
+        except Exception:
             raise
         skipped = role == "evidence_reader" and result.outcome != "produced"
         if skipped:
@@ -209,23 +200,26 @@ class StageAgent:
             result = AgentResult(role=role, task_id=packet.task_id, outcome="produced", model_calls=result.model_calls,
                                  payload={"source_id": label, "relevant": False, "summary": f"Skipped: {reason}"},
                                  limitations=[note], unresolved=result.unresolved)
-        status = "failed" if skipped or result.outcome != "produced" else "done"
-        detail = "Skipped after two attempts; the run continues without this source" if skipped else self._done_detail(role, result)
         questions = [q for q in result.unresolved if q.strip()][:4]
-        self.session.agent(card, status=status, detail=detail, calls=result.model_calls, questions=questions)
         for q in questions[:2]:
             self.session.open_questions.setdefault(q, title)
         return result
+
+
+MAX_RESTORED_SOURCES = 40
 
 
 class Session:
     def __init__(self, workdir: Path, make_agent: Callable[[], Any] | None, client=None) -> None:
         self.id = uuid.uuid4().hex[:12]
         self.root = workdir / self.id
+        self.root.mkdir(parents=True, exist_ok=True)
+        self.event_database = self.root / "studio-events.sqlite"
         self.make_agent = make_agent  # None means demo mode with the fake agent
         self.client = client  # live chat client for intake and the scout; None in demo mode
         self.intake = Intake(client=client)
         self.sources: dict[str, str] = {}
+        self.web_results: list[dict[str, Any]] = []
         self.events: list[dict[str, Any]] = []
         self.cards: dict[str, dict[str, Any]] = {}
         self.open_questions: dict[str, str] = {}
@@ -234,7 +228,9 @@ class Session:
         self.report: dict[str, Any] | None = None
         self.runs = 0
         self._lock = threading.Lock()
+        self._events_ready = threading.Condition(self._lock)
         self._thread: threading.Thread | None = None
+        self._init_event_journal()
         self.emit("chat", role="assistant", who="Intake", text=self.intake.opening())
         if make_agent is None:
             self.emit("chat", role="assistant", who="Intake",
@@ -242,9 +238,39 @@ class Session:
 
     # feed
 
+    def _init_event_journal(self) -> None:
+        conn = sqlite3.connect(self.event_database)
+        try:
+            with conn:
+                conn.execute("PRAGMA journal_mode=WAL")
+                conn.execute(
+                    """CREATE TABLE IF NOT EXISTS studio_events (
+                           seq INTEGER PRIMARY KEY AUTOINCREMENT,
+                           emitted_at REAL NOT NULL,
+                           payload_json TEXT NOT NULL
+                       )"""
+                )
+        finally:
+            conn.close()
+
     def emit(self, kind: str, /, **data: Any) -> None:
-        with self._lock:
-            self.events.append({"seq": len(self.events) + 1, "t": round(time.time(), 3), "type": kind, **data})
+        emitted_at = round(time.time(), 3)
+        payload = {"t": emitted_at, "type": kind, **data}
+        encoded = json.dumps(payload, separators=(",", ":"), ensure_ascii=False)
+        with self._events_ready:
+            conn = sqlite3.connect(self.event_database)
+            try:
+                with conn:
+                    cursor = conn.execute(
+                        "INSERT INTO studio_events (emitted_at, payload_json) VALUES (?, ?)",
+                        (emitted_at, encoded),
+                    )
+                    seq = int(cursor.lastrowid)
+            finally:
+                conn.close()
+            event = {"seq": seq, **payload}
+            self.events.append(event)
+            self._events_ready.notify_all()
 
     def agent(self, card: str, **fields: Any) -> None:
         with self._lock:
@@ -254,8 +280,24 @@ class Session:
         self.emit("agent", **snapshot)
 
     def since(self, after: int) -> list[dict[str, Any]]:
-        with self._lock:
-            return self.events[after:]
+        conn = sqlite3.connect(self.event_database)
+        try:
+            rows = conn.execute(
+                "SELECT seq, payload_json FROM studio_events WHERE seq > ? ORDER BY seq",
+                (after,),
+            ).fetchall()
+        finally:
+            conn.close()
+        return [{"seq": int(seq), **json.loads(payload)} for seq, payload in rows]
+
+    def wait_since(self, after: int, timeout: float = 15.0) -> list[dict[str, Any]]:
+        """Wait for the next durable events; used by the SSE transport."""
+        with self._events_ready:
+            events = self.since(after)
+            if events:
+                return events
+            self._events_ready.wait(timeout)
+        return self.since(after)
 
     # intake and sources
 
@@ -287,6 +329,20 @@ class Session:
         self.emit("sources", sources=self.source_list())
         return sid
 
+    def restore(self, state: dict[str, Any]) -> None:
+        """Rebuild a session another server instance lost, from what the page remembers.
+
+        Serverless hosts keep sessions in memory per instance, so a later request can land
+        on an instance that has never seen this one."""
+        if isinstance(state.get("brief"), dict):
+            self.intake.brief.merge(state["brief"])
+        if isinstance(state.get("sources"), dict):
+            for name, text in list(state["sources"].items())[:MAX_RESTORED_SOURCES]:
+                self.add_source(str(name)[:120], str(text))
+        if state.get("demo"):
+            self.use_demo()
+        self.intake.resume(bool(state.get("ready")))
+
     def use_demo(self) -> None:
         for path in sorted((FIXTURE / "input" / "papers").glob("*.md")):
             self.sources[path.stem] = path.read_text(encoding="utf-8")
@@ -310,6 +366,35 @@ class Session:
     def source_list(self) -> list[dict[str, Any]]:
         return [{"id": k, "lines": len(v.splitlines())} for k, v in self.sources.items()]
 
+    def search_web(self, query: str, limit: int = 6, *, announce: bool = True) -> list[dict[str, Any]]:
+        """Find scholarly candidates without pretending their metadata is full-text evidence."""
+        results = [result.as_dict() for result in search_crossref(query, limit)]
+        self.web_results = results
+        self.emit("web_results", query=query, results=results)
+        if announce:
+            self.emit("chat", role="assistant", who="Web search",
+                      text=(f"Found {len(results)} paper candidate{'s' if len(results) != 1 else ''}. "
+                            "These are catalogue details, not full papers—open a result and upload its text before the team cites it."))
+        return results
+
+    def _search_web_for_run(self) -> None:
+        """Run the non-blocking research-candidate search beside the evidence pipeline."""
+        brief = self.intake.brief
+        query = " ".join(x for x in (brief.question, brief.context) if x).strip()[:500]
+        self.agent("scout", role="scout", title="Web Scout", status="running",
+                   detail="Searching for related research while readers analyse the uploaded papers")
+        try:
+            results = self.search_web(query, announce=False)
+        except Exception as exc:
+            self.agent("scout", status="failed", detail=f"Web search unavailable: {exc}")
+            self.emit("chat", role="assistant", who="Web Scout",
+                      text="The parallel web search was unavailable, but the uploaded-paper analysis continued.")
+            return
+        self.agent("scout", status="done", detail=f"Found {len(results)} related paper candidates")
+        self.emit("chat", role="assistant", who="Web Scout",
+                  text=(f"Found {len(results)} related paper candidate{'s' if len(results) != 1 else ''} while the readers worked. "
+                        "They are metadata only; upload full text before using one as evidence."))
+
     # run
 
     def start(self, max_model_calls: int = 24) -> None:
@@ -329,6 +414,7 @@ class Session:
         self.cards.clear()
         self.open_questions.clear()
         self.skipped.clear()
+        self.web_results = []
         project = self.root / f"run-{self.runs}"
         self._thread = threading.Thread(target=self._run, args=(project, max_model_calls), daemon=True)
         self._thread.start()
@@ -361,6 +447,10 @@ class Session:
                   text=f"No sources, so I wrote {len(added)} notes from the model's own knowledge. They're labelled that way. "
                        "Treat anything cited from them as unchecked.")
 
+    @property
+    def running(self) -> bool:
+        return bool(self._thread and self._thread.is_alive())
+
     def wait(self, timeout: float | None = None) -> None:
         if self._thread:
             self._thread.join(timeout)
@@ -392,11 +482,8 @@ class Session:
                 self.emit("chat", role="assistant", who="Orchestrator",
                           text=f"The scout couldn't write notes ({exc}). Add a paper and press Start again.")
                 return
-        n = len(self.sources)
-        self.agent("orchestrator", role="orchestrator", title="Orchestrator", status="running",
-                   detail=f"Team: Planner → {n} Reader{'s' if n != 1 else ''} → Writer → Reviewer → Quality gate")
-        self.agent("quality", role="quality", title="Quality gate", status="waiting",
-                   detail="Checks every quote against the lines each reader was given")
+        web_scout = threading.Thread(target=self._search_web_for_run, daemon=True)
+        web_scout.start()
         stop = threading.Event()
         watcher = threading.Thread(target=self._watch, args=(project, stop), daemon=True)
         try:
@@ -413,24 +500,18 @@ class Session:
             stop.set()
             status = "failed"
             self.emit("chat", role="assistant", who="Orchestrator", text=f"The run stopped: {exc}")
+        web_scout.join(14)
         self.report = build_report(project, status, self.open_questions)
+        self.report["web_results"] = self.web_results
         self.report["limitations"] = [*self.skipped, *self.report["limitations"]]
         self.status = "done" if status == "completed" else status
-        ok = status == "completed"
-        self.agent("orchestrator", status="done" if ok else "failed", detail=f"Run {status.replace('_', ' ')}")
-        self.agent("quality", status="done" if ok else "failed",
-                   detail=self._quality_line() + (", completion check passed" if ok else ", completion check not met"))
         self.emit("run", status=status, run=self.runs)
         self.emit("report", report=self.report)
         self.emit("chat", role="assistant", who="Orchestrator", text=_closing(self.report))
 
     # quality feed
 
-    _seen = (0, 0, 0)
-
-    def _quality_line(self) -> str:
-        c, r, v = self._seen
-        return f"{c} claim{'s' if c != 1 else ''} accepted, {r} rejected, {v} review{'s' if v != 1 else ''}"
+    _seen = (0, 0, 0, 0)
 
     def _poll(self, project: Path) -> None:
         database = project / ".research" / "state.sqlite"
@@ -439,10 +520,18 @@ class Session:
         conn = sqlite3.connect(f"file:{database}?mode=ro", uri=True, timeout=1)
         conn.row_factory = sqlite3.Row
         try:
-            c0, r0, v0 = self._seen
+            c0, r0, v0, e0 = self._seen
             claims = _rows(conn, "SELECT id, statement, origin_task FROM claims ORDER BY rowid")
             rejected = _rows(conn, "SELECT id, code, reason, hint FROM claim_rejections ORDER BY seq")
             reviews = _rows(conn, "SELECT revision, disposition, decision FROM reviews ORDER BY id")
+            runtime_events = _rows(
+                conn,
+                "SELECT id, run_id, task_id, kind, payload_json, created_at FROM events WHERE id > ? ORDER BY id",
+                (e0,),
+            )
+            for event in runtime_events:
+                self.emit("runtime", event=event["kind"], run=event["run_id"], task=event["task_id"],
+                          payload=json.loads(event["payload_json"]), at=event["created_at"])
             for c in claims[c0:]:
                 self.emit("quality", kind="accepted", text=f"{c['id']} accepted: {c['statement']}")
             for r in rejected[r0:]:
@@ -450,14 +539,13 @@ class Session:
                 self.emit("quality", kind="rejected", text=text + (f" {r['hint']}" if r["hint"] else ""))
             for v in reviews[v0:]:
                 self.emit("quality", kind="review", text=f"Gate on r{v['revision']}: reviewer said {v['disposition']}, decided {v['decision']}")
-            self._seen = (len(claims), len(rejected), len(reviews))
-            if (len(claims), len(rejected), len(reviews)) != (c0, r0, v0):
-                self.agent("quality", status="running", detail=self._quality_line())
+            last_event = int(runtime_events[-1]["id"]) if runtime_events else e0
+            self._seen = (len(claims), len(rejected), len(reviews), last_event)
         finally:
             conn.close()
 
     def _watch(self, project: Path, stop: threading.Event) -> None:
-        self._seen = (0, 0, 0)
+        self._seen = (0, 0, 0, 0)
         while not stop.wait(0.4):
             try:
                 self._poll(project)
@@ -465,9 +553,9 @@ class Session:
                 continue
 
 
-def _rows(conn: sqlite3.Connection, sql: str) -> list[sqlite3.Row]:
+def _rows(conn: sqlite3.Connection, sql: str, params: tuple = ()) -> list[sqlite3.Row]:
     try:
-        return conn.execute(sql).fetchall()
+        return conn.execute(sql, params).fetchall()
     except sqlite3.OperationalError:  # table not created yet
         return []
 

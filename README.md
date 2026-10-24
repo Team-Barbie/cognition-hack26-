@@ -17,7 +17,7 @@ python -m venv .venv
 
 ## Agents: fake vs live
 
-- `FakeAgent` (`--fake`) replays `fixtures/baselines/answer_key.json` as typed results. No API key, no
+- `FakeAgent` (`--fake`) replays the packaged `src/ar/fixtures/baselines/answer_key.json` as typed results. No API key, no
   network, deterministic. The demo and the whole test suite use it.
 - Live uses the Claude API through the `anthropic` SDK (`AnthropicClient` + `LiveAgent`). Set
   `ANTHROPIC_API_KEY` (or sign in once with `ant auth login`). Options: `--model <id>`,
@@ -27,11 +27,64 @@ python -m venv .venv
 
 Both paths share the same packet and the same `AgentResult` schema.
 
+## Studio access
+
+The studio page remains public so it can display the lock screen, while every `/api/*` route follows the
+server's access policy. Set `STUDIO_PASSWORD` to protect a deployment; local development stays open when it
+is unset, and Vercel uses its built-in password hash unless the environment variable overrides it. The
+browser keeps an entered password only for the current tab. This access gate prevents unauthenticated API
+use; volumetric DDoS protection still belongs at the hosting or CDN layer.
+
+The live stage is driven by a durable SQLite event journal. The runtime records run, task, attempt, packet,
+acceptance, and completion events; the browser consumes them over an authenticated server-sent event stream.
+`GET /api/events` remains as a reconnect fallback rather than the primary update loop.
+
+For local live mode, copy `.env.example` to `.env`, fill in `OPENAI_API_KEY` and
+`STUDIO_PASSWORD`, then restart Studio without `--fake`. The real `.env` is ignored by Git.
+For Vercel, add those same two names under the project's Environment Variables for every target you use
+(Production and, if needed, Preview), then redeploy. Never upload `.env` or expose either value through a
+client-side variable.
+
+The server rate-limits each client IP to 120 API requests per minute, with tighter caps of 12 new sessions
+per minute, 6 agent runs per 10 minutes, and 20 event-stream connections per minute. A rejected request
+returns HTTP 429 with `Retry-After`. This in-process layer limits accidental abuse and simple bots; use
+Vercel Firewall/WAF rules as the outer layer for distributed traffic and DDoS protection.
+
+## Planner-driven research
+
+The controller commits the planner first, validates its proposed graph, and then dispatches the bounded
+specialists it selected. A run may include local source screening, evidence readers, a theorist, a
+configured experiment, one independent repeat, and an analyst before the mandatory writer and reviewer.
+Unknown sources, unconfigured execution, duplicate specialist roles, and tasks beyond the run budget are
+rejected or clamped and recorded in the `planner_proposals` event. The original literature-only sequence
+remains the fallback for old planners and simple briefs.
+
+Executable work is never taken from model output. To make an experiment available to the planner, place a
+fully declared `ExperimentSpec` in `input/experiment.yaml`, for example:
+
+```yaml
+id: weekly-baseline
+question: Seasonal-naive MAE on weekly demand
+status: pilot
+input_files: [input/datasets/data.csv, input/code/baseline.py]
+command: [python, baseline.py, --seed, "7"]
+working_dir: input/code
+seed: 7
+metrics: [mae]
+success_criteria: [mae computed]
+expected_outputs: [results.json]
+timeout_seconds: 60
+```
+
+The runtime executes the exact configured command in its working-directory jail. A reproduction request
+runs the frozen specification again as a distinct recorded run; the analyst receives only captured run
+records and hashes. Without this file, experiment and analyst proposals cannot execute.
+
 ## The five-minute demo
 
 Run it in one go with `scripts/demo.ps1` (Windows) or `scripts/demo.sh`. Or step by step, from the repo root
-with the venv active. Status: the CLI commands below follow INTERFACES.md; end-to-end output has **not yet
-been verified** against the Spine track's CLI. Items marked (verified) are covered by pytest today.
+with the venv active. The CLI path and generated output are covered end to end; items marked (verified)
+also have focused pytest coverage.
 
 1. **The brief.** `fixtures/baselines/input/brief.md` asks whether seasonal naive is an adequate weekly
    baseline and states a constraint: series shorter than 52 weeks are excluded. Paper A supports the

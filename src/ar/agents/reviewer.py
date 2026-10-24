@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-import re
 from typing import Any
 
+from ar.evidence import CITATION
 from ar.models import AgentResult, ReviewFinding, ReviewResult
 from ar.packet import Packet
 
 PAYLOAD = ReviewResult
-CITATION = re.compile(r"\[claim:([^\]\s]+)\]")
 
 SYSTEM = """You are the reviewer in a research pipeline. You receive a context packet holding ONE candidate draft (an artifact) and the claims it may cite.
 

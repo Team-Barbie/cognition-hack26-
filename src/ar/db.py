@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Literal
 from uuid import uuid4
 
+from ar.clock import utc_now as _now
 from ar.models import AgentResult, Requirement
 
 DB_SCHEMA_VERSION = 4
@@ -42,10 +43,6 @@ class Lease:
 
 
 RunStatus = Literal["pending", "running", "completed", "budget_exhausted", "failed"]
-
-
-def _now() -> str:
-    return datetime.now(UTC).isoformat()
 
 
 def connect(project_root: Path) -> sqlite3.Connection:
@@ -362,6 +359,9 @@ def create_run(
                    VALUES (?, ?, 'running', ?, 0, ?, ?, ?, ?)""",
                 (run_id, project["id"], max_model_calls, max_tasks, idempotency_key, now, now),
             )
+            _append_event(connection, "run.started", {
+                "max_model_calls": max_model_calls, "max_tasks": max_tasks,
+            }, run_id=run_id, created_at=now)
         return run_id
     finally:
         connection.close()
@@ -406,6 +406,8 @@ def create_task(database: Path, run_id: str, task_id: str, role: str) -> None:
                    VALUES (?, ?, ?, 'ready', 1, 0, ?, ?)""",
                 (task_id, run_id, role, now, now),
             )
+            _append_event(connection, "task.created", {"role": role, "state": "ready"},
+                          run_id=run_id, task_id=task_id, created_at=now)
     finally:
         connection.close()
 
@@ -512,6 +514,10 @@ def start_attempt(
                    VALUES (?, ?, ?, 'running', ?, ?, ?, ?)""",
                 (attempt_id, task_id, number, now, lease_token, expires_at, fencing_token),
             )
+            run_id = connection.execute("SELECT run_id FROM tasks WHERE id=?", (task_id,)).fetchone()["run_id"]
+            _append_event(connection, "attempt.started", {
+                "attempt_id": attempt_id, "number": number, "fencing_token": fencing_token,
+            }, run_id=run_id, task_id=task_id, created_at=now)
             return Lease(lease_token, fencing_token, expires_at)
     finally:
         connection.close()
@@ -540,6 +546,10 @@ def finish_attempt(
                 "UPDATE tasks SET state = ?, updated_at = ? WHERE id = ?",
                 (state, now, task_id),
             )
+            run_id = connection.execute("SELECT run_id FROM tasks WHERE id=?", (task_id,)).fetchone()["run_id"]
+            _append_event(connection, "attempt.finished", {
+                "attempt_id": attempt_id, "state": state,
+            }, run_id=run_id, task_id=task_id, created_at=now)
     finally:
         connection.close()
 
@@ -575,6 +585,11 @@ def accept_attempt(
                    WHERE id = ?""",
                 (result.model_dump_json(), now, task_id),
             )
+            run_id = connection.execute("SELECT run_id FROM tasks WHERE id=?", (task_id,)).fetchone()["run_id"]
+            _append_event(connection, "attempt.accepted", {
+                "attempt_id": attempt_id, "role": result.role, "outcome": result.outcome,
+                "model_calls": result.model_calls, "result": result.model_dump(mode="json"),
+            }, run_id=run_id, task_id=task_id, created_at=now)
     finally:
         connection.close()
 
@@ -607,6 +622,9 @@ def finish_run(
             )
             if updated.rowcount != 1:
                 raise RuntimeError(f"run {run_id} is not running")
+            _append_event(connection, "run.finished", {
+                "status": status, "outcome": outcome or status, "model_calls": model_calls,
+            }, run_id=run_id)
     finally:
         connection.close()
 
@@ -628,6 +646,22 @@ def record_model_calls(database: Path, run_id: str, model_calls: int) -> None:
         connection.close()
 
 
+def _append_event(
+    connection: sqlite3.Connection,
+    kind: str,
+    payload: dict,
+    *,
+    run_id: str | None = None,
+    task_id: str | None = None,
+    created_at: str | None = None,
+) -> None:
+    connection.execute(
+        """INSERT INTO events (run_id, task_id, kind, payload_json, created_at)
+           VALUES (?, ?, ?, ?, ?)""",
+        (run_id, task_id, kind, json.dumps(payload, sort_keys=True), created_at or _now()),
+    )
+
+
 def record_event(
     database: Path,
     kind: str,
@@ -639,11 +673,7 @@ def record_event(
     connection = connect(database)
     try:
         with connection:
-            connection.execute(
-                """INSERT INTO events (run_id, task_id, kind, payload_json, created_at)
-                   VALUES (?, ?, ?, ?, ?)""",
-                (run_id, task_id, kind, json.dumps(payload, sort_keys=True), _now()),
-            )
+            _append_event(connection, kind, payload, run_id=run_id, task_id=task_id)
     finally:
         connection.close()
 
