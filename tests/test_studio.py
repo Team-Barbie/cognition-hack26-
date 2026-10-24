@@ -9,7 +9,9 @@ import pytest
 
 from ar.studio.intake import Brief, Intake
 from ar.studio.server import serve
-from ar.studio.session import Session
+from ar.models import LineSelector, Requirement, SourceRef
+from ar.packet import DeliveredRead, Packet
+from ar.studio.session import Session, packet_view
 
 
 class Scripted:
@@ -23,6 +25,23 @@ class Scripted:
         if isinstance(reply, Exception):
             raise reply
         return json.dumps(reply)
+
+
+def test_packet_view_exposes_the_exact_bounded_context():
+    packet = Packet(
+        packet_id="packet-1", task_id="task-1", attempt_id="attempt-1", role="evidence_reader",
+        objective="Check the exclusion rule",
+        requirements=[Requirement(id="req-1", source_passage="Constraint: 52 weeks",
+                                  interpretation="Assess the 52-week cutoff")],
+        reads=[DeliveredRead(source_ref=SourceRef(source_id="paper-b", revision=2),
+                             selector=LineSelector(start=7, end=8), content="first\nsecond",
+                             read_receipt_id="read-7", label="paper-b")],
+    )
+    view = packet_view(packet)
+    assert (view["id"], view["task"], view["attempt"]) == ("packet-1", "task-1", "attempt-1")
+    assert view["reads"] == [{"label": "paper-b", "source": "paper-b", "revision": 2,
+                               "start": 7, "end": 8, "receipt": "read-7",
+                               "lines": [{"n": 7, "text": "first"}, {"n": 8, "text": "second"}]}]
 
 
 def test_scripted_intake_collects_every_field_and_writes_requirements():
@@ -123,6 +142,10 @@ def test_demo_run_shows_every_agent_and_a_verified_report(tmp_path):
             "writer:1", "reviewer", "quality"} <= set(cards)
     assert all(cards[c]["status"] == "done" for c in cards)
     assert cards["reader:paper-c"]["detail"] == "Off-topic for this question; no claims"
+    assert cards["planner"]["packet"]["reads"][0]["label"] == "brief"
+    assert cards["reader:paper-b"]["packet"]["reads"][0]["receipt"].startswith("read-")
+    assert len(cards["writer:1"]["packet"]["dependencies"]) == 2
+    assert cards["reviewer"]["packet"]["dependencies"][0]["kind"] == "artifact"
     assert any(e["type"] == "quality" and e["kind"] == "accepted" for e in s.events)
 
     r = s.report
@@ -143,7 +166,7 @@ def test_http_api_runs_a_demo_end_to_end(tmp_path):
 
     def post(path, body):
         req = urllib.request.Request(base + path, data=json.dumps(body).encode(), method="POST",
-                                     headers={"Content-Type": "application/json"})
+                                     headers={"Content-Type": "application/json", "Authorization": "Bearer 4444"})
         try:
             with urllib.request.urlopen(req, timeout=10) as res:
                 return res.status, json.loads(res.read())
@@ -168,7 +191,9 @@ def test_http_api_runs_a_demo_end_to_end(tmp_path):
 
         events, after, deadline = [], 0, time.time() + 60
         while time.time() < deadline and not any(e["type"] == "report" for e in events):
-            with urllib.request.urlopen(f"{base}/api/events?id={s['id']}&after={after}", timeout=10) as res:
+            request = urllib.request.Request(f"{base}/api/events?id={s['id']}&after={after}",
+                                             headers={"Authorization": "Bearer 4444"})
+            with urllib.request.urlopen(request, timeout=10) as res:
                 batch = json.loads(res.read())["events"]
             events += batch
             after = batch[-1]["seq"] if batch else after
