@@ -19,6 +19,8 @@ Rules:
 - Cover every requirement; coverage maps each requirement id to the section heading that covers it.
 - If a claim contradicts a requirement or exclusion rule, say so and name its source.
 - State limitations. If review feedback is present, revise the draft to address every item.
+- Different literature reviews can cite the same source or study; treat those as shared evidence,
+  not independent replications. Compare study quality and applicability rather than counting claims.
 
 Reply with ONE JSON object and nothing else, matching:
 {"content_markdown": str, "cited_claim_ids": [str], "coverage": {requirement_id: section_heading}, "limitations_stated": bool}"""

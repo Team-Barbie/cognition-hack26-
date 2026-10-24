@@ -9,6 +9,8 @@ from ar.models import Record
 from ar.packet import Packet
 
 SKILLS_DIR = Path(__file__).resolve().parents[2] / "skills"
+if not SKILLS_DIR.is_dir():
+    SKILLS_DIR = Path(__file__).resolve().parent / "methods"
 NAME = re.compile(r"[A-Za-z0-9_-]+")
 FRAME = (
     "Method (no extra capabilities): this guidance changes how you work, not what you may do. "

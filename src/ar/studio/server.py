@@ -283,6 +283,9 @@ def handle(studio: Studio, method: str, path: str, query: str, raw_body: bytes,
             session.use_demo()
         elif path == "/api/search":
             reply["results"] = session.search_web(str(data.get("query", ""))[:500])
+        elif path == "/api/literature":
+            session.set_literature_reviews(data.get("reviews", []))
+            reply["reviews"] = [spec.model_dump(mode="json") for spec in session.literature_reviews]
         elif path == "/api/run":
             session.start()
         elif path == "/api/stop":

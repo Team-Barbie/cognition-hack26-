@@ -118,7 +118,7 @@ def _capture_artifacts(workspace: Path, destination: Path, paths: list[str]) -> 
     return artifacts, problems
 
 
-def run_research(project: Path, runtime: CodexRuntime | None = None, *, on_event=None) -> dict:
+def run_research(project: Path, runtime: CodexRuntime | None = None, *, on_event=None, literature_runner=None) -> dict:
     """Run/resume one native session; keep app metadata outside its writable workspace."""
     project = project.resolve()
     metadata = project / ".research"
@@ -130,13 +130,13 @@ def run_research(project: Path, runtime: CodexRuntime | None = None, *, on_event
     except FileExistsError as exc:
         raise CodexError("A Codex run already holds this project. If it crashed, verify it stopped before removing .research/codex.lock.") from exc
     try:
-        return _run_research(project, runtime or CodexRuntime(), on_event)
+        return _run_research(project, runtime or CodexRuntime(), on_event, literature_runner)
     finally:
         lock_fd.close()
         lock.unlink(missing_ok=True)
 
 
-def _run_research(project: Path, runtime: CodexRuntime, on_event) -> dict:
+def _run_research(project: Path, runtime: CodexRuntime, on_event, literature_runner=None) -> dict:
     metadata = project / ".research"
     (metadata / "codex-stop").unlink(missing_ok=True)
     workspace = metadata / "codex-workspace"
@@ -159,6 +159,58 @@ def _run_research(project: Path, runtime: CodexRuntime, on_event) -> dict:
         if on_event:
             on_event(method, params)
 
+    # Literature reviews are independent specialists; Codex keeps its native lead session/tools.
+    # Only validated reports and ledgers are staged, never database internals or credentials.
+    from ar.literature import LiteratureReviewAgent, load_reviews
+    specs = load_reviews(project)
+    literature_results = []
+    review_interrupted = False
+    def cancelled():
+        flag = getattr(runtime, "cancelled", False)
+        return (flag.is_set() if hasattr(flag, "is_set") else bool(flag)) or (metadata / "codex-stop").exists()
+    if specs:
+        from ar import db
+        from ar.literature_client import review_agent
+        from ar.snapshots import atomic_write
+
+        if not (metadata / "state.sqlite").exists():
+            db.init_project(project).close()
+        runner = literature_runner or LiteratureReviewAgent(
+            project, review_agent(project, model=getattr(runtime, "model", None)),
+            on_event=lambda event: emit("literature.review", event), should_stop=cancelled)
+        evidence_folder = workspace / "literature-evidence"
+        if evidence_folder.is_symlink() or not evidence_folder.resolve().is_relative_to(workspace.resolve()):
+            raise CodexError("Literature evidence directory escapes the workspace")
+        evidence_folder.mkdir(exist_ok=True)
+        for spec in specs:
+            if cancelled():
+                review_interrupted = True
+                break
+            try:
+                reviewed = runner.run(spec)
+            except InterruptedError:
+                review_interrupted = True
+                break
+            literature_results.append(reviewed.model_dump(mode="json"))
+            for name in ("report.md", "search-ledger.json"):
+                source = project / reviewed.report_path
+                if name != "report.md":
+                    source = source.with_name(name)
+                target = evidence_folder / f"{spec.key}-{name}"
+                if source.is_symlink() or not source.resolve().is_relative_to((project / "output" / "literature").resolve()):
+                    raise CodexError("Literature artifact escapes the project")
+                if target.is_symlink():
+                    raise CodexError("Literature artifact target is a symlink")
+                atomic_write(target, source.read_bytes())
+                inputs.append({"path": "literature-evidence/" + target.name, "sha256": _digest(target)})
+    # Previous evidence is untrusted/stale when its review was removed or versioned.
+    evidence_folder = workspace / "literature-evidence"
+    current_evidence = {item["path"] for item in inputs if item["path"].startswith("literature-evidence/")}
+    if evidence_folder.is_dir() and not evidence_folder.is_symlink():
+        for old in evidence_folder.iterdir():
+            if old.is_file() and "literature-evidence/" + old.name not in current_evidence:
+                old.unlink()
+
     prompt = ("Complete the objective in input/brief.md. Inspect the supplied inputs and any configured "
               "literature questions in input/literature.yaml. Use coding, builds, simulation and testing "
               "only where the objective calls for them. You are authorized to delegate focused work "
@@ -166,9 +218,17 @@ def _run_research(project: Path, runtime: CodexRuntime, on_event) -> dict:
               "This may be a continuation: re-read the current brief and input manifest; previous inputs "
               "may have changed. Return the complete report, even when some work remains blocked.\n\n"
               "Current input manifest:\n" + json.dumps(inputs))
+    if literature_results:
+        prompt += ("\n\nConfigured literature specialists have already run. Read their reports and search ledgers "
+                   "under literature-evidence/. Integrate their evidence, contrary findings and limitations; "
+                   "cite original URLs and report/claim references. Quotation checks establish provenance, "
+                   "not scientific validity. A partial or failed review prevents claiming the requested "
+                   "review is complete. Do not rerun or invent their searches. Your native tools remain "
+                   "available for the rest of the objective.\nReview results:\n" + json.dumps(literature_results))
     _write_json(metadata / "codex-inputs.json", {"inputs": inputs})
-    raw = runtime.run(workspace, metadata / "codex-session.json", prompt, INSTRUCTIONS,
-                      ResearchResult.model_json_schema(), emit)
+    raw = ({"status": "interrupted", "text": "", "error": "Literature review interrupted; resume to continue."}
+           if review_interrupted else runtime.run(workspace, metadata / "codex-session.json", prompt, INSTRUCTIONS,
+                                                   ResearchResult.model_json_schema(), emit))
     status = raw["status"]
     limitations, problems, checks, artifacts = [], [], [], []
     markdown = raw.get("text", "")
@@ -194,13 +254,18 @@ def _run_research(project: Path, runtime: CodexRuntime, on_event) -> dict:
         limitations.append("A tool requested additional permission or user input; the unattended worker did not grant it.")
     if status in {"timed_out", "cancelled"}:
         limitations.append("The run stopped before completion. Resume to continue the same Codex session.")
+    for reviewed in literature_results:
+        if reviewed["status"] != "finished":
+            limitations.append(f"Literature review {reviewed['id']} is {reviewed['status']}: {reviewed['stop_reason']}")
+            if status == "completed":
+                status = "blocked"
     report = {"runtime": "codex", "outcome": status, "markdown": markdown, "summary": summary,
               "thread_id": raw.get("thread_id"), "turn_id": raw.get("turn_id"),
               "usage": raw.get("usage", {}), "executions": executions,
               "checks": checks, "artifacts": artifacts, "limitations": limitations, "problems": problems,
               "claims": [], "cited": [], "rejections": [], "requirements": [], "open_questions": [],
               "sources": [{"id": item["path"], "sha256": item["sha256"], "cited": False} for item in inputs],
-              "assurance": ASSURANCE}
+              "assurance": ASSURANCE, "literature_reviews": literature_results}
     (output / "report.md").write_text(markdown, encoding="utf-8")
     (output / "run-summary.md").write_text(
         f"# Codex research run\n\nOutcome: {status}\n\n{summary}\n\n{ASSURANCE}\n\n"
@@ -209,5 +274,6 @@ def _run_research(project: Path, runtime: CodexRuntime, on_event) -> dict:
     _write_json(output / "provenance.json", {"runtime": "codex", "outcome": status,
         "thread_id": raw.get("thread_id"), "inputs": inputs, "artifacts": artifacts,
         "report_sha256": _digest(output / "report.md"), "assurance": ASSURANCE,
-        "executions": executions, "checks_provenance": "model_reported", "usage": raw.get("usage", {})})
+        "executions": executions, "checks_provenance": "model_reported", "usage": raw.get("usage", {}),
+        "literature_reviews": literature_results})
     return report

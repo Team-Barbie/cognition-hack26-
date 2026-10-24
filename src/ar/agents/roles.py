@@ -15,6 +15,7 @@ ROLE_MODULES = {
     "analyst": "ar.agents.analyst",
     "research_agent": "ar.agents.research_agent",
     "adversarial_reviewer": "ar.agents.adversarial_reviewer",
+    "literature_review": "ar.agents.literature_review",
 }
 
 OVERRIDES: dict[str, ModuleType] = {}

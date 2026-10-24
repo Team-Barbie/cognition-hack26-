@@ -1,0 +1,28 @@
+# Copy to <project>/input/literature.yaml. Each id is an independent review instance.
+# Run all with: ar literature <project>
+# Or include the reviews in a full report: ar run <project> --provider anthropic --max-model-calls 80
+reviews:
+  - id: effectiveness
+    question: Does remote blood pressure monitoring improve hypertension control?
+    subquestions:
+      - Does monitoring improve blood pressure compared with usual care?
+      - Which populations and study designs support the reported effects?
+    inclusion:
+      - Human studies and relevant systematic reviews
+    exclusion:
+      - Studies that do not evaluate remote monitoring
+    backends: [crossref, europe_pmc]
+    year_from: 2020
+    max_searches: 8
+    max_documents: 6
+    max_model_calls: 24
+    max_rounds: 2
+  - id: limitations
+    question: What limits the reliability and applicability of remote blood pressure monitoring studies?
+    subquestions:
+      - What null findings, biases, and methodological limitations have been reported?
+    backends: [crossref, europe_pmc]
+    max_searches: 8
+    max_documents: 6
+    max_model_calls: 24
+    max_rounds: 2

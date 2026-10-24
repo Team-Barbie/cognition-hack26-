@@ -121,7 +121,8 @@ class LiveAgent:
         system = f"{spec.SYSTEM}\n\n{ENVELOPE_INSTRUCTIONS}"
         user = spec.user_message(packet)
         message, errors, calls = user, "", 0
-        for _ in range(2):
+        allowance = 2 if packet.model_call_budget is None else min(2, packet.model_call_budget)
+        for _ in range(allowance):
             reply = self._complete(system, message)
             calls += 1
             try:
@@ -133,7 +134,7 @@ class LiveAgent:
             role=role,
             task_id=packet.task_id,
             outcome="unable_to_complete",
-            unresolved=[f"model reply failed validation after one repair: {errors}"],
+            unresolved=[f"model reply unavailable or invalid within the call budget: {errors}"],
             model_calls=calls,
         )
 

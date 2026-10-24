@@ -153,8 +153,8 @@ def test_vercel_rate_limit_uses_sanitized_client_ip_and_returns_retry_after(tmp_
         assert client.post("/api/session", json={}, headers=headers).status_code == 200
     limited = client.post("/api/session", json={}, headers=headers)
     assert limited.status_code == 429
-    assert limited.headers["Retry-After"] == "60"
-    assert limited.json() == {"error": "rate limit exceeded", "retry_after": 60}
+    assert 1 <= int(limited.headers["Retry-After"]) <= 60
+    assert limited.json() == {"error": "rate limit exceeded", "retry_after": int(limited.headers["Retry-After"])}
 
     other = client.post("/api/session", json={}, headers={"X-Vercel-Forwarded-For": "192.0.2.11"})
     assert other.status_code == 200

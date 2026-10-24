@@ -172,6 +172,51 @@ def run_project(
         typer.echo(f"Report: {report}")
 
 
+@app.command("literature")
+def literature(
+    path: Path = typer.Argument(Path.cwd(), help="Project directory."),
+    question: str | None = typer.Option(None, help="Create and run one review; otherwise read input/literature.yaml."),
+    review_id: str = typer.Option("literature", "--id", help="Independent review instance id."),
+    reviews: list[str] | None = typer.Option(None, "--review", help="Run selected configured ids; repeat for multiple reviews."),
+    backends: list[str] | None = typer.Option(None, "--backend", help="crossref, europe_pmc, or brave; repeat to combine."),
+    provider: str = typer.Option("codex", help="codex (existing login), anthropic, or openai."),
+    model: str | None = typer.Option(None),
+    base_url: str | None = typer.Option(None),
+    max_model_calls: int = typer.Option(24, min=0),
+    max_searches: int = typer.Option(8, min=1),
+    max_documents: int = typer.Option(8, min=1),
+) -> None:
+    """Search, read and synthesize independently scoped literature-review agents."""
+    from ar.literature import LiteratureReviewAgent, ReviewSpec, load_reviews
+    from ar.literature_client import review_agent
+
+    root = path.resolve()
+    try:
+        if provider not in ("codex", *PROVIDERS):
+            raise ValueError(f"provider must be one of codex, {', '.join(PROVIDERS)}")
+        if not _database(root).is_file():
+            initialize_project(root).close()
+        specs = ([ReviewSpec(id=review_id, question=question, backends=backends or ["crossref", "europe_pmc"],
+                             max_model_calls=max_model_calls, max_searches=max_searches, max_documents=max_documents)]
+                 if question else load_reviews(root))
+        if reviews:
+            missing = set(reviews) - {spec.id for spec in specs}
+            if missing:
+                raise ValueError(f"unknown review ids: {', '.join(sorted(missing))}")
+            specs = [spec for spec in specs if spec.id in reviews]
+        if not specs:
+            raise ValueError("provide --question or configure reviews in input/literature.yaml")
+        runner = LiteratureReviewAgent(root, review_agent(root, provider=provider, model=model, base_url=base_url))
+        for spec in specs:
+            result = runner.run(spec)
+            typer.echo(f"{result.id}: {result.status}; {len(result.claim_ids)} accepted claims; {result.searches} searches; {result.model_calls} model calls")
+            typer.echo(f"Report: {root / result.report_path}")
+            typer.echo(f"Stopped: {result.stop_reason}")
+    except (FileNotFoundError, ValueError, RuntimeError) as exc:
+        typer.echo(f"Literature review failed: {exc}", err=True)
+        raise typer.Exit(code=1) from None
+
+
 @app.command()
 def inspect(
     kind: str = typer.Argument(help="claim, task, or reads"),

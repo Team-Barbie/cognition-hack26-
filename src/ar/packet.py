@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import Field
 
@@ -51,6 +51,8 @@ class Packet(Record):
     available_sources: list[SourceInfo] = Field(default_factory=list)
     review_feedback: list[str] = Field(default_factory=list)  # blocking findings on a rewrite
     skills: list[str] = Field(default_factory=list)  # method files to load; they add no capabilities
+    model_call_budget: int | None = Field(default=None, ge=0)
+    review_context: dict[str, Any] = Field(default_factory=dict)
 
     def read_for(self, label: str) -> DeliveredRead | None:
         return next((r for r in self.reads if r.label == label), None)
@@ -95,4 +97,6 @@ class Packet(Record):
             "available_sources": [source.model_dump(mode="json") for source in self.available_sources],
             "review_feedback": list(self.review_feedback),
             "skills": list(self.skills),
+            "review_context": self.review_context,
+            "model_call_budget": self.model_call_budget,
         }

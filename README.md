@@ -107,6 +107,115 @@ python -m venv .venv
 
 Both paths share the same packet and the same `AgentResult` schema.
 
+## Literature review agents
+
+Literature reviews perform real discovery and acquisition before extracting evidence. They search
+Crossref and Europe PMC, deduplicate papers by DOI (or normalized title/year), keep screening decisions,
+fetch open-access XML/PDF/HTML, and read bounded line windows through the evidence broker. General web
+search is available through the `brave` backend when `BRAVE_SEARCH_API_KEY` is set. Crossref and Europe PMC
+need no API key; choose databases appropriate to your subject. Set `WEB_SEARCH_CONTACT` for Crossref's
+polite-pool contact parameter.
+
+To create one review without preparing a project first:
+
+```text
+ar literature my-project --id methods --question "Which forecasting baselines work for weekly demand?" --backend crossref
+```
+
+For several independent agents, copy `fixtures/literature.example.yaml` to
+`my-project/input/literature.yaml` and edit the questions and limits. Every review needs a unique `id`.
+
+```text
+ar literature my-project
+ar literature my-project --review effectiveness --review limitations
+ar run my-project
+ar run my-project --provider anthropic --max-model-calls 80
+```
+
+`ar literature` defaults to the existing Codex login. Codex supplies stateless JSON decisions in a
+separate read-only workspace with inherited user tool configuration, web search, shell, plugins and
+delegation disabled. The literature runtime performs and journals actual retrieval and validates
+evidence. One model-call unit is one decision turn, including any provider-internal work/retries.
+Use `--provider anthropic` or `--provider openai` for API-based decisions instead.
+
+`ar literature` uses each configured review's budget. `ar run --provider anthropic` (or `openai`) shares its model-call allowance across
+configured reviews, reserves six calls for the final report, and passes accepted claims and review
+summaries into planning/writing. Partially covered reviews keep the overall run incomplete. The normal
+CLI provider/model/base-URL options also apply to `ar literature`.
+
+Each review records its protocol, query variants and contradictory searches, result pages and retrieval
+times, exclusions, downloaded-content hashes, extraction method, source access level, read receipts,
+accepted/rejected claims, study characteristics, follow-up gaps, and stopping reason. Its report and
+portable search ledger are in `output/literature/<id>-<spec-hash>/`. Original response bodies are in the
+project's content-addressed blob store. Model-created notes and discovery snippets never become evidence.
+Abstract-only access, unavailable papers, unread lines, missing searches, and exhausted budgets are
+reported as limitations. A quote match establishes provenance; scientific validity still requires
+assessing study design, applicability, uncertainty, and conflicting results.
+
+Repeated runs of an identical specification reuse its journal and result. Interrupted completed
+operations are replayed from the journal; an operation with an unknown outcome is not silently charged
+again. Use a new review id for a deliberate retry or a fresh search. Changing the specification creates
+a distinct version. The runtime leases an active instance to prevent duplicate execution. Independent
+instances can run concurrently through the Python API:
+
+```python
+from concurrent.futures import ThreadPoolExecutor
+from ar.literature import LiteratureReviewAgent, ReviewSpec
+
+reviewer = LiteratureReviewAgent(project_path, configured_agent)
+specs = [ReviewSpec(id="methods", question="Which methods work?"),
+         ReviewSpec(id="limitations", question="What evidence contradicts the reported gains?")]
+with ThreadPoolExecutor(max_workers=2) as pool:
+    results = list(pool.map(reviewer.run, specs))
+```
+
+In Studio, **Literature reviews** adds/removes named review instances for either runtime. An API-provider
+run without uploaded papers automatically creates a review of the brief. Search and acquisition progress appears separately for each
+instance on the stage. Demo mode continues to use the built-in fixture and does not perform web research.
+These are bounded automated reviews, not a claim of exhaustive or formally systematic coverage.
+
+The default native Codex runner executes configured literature specialists before its lead turn and
+stages their reports and search ledgers in `literature-evidence/`. Its lead session, native tools,
+delegation, coding-worker API and artifacts stay available. Review results are included in the report
+and provenance JSON; a partial/failed review keeps the combined outcome blocked. Broker quotation checks
+apply to the specialists' accepted claims; the lead's final interpretations retain native citation assurances.
+The same specialist is integrated with `ar studio --provider anthropic` and `--provider openai`.
+Long multi-review runs are best run
+locally or in a worker, since hosted request limits can end an in-flight job. `max_seconds` is checked
+between operations; an in-flight model call follows the provider timeout (120 seconds for a Codex decision).
+
+For a planner or any other agent harness, the dedicated specialist has a non-blocking Python API:
+
+```python
+from pathlib import Path
+from ar.literature_service import LiteratureService
+
+reviews = LiteratureService(Path("my-project"))
+methods = reviews.start({"id": "methods", "question": "Which methods work?"})
+safety = reviews.start({"id": "safety", "question": "What are the failure modes?"})
+progress = reviews.status(methods["job_id"])
+# Poll with after=progress["cursor"] to receive only new events.
+result = reviews.wait(methods["job_id"], timeout=60)
+```
+
+Expose it as a stdio MCP server with the Python executable where this package is installed:
+
+```text
+python -m ar.literature_mcp /absolute/path/to/project
+```
+
+The tools are `literature.start`, `literature.status`, and `literature.list`. `start` takes a `spec`
+following the same review schema as YAML, returns a job id immediately, and permits multiple independent
+jobs (four concurrently by default). `status` returns scoped events, counters and the terminal result.
+Keep the connection/host alive while jobs run. Restarted in-flight jobs report `execution_unknown`;
+completed results and search journals persist. Add `--provider anthropic` or `--provider openai` and
+optional `--model` / `--base-url` arguments to choose an API provider. The separate `coding.*` MCP tools
+remain available through `ar.coding_mcp`.
+
+Provider references: [Crossref API](https://www.crossref.org/documentation/retrieve-metadata/rest-api/),
+[Europe PMC API](https://europepmc.org/RestfulWebService), and
+[Brave Search API](https://api-dashboard.search.brave.com/documentation).
+
 ## Studio access
 
 The studio page remains public so it can display the lock screen, while every `/api/*` route follows the

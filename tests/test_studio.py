@@ -218,8 +218,7 @@ def test_demo_run_shows_every_agent_and_a_verified_report(tmp_path):
     s.start()
     s.wait(60)
     assert s.status == "done", [e for e in s.events if e["type"] == "chat"][-1]
-    scout = [e for e in s.events if e["type"] == "agent" and e["id"] == "scout"]
-    assert [e["status"] for e in scout] == ["running", "done"]
+    assert not any(e["type"] == "agent" and e["id"] == "scout" for e in s.events)
     assert any(e["type"] == "quality" and e["kind"] == "accepted" for e in s.events)
     runtime = {e["event"] for e in s.events if e["type"] == "runtime"}
     assert {"run.started", "task.created", "attempt.started", "packet.dispatched",
@@ -301,30 +300,45 @@ def test_filler_items_from_the_model_are_dropped():
     assert b.constraints == ["Only 2020+ studies"] and b.open_questions == ["What horizon?"]
 
 
-def test_scout_writes_labelled_notes_when_no_sources_are_given(tmp_path):
-    notes = {"notes": [
-        {"title": "Catalogues", "lines": ["Fact one.", "Fact two.", "Fact three (uncertain)."]},
-        {"title": "Too short", "lines": ["only one"]},
-    ]}
-    s = Session(tmp_path, make_agent=lambda: None, client=Scripted(notes))
+def test_no_source_run_configures_actual_literature_review(tmp_path, monkeypatch):
+    import yaml
+    from ar.controller import RunOutcome
+    from ar.agents.fake import FakeAgent
+
+    captured = {}
+    def run(project, agent, **kwargs):
+        captured.update(yaml.safe_load((project / "input" / "literature.yaml").read_text()))
+        return RunOutcome.BLOCKED
+
+    monkeypatch.setattr("ar.controller.run_project", run)
+    s = Session(tmp_path, make_agent=FakeAgent, client=Scripted())
     s.intake.brief = Brief(question="Are there new giant radio galaxies in LoTSS DR3?")
-    s._scout()
-    assert list(s.sources) == ["notes-catalogues"]
-    text = s.sources["notes-catalogues"]
-    assert text.splitlines()[0] == "# Catalogues" and "Model-generated background notes" in text
-    assert any("model-generated background notes" in c for c in s.intake.brief.constraints)
-    assert "model-generated background notes" in s.intake.brief.to_markdown()
-    cards = {e["id"]: e for e in s.events if e["type"] == "agent"}
-    assert cards["scout"]["status"] == "done"
-
-
-def test_scout_with_nothing_usable_stops_honestly(tmp_path):
-    s = Session(tmp_path, make_agent=lambda: None, client=Scripted({"notes": []}))
-    s.intake.brief = Brief(question="Q?")
     s.start()
     s.wait(30)
-    assert s.status == "failed" and not s.sources
-    assert "couldn't write notes" in [e for e in s.events if e["type"] == "chat"][-1]["text"]
+    assert captured["reviews"][0]["question"] == s.intake.brief.question
+    assert s.sources == {} and s.client.calls == []
+
+
+def test_no_literature_evidence_stops_without_fabricating_background_notes(tmp_path):
+    from ar.agents.fake import FakeAgent
+    s = Session(tmp_path, make_agent=FakeAgent)
+    s.intake.brief = Brief(question="A question without evidence?")
+    s.start()
+    s.wait(30)
+    assert s.status == "blocked" and not s.sources
+    assert s.report["claims"] == []
+
+
+def test_studio_supports_multiple_independent_literature_specs(tmp_path):
+    from ar.agents.fake import FakeAgent
+    s = Session(tmp_path, make_agent=FakeAgent)
+    s.set_literature_reviews([{"id": "methods", "question": "Which methods work?"}, {"id": "safety", "question": "Which safety concerns remain?"}])
+    assert [spec.id for spec in s.literature_reviews] == ["methods", "safety"]
+    restored = Session(tmp_path, make_agent=FakeAgent)
+    restored.restore({"literature_reviews": [spec.model_dump() for spec in s.literature_reviews]})
+    assert restored.literature_reviews == s.literature_reviews
+    with pytest.raises(ValueError, match="unique"):
+        s.set_literature_reviews([{"id": "same", "question": "Question one?"}, {"id": "same", "question": "Question two?"}])
 
 
 def test_demo_mode_without_sources_loads_the_demo_papers(tmp_path):

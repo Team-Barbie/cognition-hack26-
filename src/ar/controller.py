@@ -26,7 +26,7 @@ from ar.models import AgentResult, ClaimDraft, Requirement, ReviewResult, Role
 from ar.packet import DependencyItem, Packet, SourceInfo
 from ar.permissions import load_policy
 from ar.review import GateDecision, gate
-from ar.snapshots import BlobStore
+from ar.snapshots import BlobStore, sha256_text
 
 
 class TaskState(StrEnum):
@@ -203,7 +203,7 @@ def run_workflow(
                 db.create_task(database, run_id, task_id, step.role)
             elif task["state"] == "running":
                 db.recover_interrupted_task(database, task_id)
-            else:
+            elif task["state"] != "ready":
                 raise RuntimeError(f"task {task_id} cannot run from {task['state']}")
             attempt_id = f"attempt-{uuid4()}"
             packet = step.build_packet(tuple(results), task_id, attempt_id)
@@ -215,6 +215,8 @@ def run_workflow(
                 packet = packet.model_copy(update={"attempt_id": attempt_id})
             if packet_preparer is not None:
                 packet = packet_preparer(step.role, packet)
+            packet = packet.model_copy(update={"model_call_budget": min(
+                budget - calls, packet.model_call_budget if packet.model_call_budget is not None else budget - calls)})
             lease = db.start_attempt(database, task_id, attempt_id)
             db.record_event(
                 database,
@@ -362,32 +364,56 @@ def run_project(
     max_tasks: int = 12,
     max_model_calls: int = 30,
     idempotency_key: str | None = None,
+    literature_runner=None,
 ) -> RunOutcome:
     """Run the complete managed research loop and export its durable outcome."""
 
     root = project_root.resolve()
     database = root / ".research" / "state.sqlite"
-    conn = db.connect(database)
-    policy_path = root / "policies" / "permissions.yaml"
-    broker = Broker(conn, root, load_policy(policy_path) if policy_path.is_file() else None)
     brief_path = root / "input" / "brief.md"
-    paper_paths = sorted((root / "input" / "papers").glob("*.md"))
     if not brief_path.is_file():
-        conn.close()
         raise FileNotFoundError(brief_path)
-    if not paper_paths:
-        conn.close()
-        raise ValueError("the project has no markdown papers in input/papers")
     if max_tasks < 4:
-        conn.close()
         return RunOutcome.BLOCKED
-
+    if max_model_calls < 0:
+        raise ValueError("max_model_calls must be non-negative")
+    policy_path = root / "policies" / "permissions.yaml"
+    policy = load_policy(policy_path) if policy_path.is_file() else None
+    from ar.literature import LiteratureReviewAgent, load_reviews
+    review_specs = load_reviews(root)
+    conn = db.connect(database)
+    broker = Broker(conn, root, policy)
+    literature_results = []
+    if review_specs:
+        runner = literature_runner or LiteratureReviewAgent(root, agent)
+        remaining = max_model_calls
+        try:
+            for index, spec in enumerate(review_specs):
+                # Split remaining discovery capacity fairly and reserve calls for the final report.
+                allowance = max(0, remaining - 6) // (len(review_specs) - index)
+                has_jobs = conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='literature_jobs'").fetchone()
+                previous = conn.execute("SELECT calls FROM literature_jobs WHERE key=?", (spec.key,)).fetchone() if has_jobs else None
+                already_used = previous[0] if previous else 0
+                reviewed = runner.run(spec, call_limit=allowance)
+                literature_results.append(reviewed)
+                remaining = max(0, remaining - max(0, reviewed.model_calls - already_used))
+        except BaseException:
+            conn.close()
+            raise
+        max_model_calls = remaining
+    paper_paths = sorted((root / "input" / "papers").glob("*.md"))
+    if not paper_paths and not any(review.claim_ids for review in literature_results):
+        conn.close()
+        if review_specs:
+            return RunOutcome.BLOCKED
+        raise ValueError("the project has no markdown papers in input/papers")
     brief_ref = broker.register_source("brief", brief_path)
     all_paper_refs = [
         (path.stem, broker.register_source(path.stem, path), path)
         for path in paper_paths
     ]
-    current_refs = [brief_ref, *[ref for _, ref, _ in all_paper_refs]]
+    current_refs = [brief_ref, *[ref for _, ref, _ in all_paper_refs],
+                    *[ref for review in literature_results for ref in review.source_refs]]
     versions = {}
     for ref in current_refs:
         row = conn.execute(
@@ -396,6 +422,8 @@ def run_project(
             (ref.source_id, ref.revision),
         ).fetchone()
         versions[ref.source_id] = row["representation_sha256"]
+    if review_specs:
+        versions["literature-config"] = sha256_text(json.dumps([spec.model_dump() for spec in review_specs], sort_keys=True))
     changed = db.update_input_versions(database, versions)
     paper_refs = all_paper_refs[: max_tasks - 3]
     requirements = db.refresh_requirements(database, brief_path)
@@ -443,7 +471,7 @@ def run_project(
             requirements=requirements,
             reads=[read],
             available_sources=available,
-            dependencies=[experiment_dependency] if experiment_dependency else [],
+            dependencies=([experiment_dependency] if experiment_dependency else []) + research_dependencies(previous),
         )
 
     planner_step = WorkflowStep(role="planner", build_packet=planner_packet)
@@ -482,8 +510,13 @@ def run_project(
         return row["id"]
 
     def claim_dependencies(previous):
+        literature_ids = list(dict.fromkeys(cid for review in literature_results for cid in review.claim_ids))
         dependencies = []
         stored = list_claims(conn)
+        for claim in stored:
+            if claim.id in literature_ids:
+                dependencies.append(DependencyItem(kind="claim", id=claim.id, claim=ClaimDraft.model_validate(
+                    claim.model_dump(exclude={"id", "origin_task"}))))
         for result in previous:
             if result.role != "evidence_reader":
                 continue
@@ -513,7 +546,9 @@ def run_project(
         return dependencies
 
     def research_dependencies(previous):
-        dependencies: list[DependencyItem] = []
+        dependencies: list[DependencyItem] = [DependencyItem(
+            kind="artifact", id=f"literature:{review.key}", content=review.model_dump_json(indent=2)
+        ) for review in literature_results]
         for result in previous:
             if result.role in {"research_agent", "theorist", "analyst"}:
                 dependencies.append(DependencyItem(
@@ -688,6 +723,11 @@ def run_project(
             )
         else:
             result = agent.run(role, packet)
+        if role == "writer" and literature_results:
+            result = result.model_copy(update={"limitations": [*result.limitations, *[
+                f"Literature review {review.id}: {limitation}"
+                for review in literature_results for limitation in review.limitations
+            ]]})
         unique = {
             (read.source_ref.source_id, read.source_ref.revision): read.source_ref
             for read in packet.reads
@@ -808,9 +848,11 @@ def run_project(
                     content=content,
                     assessment=assessment,
                     outcome=RunOutcome.BUDGET_EXHAUSTED.value,
+                    broker=broker,
                     assurance="Application-level brokerage; no operating-system sandbox.",
                     run_id=run.run_id,
-                    cost={"model_calls": run.model_calls, "tasks": len(run.results)},
+                    cost={"model_calls": run.model_calls, "tasks": len(run.results),
+                          "literature_model_calls": sum(review.model_calls for review in literature_results)},
                 )
             return RunOutcome.BUDGET_EXHAUSTED
         if run.status == "completed":
@@ -830,6 +872,8 @@ def run_project(
             conn, ReviewResult.model_validate(reviewer.payload), artifact=artifact
         )
         calls = run.model_calls
+        stored_budget = db.read_run(database, run.run_id)
+        max_model_calls, max_tasks = stored_budget["max_model_calls"], stored_budget["max_tasks"]
 
         def export_budget_draft(reason: str) -> None:
             assessment = assess(
@@ -847,32 +891,35 @@ def run_project(
                 content=content,
                 assessment=assessment,
                 outcome=RunOutcome.BUDGET_EXHAUSTED.value,
+                broker=broker,
                 assurance="Application-level brokerage; no operating-system sandbox.",
                 run_id=run.run_id,
-                cost={"model_calls": calls, "tasks": len(results)},
+                cost={"model_calls": calls, "tasks": len(results),
+                      "literature_model_calls": sum(review.model_calls for review in literature_results)},
             )
 
         def execute_extra(role, ordinal, make_packet):
             nonlocal calls
             if db.pause_requested(database, run.run_id):
                 return None, "paused"
-            if ordinal > max_tasks or calls >= max_model_calls:
-                db.finish_run(database, run.run_id, "budget_exhausted", calls)
-                return None, "budget_exhausted"
             task_id = f"{run.run_id}-task-{ordinal}"
             task = db.read_task(database, task_id)
             if task is not None and task["state"] == "accepted" and not task["is_stale"]:
                 return db.accepted_result(task), "accepted"
+            if ordinal > max_tasks or calls >= max_model_calls:
+                db.finish_run(database, run.run_id, "budget_exhausted", calls)
+                return None, "budget_exhausted"
             if task is None:
                 db.create_task(database, run.run_id, task_id, role)
             elif task["state"] == "running":
                 db.recover_interrupted_task(database, task_id)
-            else:
+            elif task["state"] != "ready":
                 raise RuntimeError(f"task {task_id} cannot run from {task['state']}")
             attempt_id = f"attempt-{uuid4()}"
             packet = make_packet(task_id, attempt_id)
             if prepare_packet is not None:
                 packet = prepare_packet(role, packet)
+            packet = packet.model_copy(update={"model_call_budget": max_model_calls - calls})
             lease = db.start_attempt(database, task_id, attempt_id)
             db.record_event(
                 database,
@@ -980,6 +1027,10 @@ def run_project(
             coverage=writer.payload.get("coverage", {}),
             limitations=limitations,
         )
+        for reviewed in literature_results:
+            if reviewed.status != "finished":
+                assessment.problems.append(f"Literature review {reviewed.id} is {reviewed.status}: {reviewed.stop_reason}")
+                assessment.complete = False
         outcome = RunOutcome.COMPLETED if assessment.complete else RunOutcome.BLOCKED
         db.finish_run(
             database,
@@ -990,6 +1041,7 @@ def run_project(
         )
         export_run(
             conn,
+            broker=broker,
             project_root=root,
             artifact=artifact,
             content=content,
@@ -997,7 +1049,8 @@ def run_project(
             outcome=outcome.value,
             assurance="Application-level brokerage; no operating-system sandbox.",
             run_id=run.run_id,
-            cost={"model_calls": calls, "tasks": len(results)},
+            cost={"model_calls": calls, "tasks": len(results),
+                  "literature_model_calls": sum(review.model_calls for review in literature_results)},
         )
         return outcome
     finally:
@@ -1042,6 +1095,7 @@ def export_project(project_root: Path) -> list[Path]:
             content=content,
             assessment=assessment,
             outcome=run["outcome"] or run["status"],
+            broker=broker,
             assurance="Application-level brokerage; no operating-system sandbox.",
             run_id=run["id"],
             cost={"model_calls": run["model_calls"]},

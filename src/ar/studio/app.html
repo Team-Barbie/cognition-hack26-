@@ -141,6 +141,12 @@ canvas.px { image-rendering: pixelated; max-width: 100%; filter: drop-shadow(0 0
 .paste input, .paste textarea { padding: 10px 12px; border: 1px solid var(--ph-3); border-radius: 10px; background: rgba(0,0,0,.4); color: var(--ph); font: 14px var(--mono); }
 .paste textarea { min-height: 100px; resize: vertical; }
 .paste input:focus, .paste textarea:focus { outline: none; border-color: var(--ph-hi); box-shadow: 0 0 14px var(--glow-s); }
+#literature-form { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
+#literature-form > input { min-width: 0; width: 100%; }
+#literature-form label { display: grid; gap: 6px; color: var(--ph-2); }
+#literature-form select { width: 100%; padding: 8px; border: 1px solid var(--ph-3); border-radius: 8px; background: var(--ink); color: var(--ph); font: 12px var(--mono); color-scheme: dark; }
+#literature-form > button { grid-column: 1 / -1; justify-self: start; }
+@media (max-width: 600px) { #literature-form { grid-template-columns: minmax(0, 1fr); } }
 .web-results { display: grid; gap: 8px; }
 .web-result { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 5px 14px; padding: 11px 12px; border: 1px solid var(--ph-4); border-radius: 9px; background: rgba(0,0,0,.25); }
 .web-result b { color: var(--ph-hi); font-size: 14px; }
@@ -383,6 +389,7 @@ mark { background: rgba(185,240,74,.16); color: var(--ph-hi); border-bottom: 1px
             <button class="act" id="paste-toggle" type="button">Paste source</button>
             <button class="act" id="search-toggle" type="button">Find papers</button>
             <button class="act" id="demo" type="button">Load demo</button>
+            <button class="act" id="literature-toggle" type="button">Literature reviews</button>
             <span class="sp"></span>
             <button class="go" id="start" type="button">Run research</button>
           </div>
@@ -397,6 +404,17 @@ mark { background: rgba(185,240,74,.16); color: var(--ph-hi); border-bottom: 1px
             <p class="web-note">Crossref returns titles and DOI links. Upload a paper’s full text before using it as evidence.</p>
             <div class="web-results" id="web-results" aria-live="polite"></div>
           </form>
+          <div class="paste" id="literature-panel" hidden>
+              <p class="web-note">Each review searches and reads real sources with its own question and budget. Add several to compare topics. Codex integrates their results while retaining its native tools.</p>
+            <form id="literature-form">
+              <input id="literature-id" placeholder="review id, e.g. methods" pattern="[a-zA-Z][a-zA-Z0-9_-]{0,47}" required aria-label="Literature review id">
+              <input id="literature-question" placeholder="question for this review" minlength="3" maxlength="2000" required aria-label="Literature review question">
+              <label class="web-note">Model calls <input id="literature-budget" type="number" value="24" min="0" max="200" required aria-label="Review model call budget"></label>
+              <label class="web-note">Search backends <select id="literature-backends" multiple aria-label="Review search backends"><option value="crossref" selected>Crossref</option><option value="europe_pmc" selected>Europe PMC</option><option value="brave">General web (Brave API key)</option></select></label>
+              <button class="act" type="submit">Add review</button>
+            </form>
+            <div id="literature-list" aria-live="polite"></div>
+          </div>
         </div>
       </section>
 
@@ -510,7 +528,7 @@ mark { background: rgba(185,240,74,.16); color: var(--ph-hi); border-bottom: 1px
   try { password = sessionStorage.getItem("studioPassword") || ""; } catch (_) { /* storage can be blocked */ }
 
   // What the page remembers, so a session the server lost can be rebuilt (serverless hosts keep sessions per instance).
-  const snap = { brief: {}, ready: false, sources: {}, demo: false };
+  const snap = { brief: {}, ready: false, sources: {}, demo: false, literature_reviews: [] };
   const attached = !!new URLSearchParams(location.search).get("session");
   let runPending = false, restoring = null;
   async function api(path, body, retried) {
@@ -677,8 +695,8 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
     skull: [parse(`.XXXXXXXX.\nXXXXXXXXXX\nXX..XX..XX\nXX..XX..XX\nXXXXXXXXXX\n.XXX..XXX.\n..XXXXXX..\n..X.XX.X..`), parse(`.XXXXXXXX.\nXXXXXXXXXX\nXX..XX..XX\nXX..XX..XX\nXXXXXXXXXX\n.XXXXXXXX.\n..X.XX.X..\n..XXXXXX..`)],
     cannon: [parse(`......X......\n.....XXX.....\n.....XXX.....\n.XXXXXXXXXXX.\nXXXXXXXXXXXXX\nXXXXXXXXXXXXX\nXXXXXXXXXXXXX\nXXXXXXXXXXXXX`), parse(`.............\n......X......\n.....XXX.....\n.XXXXXXXXXXX.\nXXXXXXXXXXXXX\nXXXXXXXXXXXXX\nXXXXXXXXXXXXX\nXXXXXXXXXXXXX`)],
   };
-  const ROLE_SPR = { orchestrator: "crab", scout: "ufo", planner: "squid", source_scout: "ufo", evidence_reader: "octo", research_agent: "crab", theorist: "squid", experiment_runner: "cannon", reproducer: "cannon", analyst: "crab", writer: "ant", reviewer: "skull", adversarial_reviewer: "skull", quality: "cannon" };
-  const ROLE_NAME = { orchestrator: "Orchestrator", scout: "Scout", planner: "Planner", source_scout: "Source scout", evidence_reader: "Reader", research_agent: "Research agent", theorist: "Theorist", experiment_runner: "Experiment", reproducer: "Reproducer", analyst: "Analyst", writer: "Writer", reviewer: "Reviewer", adversarial_reviewer: "Adversarial review", quality: "Quality gate" };
+  const ROLE_SPR = { codex: "crab", codex_delegate: "octo", orchestrator: "crab", scout: "ufo", literature_review: "ufo", planner: "squid", source_scout: "ufo", evidence_reader: "octo", research_agent: "crab", theorist: "squid", experiment_runner: "cannon", reproducer: "cannon", analyst: "crab", writer: "ant", reviewer: "skull", adversarial_reviewer: "skull", quality: "cannon" };
+  const ROLE_NAME = { codex: "Codex", codex_delegate: "Codex delegate", orchestrator: "Orchestrator", scout: "Scout", literature_review: "Literature review", planner: "Planner", source_scout: "Source scout", evidence_reader: "Reader", research_agent: "Research agent", theorist: "Theorist", experiment_runner: "Experiment", reproducer: "Reproducer", analyst: "Analyst", writer: "Writer", reviewer: "Reviewer", adversarial_reviewer: "Adversarial review", quality: "Quality gate" };
   function drawSprite(ctx, rows, x, y, s) { for (let r = 0; r < rows.length; r++) for (let c = 0; c < rows[r].length; c++) if (rows[r][c] === "X") ctx.fillRect(x + c * s, y + r * s, s, s); }
 
   // ================= boot, clock, hud =================
@@ -856,19 +874,23 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
     if (state.running) t = "The team is working. Select an agent to inspect its input.";
     else if (state.reportShown) t = "Research complete. Read the report below.";
     else if (!state.question) t = narrow.matches ? "Open Chat and ask a research question." : "Ask a research question in the chat.";
-    else if (!state.sources) t = "Upload papers, or run with labelled background notes.";
+    else if (!state.sources) t = "Add papers, configure literature reviews, or start a review of your question.";
     else t = "Ready to run the research team.";
     $("hint").textContent = t;
     $("stage-state").textContent = state.running ? "Running" : state.reportShown ? "Done" : "Ready";
     if (!state.running) { setSub(!state.question ? "TYPE IT IN THE CHAT" : `${state.sources || "NO"} SOURCE${state.sources === 1 ? "" : "S"} ON THE SHELF`); setStateLine(state.reportShown ? "REPORT READY" : "READY", false, state.reportShown ? "done" : "ready"); }
   }
-  function updateStart() { const label = state.running ? "Researching" : (state.reportShown ? "Run again" : "Run research"); for (const id of ["start", "chip-start"]) { $(id).disabled = state.running; $(id).textContent = label; } }
-  const missing = () => state.briefReady ? null : "Ask a research question in the chat first.";
+  function updateStart() {
+    const label = state.running ? "Researching" : (state.reportShown ? "Run again" : "Run research");
+    for (const id of ["start", "chip-start"]) { $(id).disabled = state.running; $(id).textContent = label; }
+    document.querySelectorAll("#literature-form input, #literature-form select, #literature-form button, #literature-list button").forEach(el => { el.disabled = state.running; });
+  }
+  const missing = () => state.briefReady ? null : "First ask your question in the chat.";
 
   // ================= shelf: sources and the agent team =================
   const SPINE_COL = ["#b9f04a", "#8cc03a", "#a6d63e"];
   const hash = s => { let x = 7; for (const c of s) x = (x * 31 + c.charCodeAt(0)) >>> 0; return x; };
-  const roleOf = key => key.startsWith("reader:") ? "evidence_reader" : key.startsWith("writer:") ? "writer" : key;
+  const roleOf = key => key.startsWith("codex:") ? "codex_delegate" : key.startsWith("reader:") ? "evidence_reader" : key.startsWith("writer:") ? "writer" : key.startsWith("literature:") ? "literature_review" : key;
   const cards = {}, spines = {}, srcSpines = {}, runtimeTasks = {};
   let accepted = 0, rejected = 0, reviews = 0, writerPasses = 0, runFinished = false;
   function syncRow(parent, sel, keys, map, make) {
@@ -893,10 +915,14 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
     renderTeam(); updateHint(); updateStart(); hudStats();
   }
   const ROLE_RANK = { source_scout: 3, research_agent: 5, theorist: 6, experiment_runner: 7, reproducer: 8, analyst: 9 };
-  const rankOf = (key, src) => key === "orchestrator" ? [0, 0] : key === "scout" ? [1, 0] : key === "planner" ? [2, 0] : key.startsWith("reader:") ? [4, Math.max(0, src.indexOf(key.slice(7)))] : ROLE_RANK[key] ? [ROLE_RANK[key], 0] : key.startsWith("writer:") ? [10, +key.split(":")[1] || 1] : key === "reviewer" ? [11, 0] : [12, 0];
+  const rankOf = (key, src) => key === "orchestrator" ? [0, 0] : (key === "scout" || key.startsWith("literature:")) ? [1, 0] : key === "planner" ? [2, 0] : key.startsWith("reader:") ? [4, Math.max(0, src.indexOf(key.slice(7)))] : ROLE_RANK[key] ? [ROLE_RANK[key], 0] : key.startsWith("writer:") ? [10, +key.split(":")[1] || 1] : key === "reviewer" ? [11, 0] : [12, 0];
   function teamKeys() {
-    const src = state.sourceList.map(s => s.id), set = new Set(["orchestrator", "planner", "writer:1", "reviewer", "quality"]);
-    if (!src.length) { set.add("scout"); set.add("reader:*"); } else src.forEach(id => set.add("reader:" + id));
+    const src = state.sourceList.map(s => s.id), set = new Set(state.nativeCodex ? ["codex"] : ["orchestrator", "planner", "writer:1", "reviewer", "quality"]);
+    snap.literature_reviews.forEach(r => set.add(`literature:${r.id}`));
+    if (!state.nativeCodex) {
+      if (!src.length && !snap.literature_reviews.length) set.add("literature:literature");
+      else src.forEach(id => set.add("reader:" + id));
+    }
     Object.keys(cards).forEach(k => set.add(k)); if (Object.keys(cards).some(k => k.startsWith("reader:") && k !== "reader:*")) set.delete("reader:*");
     return [...set].sort((a, b) => { const x = rankOf(a, src), y = rankOf(b, src); return x[0] - y[0] || x[1] - y[1]; });
   }
@@ -905,7 +931,7 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
     for (const [key, el] of Object.entries(spines)) {
       const card = cards[key], st = card ? (card.status || "waiting") : "ghost", role = roleOf(key);
       const calm = st === "running" && (role === "orchestrator" || role === "quality"); el.className = "agent " + (calm ? "live" : st); el.querySelector(".lbl").textContent = ROLE_NAME[role] + (key.startsWith("writer:") && key !== "writer:1" ? " " + key.split(":")[1] : "");
-      el.querySelector(".sub").textContent = key.startsWith("reader:") && key !== "reader:*" ? key.slice(7) : "";
+      el.querySelector(".sub").textContent = key.startsWith("reader:") && key !== "reader:*" ? key.slice(7) : key.startsWith("literature:") ? key.slice(11) : "";
       el.querySelector(".tag").textContent = calm ? "[ON]" : st === "running" ? "[RUN]" : st === "done" ? "[OK]" : st === "failed" ? "[ERR]" : "";
       el.title = (card ? card.title : ROLE_NAME[role]) + (card && card.detail ? `: ${card.detail}` : ""); el.setAttribute("aria-label", el.title);
       el.disabled = !(card && card.packet); el.onclick = card && card.packet ? () => openPacket(card.packet, el) : null; paintAgent(key, frameN);
@@ -914,7 +940,7 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
 
   // ================= signal: live log, counters, block loader =================
   const seenStatus = {};
-  const FN = { orchestrator: "orchestrator.dispatch", scout: "scout.write", planner: "planner.plan", source_scout: "source_scout.screen", evidence_reader: "reader.read", research_agent: "research_agent.assess", theorist: "theorist.hypothesize", experiment_runner: "experiment.run", reproducer: "experiment.repeat", analyst: "analyst.interpret", writer: "writer.draft", reviewer: "reviewer.check", adversarial_reviewer: "adversary.check", quality: "gate.check" };
+  const FN = { orchestrator: "orchestrator.dispatch", scout: "scout.write", literature_review: "literature.research", planner: "planner.plan", source_scout: "source_scout.screen", evidence_reader: "reader.read", research_agent: "research_agent.assess", theorist: "theorist.hypothesize", experiment_runner: "experiment.run", reproducer: "experiment.repeat", analyst: "analyst.interpret", writer: "writer.draft", reviewer: "reviewer.check", adversarial_reviewer: "adversary.check", quality: "gate.check" };
   const IDLE = ["1  Define the research question", "2  Read each source", "3  Build the evidence", "4  Write and review", "5  Verify every citation"];
   function setCode(lines) { $("code").replaceChildren(...lines.map(t => h("div", { class: "ln2" }, t))); }
   function pushLog(text, cls, full) {
@@ -1030,6 +1056,8 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
     if (packet.available_sources.length) inner.append(h("section", { class: "packet-section" }, h("h4", {}, "Available sources"), h("ul", {}, packet.available_sources.map(src => h("li", {}, `${src.source_id}, ${src.path}`)))));
     if (packet.review_feedback.length) inner.append(h("section", { class: "packet-section" }, h("h4", {}, "Review feedback"), h("ul", {}, packet.review_feedback.map(item => h("li", {}, item)))));
     if (packet.skills.length) inner.append(h("section", { class: "packet-section" }, h("h4", {}, "Methods"), packet.skills.map(skill => h("pre", { class: "packet-dep" }, skill))));
+    if (packet.review_context && Object.keys(packet.review_context).length) inner.append(h("section", { class: "packet-section" }, h("h4", {}, "Review protocol and search data"), h("pre", { style: "white-space:pre-wrap;overflow-wrap:anywhere" }, JSON.stringify(packet.review_context, null, 2))));
+    if (packet.model_call_budget != null) inner.append(h("section", { class: "packet-section" }, h("h4", {}, "Model call allowance"), String(packet.model_call_budget)));
     inner.append(h("section", { class: "packet-section" }, h("h4", {}, "Not included"), h("div", { class: "packet-note" }, "Other agents’ conversations, unrelated sources, rejected work, and internal database records.")));
     $("drawer").hidden = false; sheet.querySelector("button").focus();
   }
@@ -1037,6 +1065,10 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
   $("drawer").addEventListener("click", e => { if (e.target === $("drawer")) closeProof(); });
   document.addEventListener("keydown", e => { if (e.key === "Escape") closeProof(); });
   function layers(r) {
+    if (r.runtime === "codex") {
+      $("layers").replaceChildren(h("div", { class: "web-note" }, `${r.sources.length} staged inputs. Native citations are model-reported; specialist quotation checks apply only to the literature evidence.`));
+      return;
+    }
     const counts = {}; for (const id of r.cited) for (const l of (r.claimMap[id] || { links: [] }).links) counts[l.source] = (counts[l.source] || 0) + 1;
     const total = Object.values(counts).reduce((a, b) => a + b, 0) || 1, box = $("layers"); box.replaceChildren();
     for (const row of r.sources.map(s => ({ id: s.id, n: counts[s.id] || 0 })).sort((a, b) => b.n - a.n)) {
@@ -1056,9 +1088,25 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
     for (const m of (r.markdown || "").matchAll(CITE)) if (r.claimMap[m[1]] && !r.numbers[m[1]]) r.numbers[m[1]] = ++k; for (const id of r.cited) if (!r.numbers[id] && r.claimMap[id]) r.numbers[id] = ++k;
     const h1 = (r.markdown.match(/^#\s+(.+)$/m) || [])[1]; $("report-title").textContent = h1 || state.question || "Report";
     const caveats = r.open_questions.length + r.limitations.length + r.problems.length;
-    $("report-outcome").textContent = reportStatus(r.outcome); $("report-meta").textContent = `${r.sources.length} reviewed / ${r.rejections.length} rejected`;
+    const native = r.runtime === "codex";
+    $("report-outcome").textContent = native && r.outcome === "completed" ? "Codex completed" : reportStatus(r.outcome);
+    $("report-meta").textContent = native ? `${(r.literature_reviews || []).length} literature reviews / ${(r.executions || []).length} captured executions` : `${r.sources.length} reviewed / ${r.rejections.length} rejected`;
     $("article").replaceChildren(r.markdown ? markdown(r.markdown) : h("p", {}, "No report. See Rejected and Open."));
-    setCount($("report-n"), r.cited.length, 8); $("report-cap").textContent = `verified claim${r.cited.length === 1 ? "" : "s"} used`; layers(r);
+    if (native) {
+      $("article").prepend(h("p", { class: "web-note" }, r.assurance || "Native citations and check summaries are model-reported."));
+      for (const review of (r.literature_reviews || [])) $("article").append(h("details", {},
+        h("summary", {}, `Literature: ${review.id} — ${review.status}; ${review.claim_ids.length} checked quotations`),
+        h("div", {}, markdown(review.summary_markdown || "No supported synthesis.")),
+        h("p", { class: "web-note" }, `${review.stop_reason}. Report: ${review.report_path}`),
+        h("ul", {}, review.limitations.map(text => h("li", {}, text)))));
+      if ((r.executions || []).length) $("article").append(h("details", {}, h("summary", {}, "Captured executions"),
+        r.executions.map(item => h("div", {}, h("pre", {}, `${item.command || "Command"}\nExit: ${item.exitCode ?? "unknown"}\n${String(item.aggregatedOutput || "").slice(0, 20000)}`)))));
+      if ((r.artifacts || []).length) $("article").append(h("details", {}, h("summary", {}, "Captured deliverables"),
+        h("ul", {}, r.artifacts.map(item => h("li", {}, `${item.captured_path} (${item.bytes} bytes)`)))));
+    }
+    setCount($("report-n"), native ? (r.executions || []).length : r.cited.length, 8);
+    $("report-cap").textContent = native ? "captured executions" : `verified claim${r.cited.length === 1 ? "" : "s"} used`;
+    $("report-n").setAttribute("aria-label", native ? "captured native executions" : "verified claims used in the answer"); layers(r);
     const claimItem = c => h("li", {}, h("div", { class: "top2" }, h("span", { class: "id" }, r.numbers[c.id] ? `[${r.numbers[c.id]}]` : "-"), c.links.map(l => h("span", { class: `rel ${l.relation}` }, REL[l.relation] || l.relation)),
       h("span", { class: "src" }, c.links.map(l => `${l.source} lines ${l.start}-${l.end}`).join("   ")), h("span", { class: "sp" }), h("button", { class: "act", type: "button", onclick: () => openProof(c.id) }, "View evidence")), h("span", { class: "stmt" }, c.statement));
     $("claims").replaceChildren(...(r.claims.length ? r.claims.map(claimItem) : [h("li", {}, h("span", { class: "why" }, "No claims."))]));
@@ -1108,7 +1156,14 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
   }
   function applyRuntime(e) {
     const p = e.payload || {};
-    if (e.event === "run.started") {
+    if (e.event === "literature_review") {
+      const finished = p.phase === "finished";
+      upsertAgent({ id: `literature:${p.review_id}`, role: "literature_review", title: `Literature: ${p.review_id}`,
+        status: finished ? (p.result?.status === "finished" ? "done" : "failed") : "running",
+        detail: finished ? `${p.result?.status}: ${p.result?.documents || 0} sources, ${p.result?.claim_ids?.length || 0} claims, ${p.result?.stop_reason}`
+          : `${p.phase}${p.query ? ": " + p.query : ""}${p.title ? ": " + p.title : ""}`,
+        calls: p.result?.model_calls || 0, packet: p.packet || cards[`literature:${p.review_id}`]?.packet });
+    } else if (e.event === "run.started") {
       upsertAgent({ id: "orchestrator", role: "orchestrator", title: "Orchestrator", status: "running", detail: "Research started" });
       upsertAgent({ id: "quality", role: "quality", title: "Quality gate", status: "waiting", detail: "Waiting for evidence" });
     } else if (e.event === "planner_proposals") {
@@ -1127,16 +1182,21 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
     }
     else if (e.event === "run.finished") {
       runFinished = true; const ok = p.status === "completed";
-      upsertAgent({ id: "orchestrator", role: "orchestrator", title: "Orchestrator", status: ok ? "done" : "failed", detail: ok ? `Research complete · ${p.model_calls} model calls` : `Stopped: ${p.outcome || p.status}` });
-      upsertAgent({ id: "quality", role: "quality", title: "Quality gate", status: ok ? "done" : "failed", detail: ok ? "Final checks complete" : "Quality checks stopped" });
+      const literatureCalls = Object.values(cards).filter(card => card.role === "literature_review").reduce((n, card) => n + (card.calls || 0), 0);
+      upsertAgent({ id: "orchestrator", role: "orchestrator", title: "Orchestrator", status: ok ? "done" : "failed", detail: `Run ${p.outcome || p.status}, ${(p.model_calls || 0) + literatureCalls} model calls` });
+      upsertAgent({ id: "quality", role: "quality", title: "Quality gate", status: ok ? "done" : "failed", detail: `${accepted} accepted, ${rejected} rejected, ${reviews} reviews` });
     }
   }
   function apply(e) {
+    if (e.type === "literature_config") { renderLiterature(e.reviews); return; }
     if (e.type === "brief") { snap.brief = e.brief; snap.ready = !!e.ready; }
     else if (e.type === "sources") for (const k of Object.keys(snap.sources)) if (!e.sources.some(x => x.id === k)) delete snap.sources[k];
     if (e.type === "chat") addTurn(e); else if (e.type === "brief") renderBrief(e.brief, e.ready); else if (e.type === "sources") renderSources(e.sources);
     else if (e.type === "web_results") renderWebResults(e.results || [], e.query || "", false);
-    else if (e.type === "agent") { if (e.id === "scout") upsertAgent(e); }
+    else if (e.type === "agent") { if (e.id === "scout" || e.role === "codex" || e.role === "codex_delegate") upsertAgent(e); }
+    else if (e.type === "codex" && e.event === "item/completed" && e.payload?.item?.type === "commandExecution") {
+      const item = e.payload.item; pushLog(`Codex: ${item.command || "command"} (exit ${item.exitCode ?? "unknown"})`, item.exitCode === 0 ? "c" : "bad", item.aggregatedOutput || item.command);
+    }
     else if (e.type === "quality") addTicker(e); else if (e.type === "runtime") applyRuntime(e);
     else if (e.type === "run") { if (e.status === "started") { report = null; resetTeam(); } setRun(e.status); } else if (e.type === "report") renderReport(e.report);
   }
@@ -1186,6 +1246,23 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
   $("paste-toggle").addEventListener("click", () => { $("paste").hidden = !$("paste").hidden; if (!$("paste").hidden) $("paste-name").focus(); });
   $("paste").addEventListener("submit", async e => { e.preventDefault(); try { const text = $("paste-text").value; snap.sources[(await api("/api/source", { name: $("paste-name").value, text })).id] = text; $("paste").reset(); $("paste").hidden = true; } catch (err) { toast(err.message); } });
   $("search-toggle").addEventListener("click", () => { $("web-search").hidden = !$("web-search").hidden; if (!$("web-search").hidden) { $("web-query").value ||= state.question; $("web-query").focus(); } });
+  function renderLiterature(reviews) {
+    snap.literature_reviews = reviews;
+    $("literature-list").replaceChildren(...reviews.map(spec => h("div", { class: "web-note" },
+      `${spec.id}: ${spec.question} `, h("button", { class: "act", type: "button", "aria-label": `Remove review ${spec.id}`,
+        onclick: async () => { try { await api("/api/literature", { reviews: snap.literature_reviews.filter(r => r.id !== spec.id) }); } catch (err) { toast(err.message); } }
+      }, "Remove"))));
+    renderTeam();
+  }
+  $("literature-toggle").addEventListener("click", () => { $("literature-panel").hidden = !$("literature-panel").hidden; });
+  $("literature-form").addEventListener("submit", async e => {
+    e.preventDefault();
+    try {
+      const backends = Array.from($("literature-backends").selectedOptions, option => option.value);
+      await api("/api/literature", { reviews: [...snap.literature_reviews, { id: $("literature-id").value.trim(), question: $("literature-question").value.trim(), max_model_calls: Number($("literature-budget").value), backends }] });
+      $("literature-form").reset();
+    } catch (err) { toast(err.message); }
+  });
   $("web-search").addEventListener("submit", async e => {
     e.preventDefault(); const button = $("web-submit"), box = $("web-results"); button.disabled = true; button.textContent = "Searching"; box.replaceChildren();
     try {
@@ -1206,7 +1283,7 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
   async function startStudio() {
     try {
       const attach = new URLSearchParams(location.search).get("session"); const s = attach ? { id: attach, ...(await api("/api/info")) } : await api("/api/session", {});
-      sid = s.id; const live = String(s.mode || "").startsWith("live"), label = live ? String(s.mode).replace(/^live\W+/, "") : "demo"; $("chat-mode").textContent = label; $("hud-mode").textContent = label.toUpperCase();
+      sid = s.id; state.nativeCodex = String(s.mode || "").includes("codex"); const live = String(s.mode || "").startsWith("live"), label = live ? String(s.mode).replace(/^live\W+/, "") : "demo"; $("chat-mode").textContent = label; $("hud-mode").textContent = label.toUpperCase(); renderTeam();
       unlock(); renderBrief({}, false); streamEvents(); if (location.hash === "#chat") openChat(true); else if (!narrow.matches) $("input").focus();
     } catch (err) { if (!$("lock").hidden) { if (attempted) $("lock-error").textContent = "Incorrect password."; } else toast("Could not reach the studio server."); }
   }

@@ -16,7 +16,7 @@ from ar.adapter import ChatClient, extract_json
 
 FIELDS = ("question", "context", "constraints", "open_questions")
 
-SYSTEM = """You run intake for a research system that only answers from sources the user supplies.
+SYSTEM = """You run intake for a research system that answers from supplied or runtime-retrieved documents.
 Gather, in a few plain words, like a sharp colleague with no filler or flattery:
 - question: the one research question to answer
 - context: background, domain, who the answer is for
@@ -107,7 +107,9 @@ class Intake:
     _step: int = 0
 
     def opening(self) -> str:
-        return "Ask a research question. I’ll help define it, then you can add papers and run the team."
+        return (
+            "Ask your question. I'll ask a few things back, then you can add papers or configure literature reviews."
+        )
 
     def resume(self, ready: bool) -> None:
         """Pick the script up where a restored brief left off."""
