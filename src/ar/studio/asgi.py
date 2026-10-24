@@ -12,9 +12,9 @@ import json
 import os
 
 from fastapi import FastAPI, Request
-from fastapi.responses import Response
+from fastapi.responses import Response, StreamingResponse
 
-from ar.studio.server import handle, vercel_studio
+from ar.studio.server import event_stream, handle, prepare_event_stream, vercel_studio
 
 app = FastAPI()
 
@@ -34,6 +34,18 @@ async def _finish_run(body: bytes) -> bytes | None:
 @app.api_route("/", methods=["GET", "POST"])
 @app.api_route("/{full_path:path}", methods=["GET", "POST"])
 async def studio(request: Request) -> Response:
+    if request.method == "GET" and request.url.path == "/api/events/stream":
+        session, after, error = prepare_event_stream(
+            vercel_studio(), request.url.query, request.headers.get("authorization", "")
+        )
+        if error:
+            status, kind, payload = error
+            return Response(content=payload, status_code=status, media_type=kind)
+        return StreamingResponse(
+            event_stream(session, after),  # type: ignore[arg-type]
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache, no-store", "X-Accel-Buffering": "no"},
+        )
     body = await request.body()
     status, kind, payload = handle(vercel_studio(), request.method, request.url.path, request.url.query, body,
                                       request.headers.get("authorization", ""))

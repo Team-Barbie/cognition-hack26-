@@ -464,7 +464,7 @@ mark { background: var(--acc); color: var(--ink); text-shadow: none; padding: 0 
   const lerp = (a, b, t) => a + (b - a) * t;
   const ACC = "#ff4fa3", ACC_RGB = [1, 3, 5].map(i => parseInt(ACC.slice(i, i + 2), 16));  // the one accent colour (keep in step with --acc)
   const accA = a => `rgba(${ACC_RGB.join(",")},${a})`, accMix = (to, t) => ACC_RGB.map((v, i) => lerp(v, to[i], t));
-  let sid = null, after = 0, report = null, busy = false, returnFocus = null, password = "", attempted = false;
+  let sid = null, after = 0, report = null, busy = false, returnFocus = null, password = "", attempted = false, streamStarted = false;
   try { password = sessionStorage.getItem("studioPassword") || ""; } catch (_) { /* storage can be blocked */ }
 
   // What the page remembers, so a session the server lost can be rebuilt (serverless hosts keep sessions per instance).
@@ -480,7 +480,7 @@ mark { background: var(--acc); color: var(--ink); text-shadow: none; padding: 0 
       if (/unknown session/.test(data.error || "") && body !== undefined && path !== "/api/session" && !retried && await recover()) return api(path, body, true);
       throw new Error(data.error || `HTTP ${res.status}`);
     }
-    if (Array.isArray(data.events)) for (const e of data.events) if (e.seq > after) { apply(e); after = e.seq; }
+    if (Array.isArray(data.events)) applyEvents(data.events);
     return data;
   }
   // Start a fresh session on the server and refill it from the page. Quiet when it works.
@@ -805,8 +805,8 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
   const SPINE_COL = ["#b9f04a", "#8cc03a", "#a6d63e"];
   const hash = s => { let x = 7; for (const c of s) x = (x * 31 + c.charCodeAt(0)) >>> 0; return x; };
   const roleOf = key => key.startsWith("reader:") ? "evidence_reader" : key.startsWith("writer:") ? "writer" : key;
-  const cards = {}, spines = {}, srcSpines = {};
-  let accepted = 0, rejected = 0;
+  const cards = {}, spines = {}, srcSpines = {}, runtimeTasks = {};
+  let accepted = 0, rejected = 0, reviews = 0, writerPasses = 0, runFinished = false;
   function syncRow(parent, sel, keys, map, make) {
     keys.forEach((key, i) => {
       let el = map[key]; if (!el) { el = map[key] = make(key, i); el.style.setProperty("--i", i); }
@@ -865,7 +865,10 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
     const id = (e.text.match(/^(\S+)/) || [])[1] || "";
     if (e.kind === "accepted") { accepted++; setCount($("stat-claims"), accepted, 6); pushLog(`gate.accept("${id}");`, "", e.text); }
     else if (e.kind === "rejected") { rejected++; setCount($("stat-rejected"), rejected, 6); pushLog(`gate.reject("${id}");  // ${(e.text.match(/\(([A-Z_]+)\)/) || [])[1] || "rejected"}`, "bad", e.text); }
-    else pushLog(`// ${e.text}`, "c", e.text); hudStats();
+    else { reviews++; pushLog(`// ${e.text}`, "c", e.text); }
+    const quality = cards.quality;
+    if (quality) upsertAgent({ ...quality, status: runFinished ? quality.status : "running", detail: `${accepted} accepted, ${rejected} rejected, ${reviews} reviews` });
+    hudStats();
   }
   const BLOCKS = 24; $("blocks").append(...Array.from({ length: BLOCKS }, () => h("i")));
   function progress(final) {
@@ -881,7 +884,8 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
   }
   function resetTeam() {
     for (const k of Object.keys(cards)) delete cards[k]; for (const k of Object.keys(seenStatus)) delete seenStatus[k]; for (const [k, el] of Object.entries(spines)) { el.remove(); delete spines[k]; }
-    accepted = rejected = 0; setCount($("stat-claims"), 0, 6); setCount($("stat-rejected"), 0, 6); setCode([]); $("now").textContent = ""; progress(false);
+    for (const k of Object.keys(runtimeTasks)) delete runtimeTasks[k];
+    accepted = rejected = reviews = writerPasses = 0; runFinished = false; setCount($("stat-claims"), 0, 6); setCount($("stat-rejected"), 0, 6); setCode([]); $("now").textContent = ""; progress(false);
     $("report").classList.add("hidden"); state.reportShown = false; state.t0 = Date.now(); state.tEnd = 0; renderTeam(); hudStats();
   }
   function setRun(status) {
@@ -984,16 +988,88 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
   }
 
   // ================= events, inputs, start =================
+  function runtimeCard(task) {
+    const current = runtimeTasks[task] || (runtimeTasks[task] = {});
+    if (current.id) return current.id;
+    if (current.role === "planner" || current.role === "reviewer") current.id = current.role;
+    else if (current.role === "writer") current.id = `writer:${++writerPasses}`;
+    else if (current.role === "evidence_reader" && current.packet) current.id = `reader:${current.packet.reads[0]?.label || task}`;
+    return current.id;
+  }
+  function runtimeTitle(role, id) {
+    if (role === "evidence_reader") return `Reader ${id?.slice(7) || "source"}`;
+    if (role === "writer") return id === "writer:1" ? "Writer" : `Writer rewrite ${Math.max(1, Number(id?.split(":")[1]) - 1)}`;
+    return ROLE_NAME[role] || role || "Agent";
+  }
+  function resultDetail(result) {
+    const p = result.payload || {};
+    if (result.outcome !== "produced") return `Stopped: ${String(result.outcome || "unknown").replaceAll("_", " ")}`;
+    if (result.role === "planner") { const tasks = result.proposed_tasks || []; return `Proposed ${tasks.length} tasks (${tasks.filter(t => t.role === "evidence_reader").length} readers)`; }
+    if (result.role === "evidence_reader") return p.relevant === false ? "Not relevant, no claims" : `Produced ${(result.claims || []).length} claim${(result.claims || []).length === 1 ? "" : "s"}`;
+    if (result.role === "writer") return `Draft ready, ${new Set(Array.from(String(p.content_markdown || "").matchAll(/\[claim:([^\]\s]+)\]/g), m => m[1])).size} claims cited`;
+    if (result.role === "reviewer") return `Verdict: ${p.disposition || "recorded"}`;
+    return "Done";
+  }
+  function updateRuntimeTask(task, patch) {
+    const current = runtimeTasks[task] = { ...(runtimeTasks[task] || {}), ...patch };
+    const id = runtimeCard(task); if (!id) return;
+    upsertAgent({ id, role: current.role, title: runtimeTitle(current.role, id), status: current.status || "waiting",
+      detail: current.detail || "Waiting", packet: current.packet, calls: current.calls || 0, questions: current.questions || [] });
+  }
+  function applyRuntime(e) {
+    const p = e.payload || {};
+    if (e.event === "run.started") {
+      upsertAgent({ id: "orchestrator", role: "orchestrator", title: "Orchestrator", status: "running", detail: "Run committed to SQLite" });
+      upsertAgent({ id: "quality", role: "quality", title: "Quality gate", status: "waiting", detail: "Waiting for committed evidence" });
+    } else if (e.event === "task.created") updateRuntimeTask(e.task, { role: p.role, status: "waiting", detail: "Task committed" });
+    else if (e.event === "attempt.started") updateRuntimeTask(e.task, { status: "running", detail: `Attempt ${p.number} started` });
+    else if (e.event === "packet.dispatched") updateRuntimeTask(e.task, { role: p.packet?.role, status: "running", packet: p.packet, detail: "Exact context packet dispatched" });
+    else if (e.event === "attempt.accepted") {
+      const result = p.result || p, skipped = p.role === "evidence_reader" && String(result.payload?.summary || "").startsWith("Skipped:");
+      updateRuntimeTask(e.task, { role: p.role, status: p.outcome === "produced" && !skipped ? "done" : "failed",
+        detail: skipped ? "Skipped after two attempts" : resultDetail(result), calls: p.model_calls, questions: (result.unresolved || []).slice(0, 4) });
+    }
+    else if (e.event === "run.finished") {
+      runFinished = true; const ok = p.status === "completed";
+      upsertAgent({ id: "orchestrator", role: "orchestrator", title: "Orchestrator", status: ok ? "done" : "failed", detail: `Run ${p.outcome || p.status}, ${p.model_calls} model calls` });
+      upsertAgent({ id: "quality", role: "quality", title: "Quality gate", status: ok ? "done" : "failed", detail: `${accepted} accepted, ${rejected} rejected, ${reviews} reviews` });
+    }
+  }
   function apply(e) {
     if (e.type === "brief") { snap.brief = e.brief; snap.ready = !!e.ready; }
     else if (e.type === "sources") for (const k of Object.keys(snap.sources)) if (!e.sources.some(x => x.id === k)) delete snap.sources[k];
     if (e.type === "chat") addTurn(e); else if (e.type === "brief") renderBrief(e.brief, e.ready); else if (e.type === "sources") renderSources(e.sources);
-    else if (e.type === "agent") upsertAgent(e); else if (e.type === "quality") addTicker(e);
+    else if (e.type === "agent") { /* legacy presentation events are deliberately ignored */ }
+    else if (e.type === "quality") addTicker(e); else if (e.type === "runtime") applyRuntime(e);
     else if (e.type === "run") { if (e.status === "started") { report = null; resetTeam(); } setRun(e.status); } else if (e.type === "report") renderReport(e.report);
   }
-  async function poll() {
-    if (sid && !busy) { busy = true; try { await api(`/api/events?id=${encodeURIComponent(sid)}&after=${after}`); } catch (err) { if (/unknown session/.test(err.message) && state.running && !runPending) await recover(); /* else keep polling */ } busy = false; }
-    setTimeout(poll, state.running ? 400 : 900);
+  function applyEvents(events) { for (const e of events) { if (e.seq <= after) continue; apply(e); after = e.seq; } }
+  async function pollOnce() {
+    if (!sid || busy) return; busy = true;
+    try { const d = await api(`/api/events?id=${encodeURIComponent(sid)}&after=${after}`); applyEvents(d.events); } catch (err) { if (/unknown session/.test(err.message) && state.running && !runPending) await recover(); /* else the stream reconnects */ }
+    busy = false;
+  }
+  async function streamEvents() {
+    if (!sid || streamStarted) return; streamStarted = true;
+    while (sid) {
+      try {
+        const headers = password ? { Authorization: `Bearer ${password}` } : {};
+        const res = await fetch(`/api/events/stream?id=${encodeURIComponent(sid)}&after=${after}`, { headers, cache: "no-store" });
+        if (res.status === 401) { lock(); throw new Error("unauthorized"); }
+        if (!res.ok || !res.body) throw new Error(`event stream HTTP ${res.status}`);
+        const reader = res.body.getReader(), decoder = new TextDecoder(); let buffer = "";
+        while (true) {
+          const { value, done } = await reader.read(); if (done) break;
+          buffer += decoder.decode(value, { stream: true }).replace(/\r\n/g, "\n"); let boundary;
+          while ((boundary = buffer.indexOf("\n\n")) >= 0) {
+            const frame = buffer.slice(0, boundary); buffer = buffer.slice(boundary + 2);
+            const data = frame.split("\n").filter(line => line.startsWith("data:")).map(line => line.slice(5).trimStart()).join("\n");
+            if (data) applyEvents([JSON.parse(data)]);
+          }
+        }
+      } catch (_) { await pollOnce(); await new Promise(resolve => setTimeout(resolve, state.running ? 500 : 1400)); }
+    }
+    streamStarted = false;
   }
   $("composer").addEventListener("submit", async e => { e.preventDefault(); const text = $("input").value.trim(); if (!text) return; $("input").value = ""; $("input").style.height = ""; typing(true); try { await api("/api/chat", { message: text }); } catch (err) { typing(false); toast(err.message); } });
   $("input").addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); $("composer").requestSubmit(); } });
@@ -1021,7 +1097,7 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
     try {
       const attach = new URLSearchParams(location.search).get("session"); const s = attach ? { id: attach, ...(await api("/api/info")) } : await api("/api/session", {});
       sid = s.id; const live = String(s.mode || "").startsWith("live"), label = live ? String(s.mode).replace(/^live\W+/, "") : "demo"; $("chat-mode").textContent = label; $("hud-mode").textContent = label.toUpperCase();
-      unlock(); renderBrief({}, false); poll(); if (location.hash === "#chat") openChat(true); else if (!narrow.matches) $("input").focus();
+      unlock(); renderBrief({}, false); streamEvents(); if (location.hash === "#chat") openChat(true); else if (!narrow.matches) $("input").focus();
     } catch (err) { if (!$("lock").hidden) { if (attempted) $("lock-error").textContent = "Incorrect password."; } else toast("Could not reach the studio server."); }
   }
   $("unlock-form").addEventListener("submit", async e => { e.preventDefault(); $("lock-error").textContent = ""; attempted = true; password = $("password").value; try { sessionStorage.setItem("studioPassword", password); } catch (_) {} await startStudio(); });
