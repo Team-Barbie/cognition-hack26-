@@ -120,7 +120,7 @@ Reply with ONE JSON object and nothing else, matching this schema:
   },
   "limitations": [str],
   "unresolved": [str],
-  "proposed_tasks": [{"role": "source_scout" | "evidence_reader" | "theorist" | "analyst" | "writer" | "reviewer" | "adversarial_effect_agent",
+  "proposed_tasks": [{"role": "source_scout" | "evidence_reader" | "theorist" | "analyst" | "synthesis_agent" | "writer" | "reviewer" | "adversarial_effect_agent",
                       "objective": str, "source_ids": [str]}]
 }
 The "checks" array is mandatory. It must contain all nine check ids, exactly once, in the order shown.
@@ -259,6 +259,12 @@ def fake(packet: Packet, answer_key: dict[str, Any]) -> AgentResult:
             for r in packet.reads
             if r.label != "brief"
         )
+    tasks.append(
+        ProposedTask(
+            role="synthesis_agent",
+            objective="Synthesize accepted claims, analyses, literature outputs, and gaps into a writer-ready handoff.",
+        )
+    )
     tasks.append(
         ProposedTask(
             role="adversarial_effect_agent",

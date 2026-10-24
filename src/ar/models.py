@@ -10,7 +10,8 @@ SCHEMA_VERSION = "1"
 
 Role = Literal[
     "planner", "evidence_reader", "writer", "reviewer", "source_scout", "theorist", "analyst",
-    "experiment_runner", "reproducer", "research_agent", "adversarial_effect_agent", "literature_review",
+    "experiment_runner", "reproducer", "research_agent", "synthesis_agent", "adversarial_effect_agent",
+    "literature_review",
 ]
 TaskOutcome = Literal["produced", "needs_dependency", "unable_to_complete"]
 EvidenceRelation = Literal["supports", "contradicts", "qualifies"]

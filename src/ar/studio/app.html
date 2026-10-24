@@ -695,8 +695,8 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
     skull: [parse(`.XXXXXXXX.\nXXXXXXXXXX\nXX..XX..XX\nXX..XX..XX\nXXXXXXXXXX\n.XXX..XXX.\n..XXXXXX..\n..X.XX.X..`), parse(`.XXXXXXXX.\nXXXXXXXXXX\nXX..XX..XX\nXX..XX..XX\nXXXXXXXXXX\n.XXXXXXXX.\n..X.XX.X..\n..XXXXXX..`)],
     cannon: [parse(`......X......\n.....XXX.....\n.....XXX.....\n.XXXXXXXXXXX.\nXXXXXXXXXXXXX\nXXXXXXXXXXXXX\nXXXXXXXXXXXXX\nXXXXXXXXXXXXX`), parse(`.............\n......X......\n.....XXX.....\n.XXXXXXXXXXX.\nXXXXXXXXXXXXX\nXXXXXXXXXXXXX\nXXXXXXXXXXXXX\nXXXXXXXXXXXXX`)],
   };
-  const ROLE_SPR = { codex: "crab", codex_delegate: "octo", orchestrator: "crab", scout: "ufo", literature_review: "ufo", planner: "squid", source_scout: "ufo", evidence_reader: "octo", research_agent: "crab", theorist: "squid", experiment_runner: "cannon", reproducer: "cannon", analyst: "crab", writer: "ant", reviewer: "skull", adversarial_effect_agent: "skull", quality: "cannon" };
-  const ROLE_NAME = { codex: "Codex", codex_delegate: "Codex delegate", orchestrator: "Orchestrator", scout: "Scout", literature_review: "Literature review", planner: "Planner", source_scout: "Source scout", evidence_reader: "Reader", research_agent: "Research agent", theorist: "Theorist", experiment_runner: "Experiment", reproducer: "Reproducer", analyst: "Analyst", writer: "Writer", reviewer: "Reviewer", adversarial_effect_agent: "Adverse effects", quality: "Quality gate" };
+  const ROLE_SPR = { codex: "crab", codex_delegate: "octo", orchestrator: "crab", scout: "ufo", literature_review: "ufo", planner: "squid", source_scout: "ufo", evidence_reader: "octo", research_agent: "crab", synthesis_agent: "crab", theorist: "squid", experiment_runner: "cannon", reproducer: "cannon", analyst: "crab", writer: "ant", reviewer: "skull", adversarial_effect_agent: "skull", quality: "cannon" };
+  const ROLE_NAME = { codex: "Codex", codex_delegate: "Codex delegate", orchestrator: "Orchestrator", scout: "Scout", literature_review: "Literature review", planner: "Planner", source_scout: "Source scout", evidence_reader: "Reader", research_agent: "Research agent", synthesis_agent: "Synthesis", theorist: "Theorist", experiment_runner: "Experiment", reproducer: "Reproducer", analyst: "Analyst", writer: "Writer", reviewer: "Reviewer", adversarial_effect_agent: "Adverse effects", quality: "Quality gate" };
   function drawSprite(ctx, rows, x, y, s) { for (let r = 0; r < rows.length; r++) for (let c = 0; c < rows[r].length; c++) if (rows[r][c] === "X") ctx.fillRect(x + c * s, y + r * s, s, s); }
 
   // ================= boot, clock, hud =================
@@ -940,7 +940,7 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
 
   // ================= signal: live log, counters, block loader =================
   const seenStatus = {};
-  const FN = { orchestrator: "orchestrator.dispatch", scout: "scout.write", literature_review: "literature.research", planner: "planner.plan", source_scout: "source_scout.screen", evidence_reader: "reader.read", research_agent: "research_agent.assess", theorist: "theorist.hypothesize", experiment_runner: "experiment.run", reproducer: "experiment.repeat", analyst: "analyst.interpret", writer: "writer.draft", reviewer: "reviewer.check", adversarial_effect_agent: "effects.check", quality: "gate.check" };
+  const FN = { orchestrator: "orchestrator.dispatch", scout: "scout.write", literature_review: "literature.research", planner: "planner.plan", source_scout: "source_scout.screen", evidence_reader: "reader.read", research_agent: "research_agent.assess", synthesis_agent: "synthesis.compose", theorist: "theorist.hypothesize", experiment_runner: "experiment.run", reproducer: "experiment.repeat", analyst: "analyst.interpret", writer: "writer.draft", reviewer: "reviewer.check", adversarial_effect_agent: "effects.check", quality: "gate.check" };
   const IDLE = ["1  Define the research question", "2  Read each source", "3  Build the evidence", "4  Write and review", "5  Verify every citation"];
   function setCode(lines) { $("code").replaceChildren(...lines.map(t => h("div", { class: "ln2" }, t))); }
   function pushLog(text, cls, full) {
@@ -1127,7 +1127,7 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
     if (current.role === "planner" || current.role === "reviewer") current.id = current.role;
     else if (current.role === "writer") current.id = `writer:${++writerPasses}`;
     else if (current.role === "evidence_reader" && current.packet) current.id = `reader:${current.packet.reads[0]?.label || task}`;
-    else if (["source_scout", "research_agent", "theorist", "experiment_runner", "reproducer", "analyst", "adversarial_effect_agent"].includes(current.role)) current.id = current.role;
+    else if (["source_scout", "research_agent", "synthesis_agent", "theorist", "experiment_runner", "reproducer", "analyst", "adversarial_effect_agent"].includes(current.role)) current.id = current.role;
     return current.id;
   }
   function runtimeTitle(role, id) {

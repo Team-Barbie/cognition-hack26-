@@ -15,7 +15,9 @@ DEFAULT_SKILLS = ["source_screening", "literature_extraction", "hypothesis_desig
 ClaimStatus = Literal["direct_evidence", "weak_evidence", "inference", "unsupported", "contradicted", "scope_leap"]
 DecisionRisk = Literal["fatal", "major", "minor", "note"]
 EffectArea = Literal["evidence", "scope", "method", "analysis", "synthesis", "delivery"]
-RouteRole = Literal["source_scout", "evidence_reader", "theorist", "analyst", "writer", "reviewer", "research_agent"]
+RouteRole = Literal[
+    "source_scout", "evidence_reader", "theorist", "analyst", "synthesis_agent", "writer", "reviewer", "research_agent"
+]
 
 
 class ClaimAudit(Record):
@@ -81,7 +83,7 @@ Reply with ONE JSON object and nothing else, matching this schema:
     "confidence_after_review": "very_low" | "low" | "medium" | "high",
     "adverse_effects": [{"area": "evidence" | "scope" | "method" | "analysis" | "synthesis" | "delivery",
                          "issue": str, "impact": str, "likely_failure_mode": str,
-                         "route_to": "source_scout" | "evidence_reader" | "theorist" | "analyst" | "writer" | "reviewer" | "research_agent",
+                         "route_to": "source_scout" | "evidence_reader" | "theorist" | "analyst" | "synthesis_agent" | "writer" | "reviewer" | "research_agent",
                          "improvement_task": str}],
     "claim_audit": [{"claim_id": str,
                      "status": "direct_evidence" | "weak_evidence" | "inference" | "unsupported" | "contradicted" | "scope_leap",
@@ -93,7 +95,7 @@ Reply with ONE JSON object and nothing else, matching this schema:
   },
   "limitations": [str],
   "unresolved": [str],
-  "proposed_tasks": [{"role": "source_scout" | "evidence_reader" | "theorist" | "analyst" | "writer" | "reviewer" | "research_agent",
+  "proposed_tasks": [{"role": "source_scout" | "evidence_reader" | "theorist" | "analyst" | "synthesis_agent" | "writer" | "reviewer" | "research_agent",
                       "objective": str, "source_ids": [str]}]
 }"""
 
