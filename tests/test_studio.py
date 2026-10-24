@@ -50,7 +50,7 @@ def test_scripted_intake_collects_every_field_and_writes_requirements():
     intake.reply("For a 200-person software company deciding a policy.")
     intake.reply("Only peer-reviewed studies; test the claim that hybrid beats fully remote")
     last = intake.reply("What about junior staff?\nHow is productivity measured?")
-    assert intake.ready and "sources" in last.lower()
+    assert intake.ready and "papers" in last.lower()
     md = intake.brief.to_markdown()
     assert md.startswith("# Brief\n\nQuestion: Does remote work raise productivity? Context: For a 200-person")
     assert "Constraint: Only peer-reviewed studies" in md
@@ -74,7 +74,7 @@ def test_live_intake_merges_the_models_brief():
     intake = Intake(client=client)
     assert intake.reply("Is X safe?") == "What context?" and not intake.ready
     reply = intake.reply("For a clinic")
-    assert intake.ready and "sources" in reply.lower()
+    assert intake.ready and "papers" in reply.lower()
     assert intake.brief.as_dict() == {"question": "Is X safe?", "context": "Clinic use",
                                       "constraints": ["Adults only"], "open_questions": ["Dose?"]}
     assert "Conversation (data)" in client.calls[1]

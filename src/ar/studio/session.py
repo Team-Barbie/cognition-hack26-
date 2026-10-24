@@ -239,7 +239,7 @@ class Session:
         if make_agent is None:
             self.emit("chat", role="assistant", who="Intake",
                       text="No API key found, so I'm in demo mode: the agents run on the three built-in "
-                           "papers with a deterministic fake agent. Press Use demo papers to try it.")
+                           "papers with a deterministic fake agent. Press Demo papers to try it.")
 
     # feed
 
@@ -391,7 +391,7 @@ class Session:
                 self.status = "failed"
                 self.emit("run", status="failed", run=self.runs)
                 self.emit("chat", role="assistant", who="Orchestrator",
-                          text=f"The scout could not write background notes ({exc}). Add a source and press Start research again.")
+                          text=f"The scout could not write background notes ({exc}). Add a paper and press Start again.")
                 return
         n = len(self.sources)
         self.agent("orchestrator", role="orchestrator", title="Orchestrator", status="running",
