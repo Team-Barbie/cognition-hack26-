@@ -1,6 +1,7 @@
 import sqlite3
 import json
 import shutil
+import threading
 from pathlib import Path
 
 import pytest
@@ -86,6 +87,78 @@ def test_wave_one_controller_runs_fixed_order_and_saves_status(tmp_path):
     status = read_status(tmp_path / ".research" / "state.sqlite")
     assert status.latest_run_status == "completed"
     assert status.task_states == {"accepted": 4}
+
+
+def test_evidence_readers_run_concurrently_but_results_keep_workflow_order(tmp_path):
+    runner.invoke(app, ["init", str(tmp_path)])
+    database = tmp_path / ".research" / "state.sqlite"
+    lock = threading.Lock()
+    two_active = threading.Event()
+    release = threading.Event()
+    active = maximum = 0
+
+    def parallel_runner(role, packet):
+        nonlocal active, maximum
+        if role == "evidence_reader":
+            with lock:
+                active += 1
+                maximum = max(maximum, active)
+                if active == 2:
+                    two_active.set()
+            assert two_active.wait(5), "a second reader never started"
+            assert release.wait(5), "reader wave was not released"
+            with lock:
+                active -= 1
+        return AgentResult(role=role, task_id=packet.task_id, outcome="produced")
+
+    steps = [
+        _step("planner"),
+        _step("evidence_reader"),
+        _step("evidence_reader"),
+        _step("evidence_reader"),
+        _step("writer"),
+        _step("reviewer"),
+    ]
+    outcome = {}
+
+    def execute():
+        outcome["result"] = run_workflow(database, steps, parallel_runner, max_reader_workers=2)
+
+    thread = threading.Thread(target=execute)
+    thread.start()
+    assert two_active.wait(5)
+    release.set()
+    thread.join(10)
+
+    assert not thread.is_alive()
+    assert maximum == 2
+    result = outcome["result"]
+    assert result.status == "completed"
+    assert [item.task_id for item in result.results] == [
+        f"{result.run_id}-task-{i}" for i in range(1, 7)
+    ]
+
+
+def test_parallel_reader_wave_respects_global_model_call_budget(tmp_path):
+    runner.invoke(app, ["init", str(tmp_path)])
+    database = tmp_path / ".research" / "state.sqlite"
+    seen = []
+
+    def one_call_reader(role, packet):
+        seen.append(role)
+        return AgentResult(role=role, task_id=packet.task_id, outcome="produced", model_calls=1)
+
+    result = run_workflow(
+        database,
+        [_step("planner"), *[_step("evidence_reader") for _ in range(3)], _step("writer"), _step("reviewer")],
+        one_call_reader,
+        max_model_calls=3,
+        max_reader_workers=4,
+    )
+
+    assert result.status == "budget_exhausted"
+    assert result.model_calls == 3
+    assert seen == ["planner", "evidence_reader", "evidence_reader"]
 
 
 def test_wave_one_controller_stops_after_failed_agent_result(tmp_path):

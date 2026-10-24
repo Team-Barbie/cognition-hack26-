@@ -7,6 +7,7 @@ broker, agent runner, and quality gates; it must never call a model client itsel
 from __future__ import annotations
 
 import json
+from concurrent.futures import ThreadPoolExecutor
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
@@ -139,6 +140,7 @@ def run_workflow(
     finalize: bool = True,
     idempotency_key: str | None = None,
     packet_preparer: PacketPreparer | None = None,
+    max_reader_workers: int = 4,
 ) -> RunResult:
     """Run a validated bounded sequence and persist each task before dispatch.
 
@@ -147,6 +149,8 @@ def run_workflow(
     """
 
     _validate_workflow(steps)
+    if not 1 <= max_reader_workers <= 8:
+        raise ValueError("max_reader_workers must be between 1 and 8")
     if resume_run_id is None:
         run_id = db.create_run(
             database,
@@ -184,63 +188,151 @@ def run_workflow(
         max_tasks = run["max_tasks"]
         db.clear_pause(database, run_id)
     results: list[AgentResult] = []
+    def prepare(index: int, step: WorkflowStep, previous: Sequence[AgentResult], allowance: int):
+        """Create one durable attempt before its model call starts."""
+
+        task_id = f"{run_id}-task-{index}"
+        task = db.read_task(database, task_id)
+        if task is not None and task["state"] == "accepted" and not task["is_stale"]:
+            return db.accepted_result(task)
+        if task is None:
+            db.create_task(database, run_id, task_id, step.role)
+        elif task["state"] == "running":
+            db.recover_interrupted_task(database, task_id)
+        elif task["state"] != "ready":
+            raise RuntimeError(f"task {task_id} cannot run from {task['state']}")
+        attempt_id = f"attempt-{uuid4()}"
+        packet = step.build_packet(previous, task_id, attempt_id)
+        if packet.role != step.role:
+            raise ValueError(f"packet role {packet.role!r} does not match step role {step.role!r}")
+        if packet.task_id != task_id:
+            packet = packet.model_copy(update={"task_id": task_id})
+        if packet.attempt_id != attempt_id:
+            packet = packet.model_copy(update={"attempt_id": attempt_id})
+        if packet_preparer is not None:
+            packet = packet_preparer(step.role, packet)
+        packet = packet.model_copy(update={"model_call_budget": min(
+            allowance, packet.model_call_budget if packet.model_call_budget is not None else allowance)})
+        lease = db.start_attempt(database, task_id, attempt_id)
+        db.record_event(
+            database,
+            "packet.dispatched",
+            {"attempt_id": attempt_id, "packet": packet.audit_view()},
+            run_id=run_id,
+            task_id=task_id,
+        )
+        return step, task_id, attempt_id, packet, lease
+
+    def commit(prepared, result: AgentResult) -> bool:
+        """Persist one completed call. Return False for a blocking agent outcome."""
+
+        step, task_id, attempt_id, _packet, lease = prepared
+        if result.outcome != "produced" and step.role not in NON_BLOCKING_RESEARCH_ROLES:
+            db.finish_attempt(database, task_id, attempt_id, "failed")
+            return False
+        result = result.model_copy(update={"task_id": task_id})
+        db.accept_attempt(
+            database,
+            task_id,
+            attempt_id,
+            result,
+            fencing_token=lease.fencing_token,
+        )
+        return True
+
     try:
-        for index, step in enumerate(steps, start=1):
+        index = 1
+        while index <= len(steps):
+            step = steps[index - 1]
             if db.pause_requested(database, run_id):
                 return RunResult(run_id, "paused", tuple(results), calls)
             if index > max_tasks:
                 db.finish_run(database, run_id, "budget_exhausted", calls)
                 return RunResult(run_id, "budget_exhausted", tuple(results), calls)
+
+            if step.role == "evidence_reader":
+                end = index
+                while end <= len(steps) and steps[end - 1].role == "evidence_reader":
+                    end += 1
+                wave_results: dict[int, AgentResult] = {}
+                cursor = index
+                while cursor < end:
+                    if db.pause_requested(database, run_id):
+                        return RunResult(run_id, "paused", tuple(results), calls)
+                    pending_indexes: list[int] = []
+                    while cursor < end and len(pending_indexes) < max_reader_workers:
+                        if cursor > max_tasks:
+                            db.finish_run(database, run_id, "budget_exhausted", calls)
+                            return RunResult(run_id, "budget_exhausted", tuple(results), calls)
+                        task_id = f"{run_id}-task-{cursor}"
+                        task = db.read_task(database, task_id)
+                        if task is not None and task["state"] == "accepted" and not task["is_stale"]:
+                            wave_results[cursor] = db.accepted_result(task)
+                            cursor += 1
+                            continue
+                        if len(pending_indexes) >= budget - calls:
+                            break
+                        pending_indexes.append(cursor)
+                        cursor += 1
+                    if not pending_indexes:
+                        if cursor < end:
+                            db.finish_run(database, run_id, "budget_exhausted", calls)
+                            ordered = [wave_results[i] for i in sorted(wave_results)]
+                            return RunResult(run_id, "budget_exhausted", tuple([*results, *ordered]), calls)
+                        break
+
+                    remaining = budget - calls
+                    allowance = 2 if remaining >= 2 * len(pending_indexes) else 1
+                    previous = tuple(results)
+                    prepared = [
+                        prepare(i, steps[i - 1], previous, allowance)
+                        for i in pending_indexes
+                    ]
+                    with ThreadPoolExecutor(
+                        max_workers=min(max_reader_workers, len(prepared)),
+                        thread_name_prefix="ar-reader",
+                    ) as pool:
+                        futures = [pool.submit(agent_runner, item[0].role, item[3]) for item in prepared]
+                        completed = [future.result() for future in futures]
+
+                    calls += sum(result.model_calls for result in completed)
+                    db.record_model_calls(database, run_id, calls)
+                    blocking = False
+                    for item, result, item_index in zip(prepared, completed, pending_indexes, strict=True):
+                        wave_results[item_index] = result.model_copy(update={"task_id": item[1]})
+                        if not commit(item, result):
+                            blocking = True
+                    if blocking:
+                        ordered = [wave_results[i] for i in sorted(wave_results)]
+                        db.finish_run(database, run_id, "failed", calls)
+                        return RunResult(run_id, "failed", tuple([*results, *ordered]), calls)
+
+                results.extend(wave_results[i] for i in range(index, end) if i in wave_results)
+                index = end
+                continue
+
             task_id = f"{run_id}-task-{index}"
             task = db.read_task(database, task_id)
             if task is not None and task["state"] == "accepted" and not task["is_stale"]:
                 results.append(db.accepted_result(task))
+                index += 1
                 continue
             if calls >= budget:
                 db.finish_run(database, run_id, "budget_exhausted", calls)
                 return RunResult(run_id, "budget_exhausted", tuple(results), calls)
-            if task is None:
-                db.create_task(database, run_id, task_id, step.role)
-            elif task["state"] == "running":
-                db.recover_interrupted_task(database, task_id)
-            elif task["state"] != "ready":
-                raise RuntimeError(f"task {task_id} cannot run from {task['state']}")
-            attempt_id = f"attempt-{uuid4()}"
-            packet = step.build_packet(tuple(results), task_id, attempt_id)
-            if packet.role != step.role:
-                raise ValueError(f"packet role {packet.role!r} does not match step role {step.role!r}")
-            if packet.task_id != task_id:
-                packet = packet.model_copy(update={"task_id": task_id})
-            if packet.attempt_id != attempt_id:
-                packet = packet.model_copy(update={"attempt_id": attempt_id})
-            if packet_preparer is not None:
-                packet = packet_preparer(step.role, packet)
-            packet = packet.model_copy(update={"model_call_budget": min(
-                budget - calls, packet.model_call_budget if packet.model_call_budget is not None else budget - calls)})
-            lease = db.start_attempt(database, task_id, attempt_id)
-            db.record_event(
-                database,
-                "packet.dispatched",
-                {"attempt_id": attempt_id, "packet": packet.audit_view()},
-                run_id=run_id,
-                task_id=task_id,
-            )
-            result = agent_runner(step.role, packet)
+            prepared = prepare(index, step, tuple(results), budget - calls)
+            if isinstance(prepared, AgentResult):
+                results.append(prepared)
+                index += 1
+                continue
+            result = agent_runner(step.role, prepared[3])
             calls += result.model_calls
             db.record_model_calls(database, run_id, calls)
-            if result.outcome != "produced" and step.role not in NON_BLOCKING_RESEARCH_ROLES:
-                db.finish_attempt(database, task_id, attempt_id, "failed")
+            if not commit(prepared, result):
                 db.finish_run(database, run_id, "failed", calls)
                 return RunResult(run_id, "failed", tuple([*results, result]), calls)
-            result = result.model_copy(update={"task_id": task_id})
-            db.accept_attempt(
-                database,
-                task_id,
-                attempt_id,
-                result,
-                fencing_token=lease.fencing_token,
-            )
-            results.append(result)
+            results.append(result.model_copy(update={"task_id": prepared[1]}))
+            index += 1
     except Exception:
         db.finish_run(database, run_id, "failed", calls)
         raise
@@ -734,11 +826,18 @@ def run_project(
         }
         required = list(unique.values())
         if required:
-            broker.check_required_reads(
-                task_id=packet.task_id,
-                attempt_id=packet.attempt_id,
-                required=required,
-            )
+            # Evidence readers may run in worker threads. Never carry the controller's
+            # main-thread SQLite connection across that boundary; a short-lived broker
+            # connection keeps receipt verification thread-safe and read-only.
+            check_conn = db.connect(database)
+            try:
+                Broker(check_conn, root, policy).check_required_reads(
+                    task_id=packet.task_id,
+                    attempt_id=packet.attempt_id,
+                    required=required,
+                )
+            finally:
+                check_conn.close()
         return result
 
     prepare_packet = getattr(agent, "prepare_packet", None)
