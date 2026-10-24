@@ -98,6 +98,16 @@ textarea:focus, .btn:focus-visible, input:focus { outline: 2px solid color-mix(i
 .card .asks { margin: 2px 0 0; padding: 7px 8px; border-radius: 8px; background: rgba(0,0,0,.22); font-size: 12px; display: grid; gap: 4px; }
 .card .asks b { font: 600 10.5px var(--mono); color: var(--c); text-transform: uppercase; letter-spacing: .06em; }
 .card .calls { font: 500 11px var(--mono); color: var(--faint); }
+.card .packet-row { display: flex; gap: 7px; align-items: center; padding-top: 3px; border-top: 1px solid var(--line); }
+.card .packet-row .btn { padding: 4px 8px; }
+.packet-section { display: grid; gap: 7px; padding-top: 4px; }
+.packet-section + .packet-section { border-top: 1px solid var(--line); padding-top: 12px; }
+.packet-section h4 { margin: 0; font: 700 11px var(--mono); color: var(--muted); text-transform: uppercase; letter-spacing: .07em; }
+.packet-objective { margin: 0; padding: 10px 12px; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; }
+.packet-note { padding: 9px 11px; border-radius: 8px; color: var(--muted); background: color-mix(in srgb, var(--accent) 7%, var(--bg)); border: 1px solid var(--line); }
+.packet-dep { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; display: grid; gap: 5px; background: var(--bg); }
+.packet-dep pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.55 var(--mono); color: #cfd4de; }
+.packet-lines { max-height: 280px; overflow: auto; }
 .card.wide { width: min(100%, 520px); }
 .feed { border: 1px solid var(--line); border-radius: 12px; background: var(--panel); max-height: 210px; overflow-y: auto; }
 .feed h3 { margin: 0; padding: 9px 12px; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); border-bottom: 1px solid var(--line); position: sticky; top: 0; background: var(--panel); }
@@ -151,6 +161,13 @@ mark { background: var(--mark); color: var(--mark-ink); border-radius: 2px; }
 .facts dt { color: var(--faint); } .facts dd { margin: 0; font-family: var(--mono); overflow-wrap: anywhere; }
 .toast { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); background: var(--bad); color: #1a0505; padding: 8px 14px; border-radius: 8px; font-weight: 600; z-index: 30; }
 .toast[hidden] { display: none; }
+.lock { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: 22px; background: radial-gradient(700px 400px at 50% 20%, #17233a 0%, transparent 70%), var(--bg); }
+.lock[hidden] { display: none; }
+.lock-card { width: min(390px, 100%); padding: 28px; border: 1px solid var(--line-2); border-radius: 16px; background: var(--panel); box-shadow: 0 24px 80px rgba(0,0,0,.4); display: grid; gap: 16px; }
+.lock-card h1 { margin: 0; font: 700 20px var(--mono); }
+.lock-card p { margin: 0; color: var(--muted); }
+.lock-card input { width: 100%; padding: 11px 12px; border-radius: 9px; border: 1px solid var(--line-2); background: var(--bg); color: var(--fg); font: 18px var(--mono); letter-spacing: .16em; }
+.lock-error { min-height: 1.5em; color: var(--bad); font-size: 12.5px; }
 
 @keyframes pop { from { opacity: 0; transform: scale(.85) translateY(8px); } to { opacity: 1; transform: none; } }
 @keyframes rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
@@ -161,7 +178,16 @@ mark { background: var(--mark); color: var(--mark-ink); border-radius: 2px; }
 </style>
 </head>
 <body>
-<div class="app">
+<div class="lock" id="lock">
+  <form class="lock-card" id="unlock-form">
+    <h1>Protected studio</h1>
+    <p>Enter the access password to use the research studio.</p>
+    <input id="password" type="password" inputmode="numeric" autocomplete="current-password" aria-label="Password" required autofocus>
+    <div class="lock-error" id="lock-error" role="alert"></div>
+    <button class="btn primary" type="submit">Unlock</button>
+  </form>
+</div>
+<div class="app" id="app" aria-hidden="true" inert>
   <header class="top">
     <span class="brand">ar<b>/</b>studio</span>
     <span class="pill" id="mode">connecting…</span>
@@ -221,7 +247,7 @@ mark { background: var(--mark); color: var(--mark-ink); border-radius: 2px; }
     </section>
   </div>
 </div>
-<div class="drawer" id="drawer" hidden><div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-label="Claim proof"></div></div>
+<div class="drawer" id="drawer" hidden><div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-label="Audit details"></div></div>
 <div class="toast" id="toast" role="alert" hidden></div>
 <script>
 (() => {
@@ -241,14 +267,25 @@ mark { background: var(--mark); color: var(--mark-ink); border-radius: 2px; }
   }
   const ROLE_GLYPH = { orchestrator: "OR", planner: "PL", evidence_reader: "RD", writer: "WR", reviewer: "RV", quality: "QG" };
   const STATE_WORD = { running: "working", done: "done", failed: "stopped", waiting: "waiting" };
-  let sid = null, after = 0, report = null, busy = false;
+  let sid = null, after = 0, report = null, busy = false, returnFocus = null;
+  let password = sessionStorage.getItem("studioPassword") || "";
 
   async function api(path, body) {
     const res = await fetch(path, { method: body === undefined ? "GET" : "POST",
-      headers: { "Content-Type": "application/json" }, body: body === undefined ? undefined : JSON.stringify({ id: sid, ...body }) });
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${password}` },
+      body: body === undefined ? undefined : JSON.stringify({ id: sid, ...body }) });
     const data = await res.json().catch(() => ({}));
+    if (res.status === 401) lock();
     if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
     return data;
+  }
+  function lock() {
+    password = ""; sessionStorage.removeItem("studioPassword");
+    $("lock").hidden = false; $("app").setAttribute("aria-hidden", "true"); $("app").inert = true;
+    setTimeout(() => $("password").focus(), 0);
+  }
+  function unlock() {
+    $("lock").hidden = true; $("app").removeAttribute("aria-hidden"); $("app").inert = false;
   }
   function toast(msg) { const t = $("toast"); t.textContent = msg; t.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => { t.hidden = true; }, 4200); }
 
@@ -316,6 +353,12 @@ mark { background: var(--mark); color: var(--mark-ink); border-radius: 2px; }
     if (e.detail) kids.push(h("div", { class: "detail" }, e.detail));
     if (e.questions && e.questions.length) kids.push(h("div", { class: "asks" }, h("b", {}, "Asks"), e.questions.map(q => h("div", {}, q))));
     if (e.calls) kids.push(h("div", { class: "calls" }, `${e.calls} model call${e.calls === 1 ? "" : "s"}`));
+    if (e.packet) {
+      const reads = e.packet.reads.length, deps = e.packet.dependencies.length;
+      kids.push(h("div", { class: "packet-row" },
+        h("button", { class: "btn", type: "button", onclick: ev => openPacket(e.packet, ev.currentTarget) }, "Inspect packet"),
+        h("span", { class: "muted" }, `${reads} delivered read${reads === 1 ? "" : "s"} · ${deps} dependenc${deps === 1 ? "y" : "ies"}`)));
+    }
     c.el.replaceChildren(...kids);
   }
   function addFeed(e) {
@@ -400,6 +443,8 @@ mark { background: var(--mark); color: var(--mark-ink); border-radius: 2px; }
   }
   function openProof(id) {
     const c = report.claimMap[id]; if (!c) return;
+    returnFocus = document.activeElement;
+    $("sheet").setAttribute("aria-label", `Proof for ${id}`);
     const sheet = $("sheet"); sheet.replaceChildren();
     sheet.append(h("div", { class: "row" }, h("h3", {}, c.id), h("span", { class: "pill ok" }, "verified"), h("span", { class: "spacer" }),
       h("button", { class: "btn", type: "button", onclick: closeProof }, "Close")));
@@ -420,7 +465,53 @@ mark { background: var(--mark); color: var(--mark-ink); border-radius: 2px; }
     if (c.limitations && c.limitations.length) sheet.append(h("div", {}, h("b", {}, "Limitations"), h("ul", {}, c.limitations.map(x => h("li", {}, x)))));
     $("drawer").hidden = false; sheet.querySelector("button").focus();
   }
-  function closeProof() { $("drawer").hidden = true; }
+  function packetLines(read) {
+    return h("div", { class: "lines packet-lines" }, read.lines.map(row =>
+      h("div", { class: "ln in" }, h("span", { class: "n" }, row.n), h("span", { class: "t" }, row.text || " "))));
+  }
+  function openPacket(packet, trigger) {
+    returnFocus = trigger || document.activeElement;
+    const sheet = $("sheet"); sheet.replaceChildren();
+    sheet.setAttribute("aria-label", `Context packet ${packet.id}`);
+    sheet.append(h("div", { class: "row" }, h("h3", {}, packet.id), h("span", { class: "pill ok" }, "dispatched"),
+      h("span", { class: "spacer" }), h("button", { class: "btn", type: "button", onclick: closeProof }, "Close")));
+    sheet.append(h("div", { class: "packet-note" },
+      "This is the exact bounded context dispatched to this agent attempt—not a shared transcript or unrestricted project view."));
+    sheet.append(h("dl", { class: "facts" },
+      h("dt", {}, "role"), h("dd", {}, packet.role), h("dt", {}, "task"), h("dd", {}, packet.task),
+      h("dt", {}, "attempt"), h("dd", {}, packet.attempt)));
+    sheet.append(h("section", { class: "packet-section" }, h("h4", {}, "Objective"),
+      h("p", { class: "packet-objective" }, packet.objective)));
+    if (packet.requirements.length) sheet.append(h("section", { class: "packet-section" }, h("h4", {}, `Requirements · ${packet.requirements.length}`),
+      packet.requirements.map(r => h("div", { class: "packet-dep" }, h("b", {}, `${r.id} · r${r.revision}`),
+        h("div", {}, r.interpretation), r.acceptance_checks.length ? h("div", { class: "muted" }, `Checks: ${r.acceptance_checks.join("; ")}`) : null))));
+    if (packet.reads.length) sheet.append(h("section", { class: "packet-section" }, h("h4", {}, `Delivered reads · ${packet.reads.length}`),
+      packet.reads.map(read => h("div", { class: "packet-dep" },
+        h("div", { class: "row" }, h("b", {}, read.label || read.source), h("span", { class: "pill" }, `${read.source} r${read.revision}`)),
+        h("dl", { class: "facts" }, h("dt", {}, "selector"), h("dd", {}, `lines ${read.start}–${read.end}`),
+          h("dt", {}, "receipt"), h("dd", {}, read.receipt)), packetLines(read)))));
+    if (packet.dependencies.length) sheet.append(h("section", { class: "packet-section" }, h("h4", {}, `Accepted dependencies · ${packet.dependencies.length}`),
+      packet.dependencies.map(dep => {
+        const text = dep.kind === "claim" && dep.claim ? dep.claim.statement : dep.content;
+        return h("div", { class: "packet-dep" }, h("div", { class: "row" }, h("b", {}, dep.id),
+          h("span", { class: "pill" }, `${dep.kind} · r${dep.revision}`)), text ? h("pre", {}, text) : h("span", { class: "muted" }, "No inline content"));
+      })));
+    if (packet.available_sources.length) sheet.append(h("section", { class: "packet-section" }, h("h4", {}, "Available source metadata"),
+      h("ul", {}, packet.available_sources.map(source => h("li", {}, `${source.source_id} · ${source.path}`)))));
+    if (packet.review_feedback.length) sheet.append(h("section", { class: "packet-section" }, h("h4", {}, "Review feedback"),
+      h("ul", {}, packet.review_feedback.map(item => h("li", {}, item)))));
+    if (packet.skills.length) sheet.append(h("section", { class: "packet-section" }, h("h4", {}, "Method skills"),
+      packet.skills.map(skill => h("pre", { class: "packet-dep" }, skill))));
+    sheet.append(h("section", { class: "packet-section" }, h("h4", {}, "Boundary"),
+      h("div", { class: "packet-note" }, "Not included: other agents’ chat history, unlisted source text, unaccepted outputs, or direct database access.")));
+    $("drawer").hidden = false; sheet.querySelector("button").focus();
+  }
+  function closeProof() {
+    if ($("drawer").hidden) return;
+    $("drawer").hidden = true;
+    if (returnFocus && document.contains(returnFocus)) returnFocus.focus();
+    returnFocus = null;
+  }
   $("drawer").addEventListener("click", e => { if (e.target === $("drawer")) closeProof(); });
   document.addEventListener("keydown", e => { if (e.key === "Escape") closeProof(); });
 
@@ -505,14 +596,24 @@ mark { background: var(--mark); color: var(--mark-ink); border-radius: 2px; }
   $("demo").addEventListener("click", async () => { try { await api("/api/demo", {}); } catch (err) { toast(err.message); } });
   $("start").addEventListener("click", async () => { try { await api("/api/run", {}); state.running = true; updateStart(); } catch (err) { toast(err.message); } });
 
-  (async () => {
+  async function startStudio() {
     try {
       const attach = new URLSearchParams(location.search).get("session");  // reopen an existing session
-      const s = attach ? { id: attach, ...(await fetch("/api/info").then(r => r.json())) }
-        : await fetch("/api/session", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }).then(r => r.json());
+      const s = attach ? { id: attach, ...(await api("/api/info")) } : await api("/api/session", {});
       sid = s.id; $("mode").textContent = s.mode; $("mode").className = "pill" + (s.mode.startsWith("live") ? " live" : "");
-    } catch (err) { toast("Could not reach the studio server."); }
-    poll(); $("input").focus();
+      unlock(); poll(); $("input").focus();
+    } catch (err) {
+      if (password) $("lock-error").textContent = err.message === "Password required" ? "Incorrect password." : "Could not reach the studio server.";
+    }
+  }
+  $("unlock-form").addEventListener("submit", async e => {
+    e.preventDefault(); $("lock-error").textContent = "";
+    password = $("password").value; sessionStorage.setItem("studioPassword", password);
+    await startStudio();
+  });
+  (async () => {
+    if (password) await startStudio();
+    else lock();
   })();
 })();
 </script>
