@@ -5,7 +5,7 @@ from typer.testing import CliRunner
 
 from ar.cli import PROJECT_DIRECTORIES, app
 from ar.controller import TaskState, WorkflowStep, require_transition, run_workflow
-from ar.db import read_status
+from ar.db import connect, latest_active_run, read_status
 from ar.models import AgentResult
 from ar.packet import Packet
 
@@ -114,3 +114,69 @@ def test_wave_one_controller_rejects_wrong_order_before_creating_run(tmp_path):
         )
 
     assert read_status(tmp_path / ".research" / "state.sqlite").runs == 0
+
+
+def test_interrupted_run_skips_accepted_tasks_and_starts_new_attempt(tmp_path):
+    runner.invoke(app, ["init", str(tmp_path)])
+    database = tmp_path / ".research" / "state.sqlite"
+    steps = [_step("planner"), _step("evidence_reader"), _step("writer"), _step("reviewer")]
+    first_seen = []
+
+    def crashing_runner(role, packet):
+        first_seen.append(role)
+        if role == "writer":
+            raise KeyboardInterrupt
+        return AgentResult(role=role, task_id=packet.task_id, outcome="produced")
+
+    with pytest.raises(KeyboardInterrupt):
+        run_workflow(database, steps, crashing_runner)
+
+    run_id = latest_active_run(database)
+    assert run_id is not None
+    resumed_seen = []
+
+    def resumed_runner(role, packet):
+        resumed_seen.append(role)
+        return AgentResult(role=role, task_id=packet.task_id, outcome="produced")
+
+    result = run_workflow(
+        database, steps, resumed_runner, resume_run_id=run_id
+    )
+
+    assert result.status == "completed"
+    assert first_seen == ["planner", "evidence_reader", "writer"]
+    assert resumed_seen == ["writer", "reviewer"]
+    with connect(database) as connection:
+        tasks = connection.execute("SELECT COUNT(*) FROM tasks").fetchone()[0]
+        writer_attempts = connection.execute(
+            "SELECT COUNT(*) FROM attempts WHERE task_id = ?",
+            (f"{run_id}-task-3",),
+        ).fetchone()[0]
+    assert tasks == 4
+    assert writer_attempts == 2
+
+
+def test_model_call_budget_stops_before_next_dispatch(tmp_path):
+    runner.invoke(app, ["init", str(tmp_path)])
+    database = tmp_path / ".research" / "state.sqlite"
+    seen = []
+
+    def one_call_runner(role, packet):
+        seen.append(role)
+        return AgentResult(
+            role=role, task_id=packet.task_id, outcome="produced", model_calls=1
+        )
+
+    result = run_workflow(
+        database,
+        [_step("planner"), _step("evidence_reader"), _step("writer"), _step("reviewer")],
+        one_call_runner,
+        max_model_calls=2,
+    )
+
+    assert result.status == "budget_exhausted"
+    assert result.model_calls == 2
+    assert seen == ["planner", "evidence_reader"]
+    status = read_status(database)
+    assert status.latest_run_status == "budget_exhausted"
+    assert status.task_states == {"accepted": 2}

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sqlite3
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -9,7 +10,9 @@ from pathlib import Path
 from typing import Literal
 from uuid import uuid4
 
-DB_SCHEMA_VERSION = 1
+from ar.models import AgentResult
+
+DB_SCHEMA_VERSION = 2
 
 
 @dataclass(frozen=True)
@@ -44,6 +47,20 @@ def connect(database: Path) -> sqlite3.Connection:
     return connection
 
 
+def _migrate(connection: sqlite3.Connection) -> None:
+    """Upgrade older Spine databases without deleting recorded work."""
+
+    version = connection.execute("PRAGMA user_version").fetchone()[0]
+    if version < 2:
+        columns = {
+            row["name"] for row in connection.execute("PRAGMA table_info(tasks)").fetchall()
+        }
+        with connection:
+            if "result_json" not in columns:
+                connection.execute("ALTER TABLE tasks ADD COLUMN result_json TEXT")
+            connection.execute(f"PRAGMA user_version = {DB_SCHEMA_VERSION}")
+
+
 def initialize(database: Path, project_root: Path) -> InitResult:
     """Create the Wave 0 database. Calling this twice keeps the same project."""
 
@@ -54,6 +71,7 @@ def initialize(database: Path, project_root: Path) -> InitResult:
             "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'project'"
         ).fetchone()
         if existing:
+            _migrate(connection)
             row = connection.execute("SELECT id FROM project LIMIT 1").fetchone()
             if row is None:
                 raise RuntimeError("project database is missing its project record")
@@ -91,6 +109,7 @@ def initialize(database: Path, project_root: Path) -> InitResult:
                     )),
                     contract_revision INTEGER NOT NULL DEFAULT 1,
                     attempt_count INTEGER NOT NULL DEFAULT 0,
+                    result_json TEXT,
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL
                 );
@@ -171,6 +190,32 @@ def create_run(database: Path, max_model_calls: int) -> str:
         connection.close()
 
 
+def read_run(database: Path, run_id: str) -> sqlite3.Row:
+    """Read a run row for resume and budget decisions."""
+
+    connection = connect(database)
+    try:
+        row = connection.execute("SELECT * FROM runs WHERE id = ?", (run_id,)).fetchone()
+        if row is None:
+            raise KeyError(run_id)
+        return row
+    finally:
+        connection.close()
+
+
+def latest_active_run(database: Path) -> str | None:
+    """Return the newest interrupted run, if one exists."""
+
+    connection = connect(database)
+    try:
+        row = connection.execute(
+            "SELECT id FROM runs WHERE status = 'running' ORDER BY created_at DESC LIMIT 1"
+        ).fetchone()
+        return row["id"] if row else None
+    finally:
+        connection.close()
+
+
 def create_task(database: Path, run_id: str, task_id: str, role: str) -> None:
     """Persist a ready task before it is dispatched."""
 
@@ -183,6 +228,43 @@ def create_task(database: Path, run_id: str, task_id: str, role: str) -> None:
                    (id, run_id, role, state, contract_revision, attempt_count, created_at, updated_at)
                    VALUES (?, ?, ?, 'ready', 1, 0, ?, ?)""",
                 (task_id, run_id, role, now, now),
+            )
+    finally:
+        connection.close()
+
+
+def read_task(database: Path, task_id: str) -> sqlite3.Row | None:
+    """Read a task row, returning None when it has not been created yet."""
+
+    connection = connect(database)
+    try:
+        return connection.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
+    finally:
+        connection.close()
+
+
+def recover_interrupted_task(database: Path, task_id: str) -> None:
+    """Close a lost running attempt and make the task ready for a new attempt."""
+
+    connection = connect(database)
+    try:
+        with connection:
+            task = connection.execute(
+                "SELECT state FROM tasks WHERE id = ?", (task_id,)
+            ).fetchone()
+            if task is None:
+                raise KeyError(task_id)
+            if task["state"] != "running":
+                raise RuntimeError(f"task {task_id} is not interrupted")
+            now = _now()
+            connection.execute(
+                """UPDATE attempts SET status = 'failed', finished_at = ?
+                   WHERE task_id = ? AND status = 'running'""",
+                (now, task_id),
+            )
+            connection.execute(
+                "UPDATE tasks SET state = 'ready', updated_at = ? WHERE id = ?",
+                (now, task_id),
             )
     finally:
         connection.close()
@@ -243,6 +325,40 @@ def finish_attempt(
         connection.close()
 
 
+def accept_attempt(
+    database: Path, task_id: str, attempt_id: str, result: AgentResult
+) -> None:
+    """Atomically accept an attempt and save its typed result for resume."""
+
+    connection = connect(database)
+    try:
+        with connection:
+            now = _now()
+            updated = connection.execute(
+                """UPDATE attempts SET status = 'accepted', finished_at = ?
+                   WHERE id = ? AND task_id = ? AND status = 'running'""",
+                (now, attempt_id, task_id),
+            )
+            if updated.rowcount != 1:
+                raise RuntimeError(f"attempt {attempt_id} is not running")
+            connection.execute(
+                """UPDATE tasks SET state = 'accepted', result_json = ?, updated_at = ?
+                   WHERE id = ?""",
+                (result.model_dump_json(), now, task_id),
+            )
+    finally:
+        connection.close()
+
+
+def accepted_result(task: sqlite3.Row) -> AgentResult:
+    """Restore the exact typed result saved for an accepted task."""
+
+    raw = task["result_json"]
+    if not raw:
+        raise RuntimeError(f"accepted task {task['id']} has no saved result")
+    return AgentResult.model_validate(json.loads(raw))
+
+
 def finish_run(
     database: Path,
     run_id: str,
@@ -258,6 +374,23 @@ def finish_run(
                 """UPDATE runs SET status = ?, model_calls = ?, updated_at = ?
                    WHERE id = ? AND status = 'running'""",
                 (status, model_calls, _now(), run_id),
+            )
+            if updated.rowcount != 1:
+                raise RuntimeError(f"run {run_id} is not running")
+    finally:
+        connection.close()
+
+
+def record_model_calls(database: Path, run_id: str, model_calls: int) -> None:
+    """Checkpoint budget use so an interrupted run resumes with the right count."""
+
+    connection = connect(database)
+    try:
+        with connection:
+            updated = connection.execute(
+                """UPDATE runs SET model_calls = ?, updated_at = ?
+                   WHERE id = ? AND status = 'running'""",
+                (model_calls, _now(), run_id),
             )
             if updated.rowcount != 1:
                 raise RuntimeError(f"run {run_id} is not running")

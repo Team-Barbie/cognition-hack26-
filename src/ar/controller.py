@@ -93,6 +93,7 @@ def run_workflow(
     agent_runner: AgentRunner,
     *,
     max_model_calls: int = 20,
+    resume_run_id: str | None = None,
 ) -> RunResult:
     """Run the fixed Wave 1 sequence and persist each task before dispatch.
 
@@ -101,13 +102,34 @@ def run_workflow(
     """
 
     _validate_workflow(steps)
-    run_id = db.create_run(database, max_model_calls)
+    if resume_run_id is None:
+        run_id = db.create_run(database, max_model_calls)
+        calls = 0
+        budget = max_model_calls
+    else:
+        run = db.read_run(database, resume_run_id)
+        if run["status"] != "running":
+            raise ValueError(f"run {resume_run_id} cannot be resumed from {run['status']}")
+        run_id = resume_run_id
+        calls = run["model_calls"]
+        budget = run["max_model_calls"]
     results: list[AgentResult] = []
-    calls = 0
     try:
         for index, step in enumerate(steps, start=1):
             task_id = f"{run_id}-task-{index}"
-            db.create_task(database, run_id, task_id, step.role)
+            task = db.read_task(database, task_id)
+            if task is not None and task["state"] == "accepted":
+                results.append(db.accepted_result(task))
+                continue
+            if calls >= budget:
+                db.finish_run(database, run_id, "budget_exhausted", calls)
+                return RunResult(run_id, "budget_exhausted", tuple(results), calls)
+            if task is None:
+                db.create_task(database, run_id, task_id, step.role)
+            elif task["state"] == "running":
+                db.recover_interrupted_task(database, task_id)
+            else:
+                raise RuntimeError(f"task {task_id} cannot run from {task['state']}")
             packet = step.build_packet(tuple(results))
             if packet.role != step.role:
                 raise ValueError(f"packet role {packet.role!r} does not match step role {step.role!r}")
@@ -119,16 +141,13 @@ def run_workflow(
             db.start_attempt(database, task_id, attempt_id)
             result = agent_runner(step.role, packet)
             calls += result.model_calls
-            if calls > max_model_calls:
-                db.finish_attempt(database, task_id, attempt_id, "failed")
-                db.finish_run(database, run_id, "budget_exhausted", calls)
-                return RunResult(run_id, "budget_exhausted", tuple(results), calls)
+            db.record_model_calls(database, run_id, calls)
             if result.outcome != "produced":
                 db.finish_attempt(database, task_id, attempt_id, "failed")
                 db.finish_run(database, run_id, "failed", calls)
                 return RunResult(run_id, "failed", tuple([*results, result]), calls)
             result = result.model_copy(update={"task_id": task_id})
-            db.finish_attempt(database, task_id, attempt_id, "accepted")
+            db.accept_attempt(database, task_id, attempt_id, result)
             results.append(result)
     except Exception:
         db.finish_run(database, run_id, "failed", calls)
