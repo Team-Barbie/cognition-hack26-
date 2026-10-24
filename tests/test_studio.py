@@ -8,7 +8,7 @@ import urllib.request
 import pytest
 
 from ar.studio.intake import Brief, Intake
-from ar.studio.server import event_stream, serve
+from ar.studio.server import SlidingWindowLimiter, event_stream, handle, serve
 from ar.models import LineSelector, Requirement, SourceRef
 from ar.packet import DeliveredRead, Packet
 from ar.studio.session import Session, packet_view
@@ -25,6 +25,41 @@ class Scripted:
         if isinstance(reply, Exception):
             raise reply
         return json.dumps(reply)
+
+
+def test_sliding_window_limiter_blocks_then_recovers():
+    now = [100.0]
+    limiter = SlidingWindowLimiter(clock=lambda: now[0])
+    rules = [("client-a", "api", 2, 10.0)]
+    assert limiter.check(rules) is None
+    assert limiter.check(rules) is None
+    assert limiter.check(rules) == 10
+    now[0] += 10
+    assert limiter.check(rules) is None
+
+
+def test_sliding_window_limiter_bounds_identity_buckets_without_weakening_active_rules():
+    limiter = SlidingWindowLimiter(max_buckets=2)
+    assert limiter.check([("old", "api", 1, 60.0)]) is None
+    rules = [("new", "api", 1, 60.0), ("new", "run", 1, 60.0)]
+    assert limiter.check(rules) is None
+    assert limiter.check(rules) == 60
+    assert len(limiter._events) == 2
+
+
+def test_run_endpoint_has_a_per_client_limit(tmp_path, monkeypatch):
+    import ar.studio.server as server
+
+    monkeypatch.setattr(server, "_RATE_LIMITER", SlidingWindowLimiter())
+    studio = server.Studio(tmp_path, fake=True)
+    for _ in range(6):
+        status, _, _ = handle(studio, "POST", "/api/run", "", b"{}", client_id="192.0.2.1")
+        assert status == 400  # Invalid sessions are still attempts and must be limited.
+    status, _, payload = handle(studio, "POST", "/api/run", "", b"{}", client_id="192.0.2.1")
+    assert status == 429
+    assert json.loads(payload)["retry_after"] > 0
+    other_status, _, _ = handle(studio, "POST", "/api/run", "", b"{}", client_id="192.0.2.2")
+    assert other_status == 400
 
 
 def test_packet_view_exposes_the_exact_bounded_context():

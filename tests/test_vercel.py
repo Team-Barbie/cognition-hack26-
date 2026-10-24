@@ -2,11 +2,17 @@
 
 import json
 
+import pytest
 from fastapi.testclient import TestClient
 
 from ar.studio.asgi import app
 from ar.studio import server
-from ar.studio.server import Studio
+from ar.studio.server import SlidingWindowLimiter, Studio
+
+
+@pytest.fixture(autouse=True)
+def fresh_rate_limiter(monkeypatch):
+    monkeypatch.setattr(server, "_RATE_LIMITER", SlidingWindowLimiter())
 
 
 def test_vercel_app_serves_the_studio_page_and_a_demo_session(tmp_path, monkeypatch):
@@ -125,3 +131,23 @@ def test_post_replies_carry_the_events_the_caller_has_not_seen(tmp_path, monkeyp
 
     added = client.post("/api/source", json={"id": sid, "name": "My Notes.md", "text": "a\nb\n"}).json()
     assert added == {"ok": True, "id": "my-notes"}  # no `after`, so no events
+
+
+def test_vercel_rate_limit_uses_sanitized_client_ip_and_returns_retry_after(tmp_path, monkeypatch):
+    studio = Studio(tmp_path, fake=True)
+    monkeypatch.setattr("ar.studio.asgi.vercel_studio", lambda: studio)
+    monkeypatch.setattr(server, "_RATE_LIMITER", SlidingWindowLimiter())
+    monkeypatch.setenv("VERCEL", "1")
+    monkeypatch.setenv("STUDIO_PASSWORD", "")
+    client = TestClient(app)
+    headers = {"X-Vercel-Forwarded-For": "192.0.2.10"}
+
+    for _ in range(12):
+        assert client.post("/api/session", json={}, headers=headers).status_code == 200
+    limited = client.post("/api/session", json={}, headers=headers)
+    assert limited.status_code == 429
+    assert limited.headers["Retry-After"] == "60"
+    assert limited.json() == {"error": "rate limit exceeded", "retry_after": 60}
+
+    other = client.post("/api/session", json={}, headers={"X-Vercel-Forwarded-For": "192.0.2.11"})
+    assert other.status_code == 200
