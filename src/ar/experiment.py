@@ -8,7 +8,7 @@ import shutil
 import sqlite3
 import subprocess
 import sys
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from typing import Literal
 
 from pydantic import Field
@@ -78,13 +78,24 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
         conn.executescript(SCHEMA)
 
 
+def _escapes(rel: str) -> str | None:
+    """Why a path is unsafe on any OS, or None. Windows forms count everywhere: a drive path or a
+    backslash `..\\` is an escape on Windows even though POSIX reads it as an ordinary file name."""
+    posix, windows = Path(rel), PureWindowsPath(rel)
+    if posix.is_absolute() or posix.drive or posix.root or windows.is_absolute() or windows.drive or windows.root:
+        return "must be a relative path"
+    if ".." in posix.parts or ".." in windows.parts:
+        return "traversal"
+    return None
+
+
 def _relative(rel: str, what: str) -> Path:
-    path = Path(rel)
-    if path.is_absolute() or path.drive or path.root:
-        raise BrokerError("ACCESS_DENIED", f"{what} {rel!r} must be a relative path")
-    if ".." in path.parts:
+    problem = _escapes(rel)
+    if problem == "traversal":
         raise BrokerError("ACCESS_DENIED", f"path traversal in {what} {rel!r}")
-    return path
+    if problem:
+        raise BrokerError("ACCESS_DENIED", f"{what} {rel!r} {problem}")
+    return Path(rel)
 
 
 def _validate(root: Path, spec: ExperimentSpec) -> list[str]:
@@ -102,7 +113,7 @@ def _validate(root: Path, spec: ExperimentSpec) -> list[str]:
     for rel in spec.expected_outputs:
         _relative(rel, "expected output")
     for arg in spec.command[1:]:
-        if Path(arg).is_absolute() or ".." in Path(arg).parts:
+        if _escapes(arg):
             raise BrokerError("ACCESS_DENIED", f"command argument {arg!r} leaves the working directory")
     return inputs
 
