@@ -267,24 +267,25 @@ def _planned_middle(
     *,
     experiment_spec: ExperimentSpec | None,
     capacity: int,
-) -> tuple[list[tuple[Role, str | None]], list[dict]]:
+) -> tuple[list[tuple[Role, str | None, str]], list[dict]]:
     """Validate and clamp planner proposals into dependency order without inventing capabilities."""
 
     proposed = planner.proposed_tasks
     known = set(source_ids)
-    readers: list[str] = []
+    readers: list[tuple[str, str]] = []
     rejected: list[dict] = []
     wants: set[Role] = set()
+    objectives: dict[Role, str] = {}
     for task in proposed:
         if task.role == "evidence_reader":
             valid = [sid for sid in task.source_ids if sid in known]
             if len(valid) != 1:
                 rejected.append({"task": task.model_dump(mode="json"), "reason": "reader needs one known source"})
                 continue
-            if valid[0] in readers:
+            if any(source_id == valid[0] for source_id, _ in readers):
                 rejected.append({"task": task.model_dump(mode="json"), "reason": "duplicate reader source"})
                 continue
-            readers.append(valid[0])
+            readers.append((valid[0], task.objective))
         elif task.role in {"source_scout", "theorist", "experiment_runner", "reproducer", "analyst"}:
             if task.role in {"experiment_runner", "reproducer"}:
                 expected = [experiment_spec.id] if experiment_spec else []
@@ -298,11 +299,15 @@ def _planned_middle(
                 rejected.append({"task": task.model_dump(mode="json"), "reason": "duplicate specialist role"})
                 continue
             wants.add(task.role)
+            objectives[task.role] = task.objective
 
     # A writer cannot produce an evidence-backed report without at least one reader. Older planners that
     # know only the MVP roles therefore remain a safe fallback rather than yielding an empty graph.
     if not readers:
-        readers = list(source_ids)
+        readers = [
+            (source_id, f"Extract evidence from {source_id} that bears on the research objective.")
+            for source_id in source_ids
+        ]
 
     if experiment_spec is None:
         for role in ("experiment_runner", "reproducer", "analyst"):
@@ -315,31 +320,34 @@ def _planned_middle(
         rejected.append({"role": "analyst", "reason": "no experiment run was planned"})
         wants.discard("analyst")
 
-    optional: list[tuple[Role, str | None]] = []
+    optional: list[tuple[Role, str | None, str]] = []
     if "source_scout" in wants:
-        optional.append(("source_scout", None))
+        optional.append(("source_scout", None, objectives["source_scout"]))
     if "theorist" in wants:
-        optional.append(("theorist", None))
+        optional.append(("theorist", None, objectives["theorist"]))
     if "experiment_runner" in wants:
-        optional.append(("experiment_runner", experiment_spec.id if experiment_spec else None))
+        optional.append((
+            "experiment_runner", experiment_spec.id if experiment_spec else None,
+            objectives.get("experiment_runner", "Run the configured experiment required by the plan."),
+        ))
     if "reproducer" in wants:
-        optional.append(("reproducer", experiment_spec.id if experiment_spec else None))
+        optional.append(("reproducer", experiment_spec.id if experiment_spec else None, objectives["reproducer"]))
     if "analyst" in wants:
-        optional.append(("analyst", None))
+        optional.append(("analyst", None, objectives["analyst"]))
 
     # Reserve one evidence reader first, then requested specialists, then additional sources.
     capacity = max(1, capacity)
     kept_optional = optional[: max(0, capacity - 1)]
-    for role, sid in optional[len(kept_optional):]:
+    for role, sid, _ in optional[len(kept_optional):]:
         rejected.append({"role": role, "source_id": sid, "reason": "task budget clamp"})
     reader_slots = max(1, capacity - len(kept_optional))
     kept_readers = readers[:reader_slots]
-    for sid in readers[len(kept_readers):]:
+    for sid, _ in readers[len(kept_readers):]:
         rejected.append({"role": "evidence_reader", "source_id": sid, "reason": "task budget clamp"})
 
     scout = [item for item in kept_optional if item[0] == "source_scout"]
     rest = [item for item in kept_optional if item[0] != "source_scout"]
-    middle = [*scout, *(("evidence_reader", sid) for sid in kept_readers), *rest]
+    middle = [*scout, *(("evidence_reader", sid, objective) for sid, objective in kept_readers), *rest]
     return middle, rejected
 
 
@@ -715,12 +723,23 @@ def run_project(
         )
         steps: list[WorkflowStep] = [planner_step]
         selected: list[dict] = []
-        for role, source_id in middle:
+        def assigned(step: WorkflowStep, objective: str) -> WorkflowStep:
+            """Keep the user's objective authoritative while retaining the planner's bounded assignment."""
+
+            def build(previous, task_id, attempt_id):
+                packet = step.build_packet(previous, task_id, attempt_id)
+                return packet.model_copy(update={
+                    "objective": f"{packet.objective}\n\nPlanner assignment: {objective}"
+                })
+
+            return WorkflowStep(role=step.role, build_packet=build)
+
+        for role, source_id, objective in middle:
             if role == "evidence_reader":
-                steps.append(reader_steps[source_id])
+                steps.append(assigned(reader_steps[source_id], objective))
             else:
-                steps.append(specialist_steps[role])
-            selected.append({"role": role, "source_id": source_id})
+                steps.append(assigned(specialist_steps[role], objective))
+            selected.append({"role": role, "source_id": source_id, "objective": objective})
         steps += [
             WorkflowStep(role="writer", build_packet=writer_packet),
             WorkflowStep(role="reviewer", build_packet=reviewer_packet),

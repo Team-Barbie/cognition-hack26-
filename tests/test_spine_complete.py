@@ -281,8 +281,10 @@ def test_end_to_end_idempotency_key_reuses_completed_run(tmp_path):
 class DynamicResearchAgent:
     def __init__(self):
         self.fake = FakeAgent()
+        self.packets = {}
 
     def run(self, role, packet):
+        self.packets.setdefault(role, []).append(packet)
         result = self.fake.run(role, packet)
         if role != "planner":
             return result
@@ -322,7 +324,11 @@ timeout_seconds: 60
         encoding="utf-8",
     )
 
-    assert run_project(project, DynamicResearchAgent()) is RunOutcome.COMPLETED
+    agent = DynamicResearchAgent()
+    assert run_project(project, agent) is RunOutcome.COMPLETED
+
+    assert "Planner assignment: Develop a falsifiable explanation." in agent.packets["theorist"][0].objective
+    assert "Planner assignment: Compare the recorded runs." in agent.packets["analyst"][0].objective
 
     conn = connect(project)
     try:

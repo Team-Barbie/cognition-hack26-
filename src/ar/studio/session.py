@@ -36,7 +36,12 @@ DEMO_BRIEF = Brief(
 )
 ROLE_TITLES = {
     "planner": "Planner",
+    "source_scout": "Source scout",
     "evidence_reader": "Reader",
+    "theorist": "Theorist",
+    "experiment_runner": "Experiment runner",
+    "reproducer": "Reproducer",
+    "analyst": "Analyst",
     "writer": "Writer",
     "reviewer": "Reviewer",
 }
@@ -116,6 +121,14 @@ class StageAgent:
             n = len(packet.claim_items())
             extra = f", addressing {len(packet.review_feedback)} review findings" if packet.review_feedback else ""
             return f"Drafting from {n} claims{extra}"
+        if role == "source_scout":
+            return f"Screening {len(packet.available_sources)} candidate sources"
+        if role == "theorist":
+            return f"Building hypotheses from {len(packet.claim_items())} accepted claims"
+        if role in {"experiment_runner", "reproducer"}:
+            return "Running the configured experiment" if role == "experiment_runner" else "Repeating the configured experiment"
+        if role == "analyst":
+            return "Interpreting recorded experiment outputs"
         if role == "reviewer":
             return "Checking the draft"
         return "Working"
@@ -139,6 +152,18 @@ class StageAgent:
             if p.get("relevant") is False:
                 return "Not relevant, no claims"
             return f"Proposed {len(result.claims)} claim{'s' if len(result.claims) != 1 else ''}"
+        if role == "source_scout":
+            screened = p.get("screened", [])
+            return f"Screened {len(screened)} source{'s' if len(screened) != 1 else ''}"
+        if role == "theorist":
+            hypotheses = p.get("hypotheses", [])
+            return f"Proposed {len(hypotheses)} testable hypothes{'is' if len(hypotheses) == 1 else 'es'}"
+        if role in {"experiment_runner", "reproducer"}:
+            record = p.get("analysis_record", {})
+            return f"{record.get('run_id', 'Run')} {record.get('status', 'recorded')}"
+        if role == "analyst":
+            observations = p.get("observations", [])
+            return f"Interpreted {len(observations)} observation{'s' if len(observations) != 1 else ''}"
         if role == "writer":
             cited = len(set(CITATION.findall(p.get("content_markdown", ""))))
             return f"Draft ready, {cited} claims cited"

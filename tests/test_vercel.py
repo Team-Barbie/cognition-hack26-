@@ -25,6 +25,9 @@ def test_vercel_app_serves_the_studio_page_and_a_demo_session(tmp_path, monkeypa
     assert page.status_code == 200
     assert "<title>Res Loop</title>" in page.text
     assert "https://" not in page.text and "http://" not in page.text
+    for role in ("source_scout", "theorist", "experiment_runner", "reproducer", "analyst"):
+        assert role in page.text
+    assert 'e.event === "planner_proposals"' in page.text
 
     created = client.post("/api/session", json={})
     assert created.status_code == 200
