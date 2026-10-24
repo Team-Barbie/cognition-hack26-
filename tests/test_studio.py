@@ -84,7 +84,7 @@ def test_live_intake_falls_back_to_the_script_when_the_model_fails():
     intake = Intake(client=Scripted(RuntimeError("offline")))
     reply = intake.reply("Is X safe?")
     assert intake.client is None and intake.brief.question == "Is X safe?"
-    assert reply.startswith("What's the context")
+    assert reply.startswith("What's it for")
 
 
 def test_sources_are_named_validated_and_deduplicated(tmp_path):
@@ -127,7 +127,7 @@ def test_demo_mode_refuses_sources_the_fake_agent_cannot_read(tmp_path):
     s = Session(tmp_path, None)
     s.use_demo()
     s.add_source("mine.md", "my own paper")
-    with pytest.raises(ValueError, match="demo mode"):
+    with pytest.raises(ValueError, match="Demo mode"):
         s.start()
 
 
@@ -141,7 +141,7 @@ def test_demo_run_shows_every_agent_and_a_verified_report(tmp_path):
     assert {"orchestrator", "planner", "reader:paper-a", "reader:paper-b", "reader:paper-c",
             "writer:1", "reviewer", "quality"} <= set(cards)
     assert all(cards[c]["status"] == "done" for c in cards)
-    assert cards["reader:paper-c"]["detail"] == "Off-topic for this question; no claims"
+    assert cards["reader:paper-c"]["detail"] == "Not relevant, no claims"
     assert cards["planner"]["packet"]["reads"][0]["label"] == "brief"
     assert cards["reader:paper-b"]["packet"]["reads"][0]["receipt"].startswith("read-")
     assert len(cards["writer:1"]["packet"]["dependencies"]) == 2
@@ -156,7 +156,7 @@ def test_demo_run_shows_every_agent_and_a_verified_report(tmp_path):
     assert any(row["n"] == 7 and "Excluding short series" in row["text"] for row in proof["window"])
     assert proof["receipt"]["id"].startswith("read-") and proof["receipt"]["start"] == 1
     assert {x["id"]: x["cited"] for x in r["sources"]} == {"paper-a": True, "paper-b": True, "paper-c": False}
-    assert s.events[-1]["type"] == "chat" and "Research completed" in s.events[-1]["text"]
+    assert s.events[-1]["type"] == "chat" and s.events[-1]["text"].startswith("Done. 2 claims in the report")
 
 
 def test_http_api_runs_a_demo_end_to_end(tmp_path):
@@ -241,7 +241,7 @@ def test_scout_with_nothing_usable_stops_honestly(tmp_path):
     s.start()
     s.wait(30)
     assert s.status == "failed" and not s.sources
-    assert "could not write background notes" in [e for e in s.events if e["type"] == "chat"][-1]["text"]
+    assert "couldn't write notes" in [e for e in s.events if e["type"] == "chat"][-1]["text"]
 
 
 def test_demo_mode_without_sources_loads_the_demo_papers(tmp_path):
