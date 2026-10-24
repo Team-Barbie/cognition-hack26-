@@ -70,7 +70,7 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
             conn.execute("ALTER TABLE review_findings ADD COLUMN origin TEXT NOT NULL DEFAULT 'reviewer'")
 
 
-def runtime_findings(conn: sqlite3.Connection, content: str) -> list[ReviewFinding]:
+def runtime_findings(conn: sqlite3.Connection, content: str, scope: list[str] | None = None) -> list[ReviewFinding]:
     """Checks the runtime can decide without judgment. Each one is blocking."""
     if not content.strip():
         return [ReviewFinding(severity="blocking", message="The draft is empty.")]
@@ -86,7 +86,7 @@ def runtime_findings(conn: sqlite3.Connection, content: str) -> list[ReviewFindi
             message=f"Contradicting evidence [claim:{cid}] is not cited or addressed.",
             claim_id=cid,
         )
-        for cid in contradicting_claims(conn)
+        for cid in contradicting_claims(conn, scope)
         if cid not in cited
     ]
     return out
@@ -109,7 +109,7 @@ def gate(
     if reviewer_task is not None and reviewer_task == artifact.producing_task:
         raise ValueError(f"self review: {reviewer_task} wrote {artifact.artifact_id} and cannot review it")
 
-    extra = runtime_findings(conn, content) if content is not None else []
+    extra = runtime_findings(conn, content, artifact.depends_on or None) if content is not None else []
     seen = {f.message for f in review.findings}
     extra = [f for f in extra if f.message not in seen]
 

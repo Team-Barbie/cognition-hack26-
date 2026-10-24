@@ -348,3 +348,13 @@ def test_answer_key_check_catches_a_cited_miss(project):
     problems = check_answer_key(conn, "- [claim:claim-1]", KEY)
     assert "paper-c is off-topic but is cited" in problems
     assert any(p.startswith("paper-a: expected supports") for p in problems)
+
+
+def test_requirement_may_map_to_several_sections(project):
+    _, conn, b = project
+    _two_claims(conn, b)
+    review.gate(conn, _review(), artifact=_art(GOOD), reviewer_task="t-review")
+    a = _assess(conn, coverage={"req-1": "Supported baseline; Contradictions", "req-2": "Contradictions"})
+    assert a.complete and a.rows[0].claim_ids == ["claim-1", "claim-2"]
+    a = _assess(conn, coverage={"req-1": "Supported baseline; Nowhere", "req-2": "Contradictions"})
+    assert not a.complete and any("'Nowhere'" in p for p in a.problems)

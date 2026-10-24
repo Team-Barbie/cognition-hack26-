@@ -4,13 +4,42 @@ from __future__ import annotations
 
 import json
 import os
+import ssl
 import urllib.error
 import urllib.request
 
 from ar.adapter import AdapterError
 
 DEFAULT_BASE_URL = "https://api.openai.com/v1"
-DEFAULT_MODEL = "gpt-4o"
+DEFAULT_MODEL = "gpt-5.6-terra"
+
+
+def _tls_context() -> ssl.SSLContext:
+    """The OS trust store when available; python.org builds on macOS ship no CA bundle."""
+    try:
+        import truststore  # installed with the anthropic SDK
+
+        return truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    except ImportError:
+        pass
+    try:
+        import certifi
+
+        return ssl.create_default_context(cafile=certifi.where())
+    except ImportError:
+        return ssl.create_default_context()
+
+
+_tls_installed = False
+
+
+def _install_tls_opener() -> None:
+    """Make urllib verify HTTPS against the OS trust store, once per process."""
+    global _tls_installed
+    if not _tls_installed:
+        handler = urllib.request.HTTPSHandler(context=_tls_context())
+        urllib.request.install_opener(urllib.request.build_opener(handler))
+        _tls_installed = True
 
 
 class OpenAICompatClient:
@@ -51,10 +80,16 @@ class OpenAICompatClient:
             method="POST",
         )
         try:
+            if self.base_url.startswith("https://"):
+                _install_tls_opener()
             with urllib.request.urlopen(request, timeout=self.timeout) as response:
                 data = json.loads(response.read().decode("utf-8"))
             return data["choices"][0]["message"]["content"]
         except urllib.error.HTTPError as exc:
-            raise AdapterError(f"model endpoint returned HTTP {exc.code}") from exc
+            try:
+                detail = json.loads(exc.read()).get("error", {}).get("message", "")
+            except (ValueError, AttributeError, OSError):
+                detail = ""
+            raise AdapterError(f"model endpoint returned HTTP {exc.code}" + (f": {detail}" if detail else "")) from exc
         except (OSError, ValueError, KeyError, IndexError, TypeError) as exc:
             raise AdapterError(f"model call failed: {type(exc).__name__}") from exc

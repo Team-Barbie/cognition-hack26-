@@ -98,3 +98,20 @@ def test_cli_run_accepts_provider_openai(tmp_path, monkeypatch):
     assert seen["args"] == ("openai", "gpt-4o-mini", "medium", None)
     bad = CliRunner().invoke(cli.app, ["run", str(tmp_path / "p"), "--provider", "gemini"])
     assert bad.exit_code == 2
+
+
+def test_hosted_calls_verify_tls_with_the_os_trust_store(monkeypatch):
+    installed = []
+    monkeypatch.setattr(openai_client, "_tls_installed", False)
+    monkeypatch.setattr(openai_client.urllib.request, "install_opener", installed.append)
+
+    def fake_urlopen(request, timeout=None):
+        raise OSError("offline")
+
+    monkeypatch.setattr(openai_client.urllib.request, "urlopen", fake_urlopen)
+    client = openai_client.OpenAICompatClient(api_key="k")
+    for _ in range(2):
+        with pytest.raises(AdapterError):
+            client.complete("s", "u")
+    assert len(installed) == 1  # installed once, then reused
+    assert client.model == "gpt-5.6-terra"
