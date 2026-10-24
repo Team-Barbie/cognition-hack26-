@@ -3,7 +3,7 @@ name = "ar"
 version = "0.1.0"
 description = "Autoresearch with explicit contracts and specialized agents"
 requires-python = ">=3.12"
-dependencies = ["anthropic>=1.0", "pydantic>=2.6", "pyyaml>=6.0", "typer>=0.12"]
+dependencies = ["anthropic>=1.0", "fastapi>=0.117", "pydantic>=2.6", "pyyaml>=6.0", "typer>=0.12"]
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]
@@ -21,6 +21,9 @@ where = ["src"]
 [tool.setuptools.package-data]
 ar = ["fixtures/**/*.json"]
 "ar.studio" = ["app.html"]
+
+[tool.vercel]
+entrypoint = "app:app"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

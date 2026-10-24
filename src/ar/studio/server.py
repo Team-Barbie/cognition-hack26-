@@ -17,6 +17,8 @@ from ar.studio.session import Session
 
 MAX_BODY = 1_000_000
 DEFAULT_WORKDIR = Path.home() / ".ar-studio" / "projects"
+_PAGE: bytes | None = None
+_VERCEL: Studio | None = None
 
 
 class Studio:
@@ -58,9 +60,74 @@ class Studio:
         return session
 
 
-def make_handler(studio: Studio) -> type[BaseHTTPRequestHandler]:
-    page = files("ar.studio").joinpath("app.html").read_text(encoding="utf-8")
+def studio_page() -> bytes:
+    global _PAGE
+    if _PAGE is None:
+        _PAGE = files("ar.studio").joinpath("app.html").read_text(encoding="utf-8").encode("utf-8")
+    return _PAGE
 
+
+def _json(data: Any, status: int = 200) -> tuple[int, str, bytes]:
+    return status, "application/json", json.dumps(data).encode("utf-8")
+
+
+def handle(studio: Studio, method: str, path: str, query: str, raw_body: bytes) -> tuple[int, str, bytes]:
+    """One router for the local server and the Vercel app. Returns status, content type, body."""
+    if method == "GET":
+        if path in ("/", "/index.html"):
+            return 200, "text/html; charset=utf-8", studio_page()
+        if path == "/api/info":
+            return _json({"mode": studio.mode})
+        if path == "/api/events":
+            q = parse_qs(query)
+            try:
+                session = studio.get(q.get("id", [""])[0])
+                after = max(0, int(q.get("after", ["0"])[0]))
+            except (KeyError, ValueError) as exc:
+                return _json({"error": str(exc).strip("'")}, 400)
+            return _json({"events": session.since(after), "status": session.status})
+        return _json({"error": "not found"}, 404)
+
+    if method != "POST":
+        return _json({"error": "not found"}, 404)
+    if len(raw_body) > MAX_BODY:
+        return _json({"error": "request is too large (1 MB max)"}, 400)
+    try:
+        data = json.loads(raw_body or b"{}")
+        if not isinstance(data, dict):
+            raise ValueError("expected a JSON object")
+        if path == "/api/session":
+            created = studio.new_session()
+            return _json({"id": created.id, "mode": studio.mode})
+        session = studio.get(str(data.get("id", "")))
+        if path == "/api/chat":
+            session.chat(str(data.get("message", ""))[:8000])
+        elif path == "/api/source":
+            session.add_source(str(data.get("name", "source"))[:120], str(data.get("text", "")))
+        elif path == "/api/demo":
+            session.use_demo()
+        elif path == "/api/run":
+            session.start()
+        else:
+            return _json({"error": "not found"}, 404)
+        return _json({"ok": True})
+    except KeyError as exc:
+        return _json({"error": str(exc).strip("'\"")}, HTTPStatus.BAD_REQUEST)
+    except (ValueError, RuntimeError) as exc:
+        return _json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
+
+
+def vercel_studio() -> Studio:
+    """Process-wide studio. On Vercel the writable project dir is /tmp, and keys come from the environment."""
+    global _VERCEL
+    if _VERCEL is None:
+        workdir = Path("/tmp/ar-studio") if os.environ.get("VERCEL") else DEFAULT_WORKDIR
+        workdir.mkdir(parents=True, exist_ok=True)
+        _VERCEL = Studio(workdir)
+    return _VERCEL
+
+
+def make_handler(studio: Studio) -> type[BaseHTTPRequestHandler]:
     class Handler(BaseHTTPRequestHandler):
         server_version = "ar-studio"
 
@@ -76,63 +143,21 @@ def make_handler(studio: Studio) -> type[BaseHTTPRequestHandler]:
             self.end_headers()
             self.wfile.write(body)
 
-        def _json(self, data: Any, status: int = 200) -> None:
-            self._send(status, json.dumps(data).encode("utf-8"), "application/json")
-
-        def _body(self) -> dict[str, Any]:
-            length = int(self.headers.get("Content-Length") or 0)
+        def _dispatch(self, method: str) -> None:
+            url = urlparse(self.path)
+            length = int(self.headers.get("Content-Length") or 0) if method == "POST" else 0
             if length > MAX_BODY:
-                raise ValueError("request is too large (1 MB max)")
-            data = json.loads(self.rfile.read(length) or b"{}")
-            if not isinstance(data, dict):
-                raise ValueError("expected a JSON object")
-            return data
+                status, kind, payload = _json({"error": "request is too large (1 MB max)"}, 400)
+            else:
+                raw = self.rfile.read(length) if method == "POST" else b""
+                status, kind, payload = handle(studio, method, url.path, url.query, raw)
+            self._send(status, payload, kind)
 
         def do_GET(self) -> None:  # noqa: N802
-            url = urlparse(self.path)
-            if url.path in ("/", "/index.html"):
-                self._send(200, page.encode("utf-8"), "text/html; charset=utf-8")
-                return
-            if url.path == "/api/info":
-                self._json({"mode": studio.mode})
-                return
-            if url.path == "/api/events":
-                q = parse_qs(url.query)
-                try:
-                    session = studio.get(q.get("id", [""])[0])
-                    after = max(0, int(q.get("after", ["0"])[0]))
-                except (KeyError, ValueError) as exc:
-                    self._json({"error": str(exc).strip("'")}, 400)
-                    return
-                self._json({"events": session.since(after), "status": session.status})
-                return
-            self._json({"error": "not found"}, 404)
+            self._dispatch("GET")
 
         def do_POST(self) -> None:  # noqa: N802
-            path = urlparse(self.path).path
-            try:
-                data = self._body()
-                if path == "/api/session":
-                    s = studio.new_session()
-                    self._json({"id": s.id, "mode": studio.mode})
-                    return
-                session = studio.get(str(data.get("id", "")))
-                if path == "/api/chat":
-                    session.chat(str(data.get("message", ""))[:8000])
-                elif path == "/api/source":
-                    session.add_source(str(data.get("name", "source"))[:120], str(data.get("text", "")))
-                elif path == "/api/demo":
-                    session.use_demo()
-                elif path == "/api/run":
-                    session.start()
-                else:
-                    self._json({"error": "not found"}, 404)
-                    return
-                self._json({"ok": True})
-            except KeyError as exc:
-                self._json({"error": str(exc).strip("'\"")}, HTTPStatus.BAD_REQUEST)
-            except (ValueError, RuntimeError) as exc:
-                self._json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
+            self._dispatch("POST")
 
     return Handler
 
