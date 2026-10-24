@@ -129,7 +129,7 @@ canvas.px { image-rendering: pixelated; max-width: 100%; filter: drop-shadow(0 0
 .agent .tag { font: 800 10px var(--mono); letter-spacing: .14em; min-height: 1.2em; }
 .agent { --ac: var(--ph-2); }
 .agent.running { --ac: var(--acc); }
-.agent.ghost { color: var(--ph-4); opacity: .7; }
+.agent.ghost { color: var(--ph-2); opacity: 1; }
 .agent.live .tag { color: var(--ph-2); }
 .agent.running { animation: hop 1s ease-in-out infinite; }
 .agent.running .lbl { text-shadow: 0 0 8px currentColor; }
@@ -882,7 +882,7 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
     function paintAgent(key, frame) {
     const el = spines[key]; if (!el) return; const card = cards[key], st = card ? (card.status || "waiting") : "ghost", rows = SPR[ROLE_SPR[roleOf(key)]][frame & 1], cv = el._cv, S = 4;
     const w = rows[0].length * S, hh = rows.length * S; if (cv.width !== w) { cv.width = w; cv.height = hh; }
-    const ctx = cv.getContext("2d"); ctx.clearRect(0, 0, w, hh); ctx.fillStyle = st === "running" && !["orchestrator", "quality"].includes(roleOf(key)) ? ACC : "#b9f04a"; ctx.globalAlpha = st === "ghost" ? .22 : st === "waiting" ? .55 : 1; drawSprite(ctx, rows, 0, 0, S); ctx.globalAlpha = 1;
+    const ctx = cv.getContext("2d"); ctx.clearRect(0, 0, w, hh); ctx.fillStyle = st === "running" && !["orchestrator", "quality"].includes(roleOf(key)) ? ACC : "#b9f04a"; ctx.globalAlpha = st === "ghost" ? .65 : st === "waiting" ? .8 : 1; drawSprite(ctx, rows, 0, 0, S); ctx.globalAlpha = 1;
     if (st === "failed") { ctx.fillStyle = "#0c1207"; for (let i = 0; i < Math.min(w, hh); i += 2) { ctx.fillRect(i, i, 3, 3); ctx.fillRect(w - 3 - i, i, 3, 3); } }
     if (st === "done") { ctx.fillStyle = "#0c1207"; const cx = w - 12, cy = hh - 12; [[0, 4], [2, 6], [4, 8], [6, 6], [8, 4], [10, 2], [12, 0]].forEach(([x, y]) => ctx.fillRect(cx + x - 4, cy + y - 4, 3, 3)); }
   }
