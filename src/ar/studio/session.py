@@ -25,6 +25,7 @@ from ar.evidence import CITATION
 from ar.models import AgentResult, Role
 from ar.packet import Packet
 from ar.studio.intake import Brief, Intake
+from ar.web_search import search_crossref
 
 FIXTURE = Path(__file__).resolve().parents[3] / "fixtures" / "baselines"
 DEMO_BRIEF = Brief(
@@ -337,6 +338,14 @@ class Session:
 
     def source_list(self) -> list[dict[str, Any]]:
         return [{"id": k, "lines": len(v.splitlines())} for k, v in self.sources.items()]
+
+    def search_web(self, query: str, limit: int = 6) -> list[dict[str, Any]]:
+        """Find scholarly candidates without pretending their metadata is full-text evidence."""
+        results = [result.as_dict() for result in search_crossref(query, limit)]
+        self.emit("chat", role="assistant", who="Web search",
+                  text=(f"Found {len(results)} paper candidate{'s' if len(results) != 1 else ''}. "
+                        "These are catalogue details, not full papers—open a result and upload its text before the team cites it."))
+        return results
 
     # run
 

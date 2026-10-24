@@ -137,6 +137,12 @@ canvas.px { image-rendering: pixelated; max-width: 100%; filter: drop-shadow(0 0
 .paste input, .paste textarea { padding: 10px 12px; border: 1px solid var(--ph-3); border-radius: 10px; background: rgba(0,0,0,.4); color: var(--ph); font: 14px var(--mono); }
 .paste textarea { min-height: 100px; resize: vertical; }
 .paste input:focus, .paste textarea:focus { outline: none; border-color: var(--ph-hi); box-shadow: 0 0 14px var(--glow-s); }
+.web-results { display: grid; gap: 8px; }
+.web-result { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 5px 14px; padding: 11px 12px; border: 1px solid var(--ph-4); border-radius: 9px; background: rgba(0,0,0,.25); }
+.web-result b { color: var(--ph-hi); font-size: 14px; }
+.web-result small { color: var(--ph-2); font: 11px/1.45 var(--mono); }
+.web-result a { grid-row: 1 / span 2; grid-column: 2; align-self: center; }
+.web-note { margin: 0; color: var(--ph-3); font: 11px/1.45 var(--mono); }
 
 /* brief */
 .brief dl { margin: 0; display: grid; grid-template-columns: 130px minmax(0, 1fr); gap: 0 22px; }
@@ -353,6 +359,7 @@ mark { background: var(--acc); color: var(--ink); text-shadow: none; padding: 0 
             <label class="act" for="file" tabindex="0" id="upload-label">Upload</label>
             <input id="file" type="file" accept=".md,.txt,.markdown,text/plain,text/markdown" multiple hidden>
             <button class="act" id="paste-toggle" type="button">Paste text</button>
+            <button class="act" id="search-toggle" type="button">Search web</button>
             <button class="act" id="demo" type="button">Demo papers</button>
             <span class="sp"></span>
             <button class="go" id="start" type="button">Start</button>
@@ -361,6 +368,12 @@ mark { background: var(--acc); color: var(--ink); text-shadow: none; padding: 0 
             <input id="paste-name" placeholder="name, e.g. smith-2024" required aria-label="Source name">
             <textarea id="paste-text" placeholder="paste the text here" required aria-label="Source text"></textarea>
             <div><button class="act" type="submit">Add</button></div>
+          </form>
+          <form class="paste" id="web-search" hidden>
+            <input id="web-query" placeholder="paper topic or title" required minlength="3" maxlength="500" aria-label="Web search query">
+            <div><button class="act" id="web-submit" type="submit">Find papers</button></div>
+            <p class="web-note">Searches Crossref. Results are paper details only; upload the full text before running the research team.</p>
+            <div class="web-results" id="web-results" aria-live="polite"></div>
           </form>
         </div>
       </section>
@@ -1102,6 +1115,17 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
   stage.addEventListener("drop", async e => { e.preventDefault(); stage.classList.remove("drop"); await addFiles(e.dataTransfer.files); });
   $("paste-toggle").addEventListener("click", () => { $("paste").hidden = !$("paste").hidden; if (!$("paste").hidden) $("paste-name").focus(); });
   $("paste").addEventListener("submit", async e => { e.preventDefault(); try { const text = $("paste-text").value; snap.sources[(await api("/api/source", { name: $("paste-name").value, text })).id] = text; $("paste").reset(); $("paste").hidden = true; } catch (err) { toast(err.message); } });
+  $("search-toggle").addEventListener("click", () => { $("web-search").hidden = !$("web-search").hidden; if (!$("web-search").hidden) { $("web-query").value ||= state.question; $("web-query").focus(); } });
+  $("web-search").addEventListener("submit", async e => {
+    e.preventDefault(); const button = $("web-submit"), box = $("web-results"); button.disabled = true; button.textContent = "Searching"; box.replaceChildren();
+    try {
+      const data = await api("/api/search", { query: $("web-query").value });
+      if (!data.results.length) box.append(h("p", { class: "web-note" }, "No matching papers found. Try a broader search."));
+      for (const item of data.results) box.append(h("article", { class: "web-result" },
+        h("b", {}, item.title), h("small", {}, `${item.authors} · ${item.year || "year unknown"} · ${item.publisher}`),
+        item.url ? h("a", { class: "act", href: item.url, target: "_blank", rel: "noopener noreferrer" }, "Open") : null));
+    } catch (err) { toast(err.message); } finally { button.disabled = false; button.textContent = "Find papers"; }
+  });
   const useDemo = async () => { try { await api("/api/demo", {}); snap.demo = true; } catch (err) { toast(err.message); } };
   $("demo").addEventListener("click", useDemo); $("chip-demo").addEventListener("click", useDemo); $("chip-start").addEventListener("click", () => $("start").click());
   $("chat-fab").addEventListener("click", () => openChat(true)); $("chat-close").addEventListener("click", () => openChat(false));

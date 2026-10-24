@@ -83,6 +83,8 @@ def _rate_limit(client_id: str | None, path: str) -> tuple[int, str, bytes] | No
         rules.append((client_id, "session", 12, 60.0))
     elif path == "/api/run":
         rules.append((client_id, "run", 6, 600.0))
+    elif path == "/api/search":
+        rules.append((client_id, "search", 20, 60.0))
     elif path == "/api/events/stream":
         rules.append((client_id, "stream", 20, 60.0))
     retry_after = _RATE_LIMITER.check(rules)
@@ -255,6 +257,8 @@ def handle(studio: Studio, method: str, path: str, query: str, raw_body: bytes,
             session.remove_source(str(data.get("source", "")))
         elif path == "/api/demo":
             session.use_demo()
+        elif path == "/api/search":
+            reply["results"] = session.search_web(str(data.get("query", ""))[:500])
         elif path == "/api/run":
             session.start()
         else:
