@@ -1,0 +1,23 @@
+{
+  "expected_citations": 2,
+  "sources": {
+    "paper-a": {
+      "relevant": true,
+      "relation": "supports",
+      "statement": "Seasonal naive is a supported default baseline for weekly demand series.",
+      "locator": {"start": 7, "end": 7},
+      "quote": "We therefore recommend seasonal naive as the default baseline for weekly demand."
+    },
+    "paper-b": {
+      "relevant": true,
+      "relation": "contradicts",
+      "statement": "Excluding series shorter than 52 weeks is unnecessary and discards usable data.",
+      "locator": {"start": 7, "end": 7},
+      "quote": "Excluding short series therefore discards usable data and biases results toward mature products."
+    },
+    "paper-c": {
+      "relevant": false,
+      "note": "Uses the words baseline and exclusion in a clinical trial; unrelated."
+    }
+  }
+}
