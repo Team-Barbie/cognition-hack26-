@@ -389,6 +389,10 @@ class Session:
                   text=f"No sources, so I wrote {len(added)} notes from the model's own knowledge. They're labelled that way. "
                        "Treat anything cited from them as unchecked.")
 
+    @property
+    def running(self) -> bool:
+        return bool(self._thread and self._thread.is_alive())
+
     def wait(self, timeout: float | None = None) -> None:
         if self._thread:
             self._thread.join(timeout)
