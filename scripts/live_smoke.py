@@ -1,8 +1,10 @@
 """Run the evidence reader live on the baselines fixture and check it against the answer key.
 
-Needs AR_API_KEY and AR_MODEL (optionally AR_BASE_URL). Not part of pytest: it calls a real model.
+Pass --base-url/--model/--api-key, or set AR_BASE_URL/AR_MODEL/AR_API_KEY. A local
+OpenAI-compatible server (e.g. Ollama) needs no key. Not part of pytest: it calls a model.
 """
 
+import argparse
 import json
 import sys
 from pathlib import Path
@@ -10,7 +12,7 @@ from pathlib import Path
 ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 
-from ar.adapter import LiveAgent, OpenAICompatClient  # noqa: E402
+from ar.adapter import DEFAULT_BASE_URL, LiveAgent, OpenAICompatClient  # noqa: E402
 from ar.models import LineSelector, SourceRef  # noqa: E402
 from ar.packet import DeliveredRead, Packet  # noqa: E402
 
@@ -19,7 +21,18 @@ FIXTURE = ROOT / "fixtures" / "baselines"
 
 def main() -> int:
     key = json.loads((FIXTURE / "answer_key.json").read_text())
-    agent = LiveAgent(OpenAICompatClient.from_env())
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--base-url")
+    parser.add_argument("--model")
+    parser.add_argument("--api-key")
+    args = parser.parse_args()
+    if args.base_url or args.model or args.api_key:
+        client = OpenAICompatClient(
+            args.base_url or DEFAULT_BASE_URL, args.api_key or "", args.model or ""
+        )
+    else:
+        client = OpenAICompatClient.from_env()
+    agent = LiveAgent(client)
     failures = 0
     for source_id, entry in key["sources"].items():
         text = (FIXTURE / "input" / "papers" / f"{source_id}.md").read_text()

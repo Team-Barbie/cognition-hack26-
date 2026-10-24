@@ -44,13 +44,14 @@ class OpenAICompatClient:
 
     @classmethod
     def from_env(cls) -> OpenAICompatClient:
-        key = os.environ.get("AR_API_KEY")
-        if not key:
+        base_url = os.environ.get("AR_BASE_URL", DEFAULT_BASE_URL)
+        key = os.environ.get("AR_API_KEY", "")
+        if not key and base_url.rstrip("/") == DEFAULT_BASE_URL:
             raise AdapterError("AR_API_KEY is not set")
         model = os.environ.get("AR_MODEL")
         if not model:
             raise AdapterError("AR_MODEL is not set")
-        return cls(os.environ.get("AR_BASE_URL", DEFAULT_BASE_URL), key, model)
+        return cls(base_url, key, model)
 
     def complete(self, system: str, user: str) -> str:
         body = {
@@ -67,7 +68,7 @@ class OpenAICompatClient:
             data=json.dumps(body).encode("utf-8"),
             headers={
                 "Content-Type": "application/json",
-                "Authorization": f"Bearer {self._api_key}",
+                **({"Authorization": f"Bearer {self._api_key}"} if self._api_key else {}),
             },
             method="POST",
         )
