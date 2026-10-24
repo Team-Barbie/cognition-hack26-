@@ -78,42 +78,7 @@ Reply with ONE JSON object and nothing else:
 
 def packet_view(packet: Packet) -> dict[str, Any]:
     """A JSON-safe audit view of the exact context dispatched to one agent attempt."""
-    reads = []
-    for read in packet.reads:
-        reads.append({
-            "label": read.label,
-            "source": read.source_ref.source_id,
-            "revision": read.source_ref.revision,
-            "start": read.selector.start,
-            "end": read.selector.end,
-            "receipt": read.read_receipt_id,
-            "lines": [
-                {"n": read.selector.start + offset, "text": line}
-                for offset, line in enumerate(read.content.splitlines())
-            ],
-        })
-    dependencies = []
-    for dep in packet.dependencies:
-        dependencies.append({
-            "kind": dep.kind,
-            "id": dep.id,
-            "revision": dep.revision,
-            "content": dep.content,
-            "claim": dep.claim.model_dump(mode="json") if dep.claim else None,
-        })
-    return {
-        "id": packet.packet_id,
-        "task": packet.task_id,
-        "attempt": packet.attempt_id,
-        "role": packet.role,
-        "objective": packet.objective,
-        "requirements": [requirement.model_dump(mode="json") for requirement in packet.requirements],
-        "reads": reads,
-        "dependencies": dependencies,
-        "available_sources": [source.model_dump(mode="json") for source in packet.available_sources],
-        "review_feedback": list(packet.review_feedback),
-        "skills": list(packet.skills),
-    }
+    return packet.audit_view()
 
 
 def _slug(name: str) -> str:
@@ -154,6 +119,13 @@ class StageAgent:
         return "Working"
 
     @staticmethod
+    def prepare_packet(role: Role, packet: Packet) -> Packet:
+        """Apply Studio scope guidance before the controller journals the dispatch."""
+        if role in ROLES_WITH_SCOPE:
+            return packet.model_copy(update={"objective": f"{packet.objective}\n\n{SCOPE_NOTE}"})
+        return packet
+
+    @staticmethod
     def _done_detail(role: Role, result: AgentResult) -> str:
         p = result.payload
         if result.outcome != "produced":
@@ -175,13 +147,7 @@ class StageAgent:
         return "Done"
 
     def run(self, role: Role, packet: Packet) -> AgentResult:
-        card, title = self._card(role, packet)
-        if role in ROLES_WITH_SCOPE:
-            packet = packet.model_copy(update={"objective": f"{packet.objective}\n\n{SCOPE_NOTE}"})
-        # The audit view shows the packet exactly as dispatched, scope note included.
-        self.session.agent(card, role=role, title=title, status="running", detail=self._start_detail(role, packet),
-                           packet=packet_view(packet))
-        self.session.agent("orchestrator", status="running", detail=f"Dispatched {title}")
+        _, title = self._card(role, packet)
         try:
             result = self.inner.run(role, packet)
             if role == "planner" and result.outcome != "produced" and result.proposed_tasks:
@@ -190,14 +156,12 @@ class StageAgent:
                 plan = ResearchPlan(rationale="Plan proposed. Inputs the planner asked for are listed as open questions.")
                 result = result.model_copy(update={"outcome": "produced", "payload": plan.model_dump()})
             if result.outcome != "produced":  # live models occasionally balk; one retry
-                self.session.agent(card, status="running", detail=f"Retrying once after: {result.outcome.replace('_', ' ')}")
                 again = packet
                 if role == "writer":
                     again = packet.model_copy(update={"review_feedback": [*packet.review_feedback, RETRY_NUDGE]})
                 retry = self.inner.run(role, again)
                 result = retry.model_copy(update={"model_calls": retry.model_calls + result.model_calls})
-        except Exception as exc:
-            self.session.agent(card, status="failed", detail=f"Error: {exc}")
+        except Exception:
             raise
         skipped = role == "evidence_reader" and result.outcome != "produced"
         if skipped:
@@ -209,10 +173,7 @@ class StageAgent:
             result = AgentResult(role=role, task_id=packet.task_id, outcome="produced", model_calls=result.model_calls,
                                  payload={"source_id": label, "relevant": False, "summary": f"Skipped: {reason}"},
                                  limitations=[note], unresolved=result.unresolved)
-        status = "failed" if skipped or result.outcome != "produced" else "done"
-        detail = "Skipped after two attempts; the run continues without this source" if skipped else self._done_detail(role, result)
         questions = [q for q in result.unresolved if q.strip()][:4]
-        self.session.agent(card, status=status, detail=detail, calls=result.model_calls, questions=questions)
         for q in questions[:2]:
             self.session.open_questions.setdefault(q, title)
         return result
@@ -222,6 +183,8 @@ class Session:
     def __init__(self, workdir: Path, make_agent: Callable[[], Any] | None, client=None) -> None:
         self.id = uuid.uuid4().hex[:12]
         self.root = workdir / self.id
+        self.root.mkdir(parents=True, exist_ok=True)
+        self.event_database = self.root / "studio-events.sqlite"
         self.make_agent = make_agent  # None means demo mode with the fake agent
         self.client = client  # live chat client for intake and the scout; None in demo mode
         self.intake = Intake(client=client)
@@ -234,7 +197,9 @@ class Session:
         self.report: dict[str, Any] | None = None
         self.runs = 0
         self._lock = threading.Lock()
+        self._events_ready = threading.Condition(self._lock)
         self._thread: threading.Thread | None = None
+        self._init_event_journal()
         self.emit("chat", role="assistant", who="Intake", text=self.intake.opening())
         if make_agent is None:
             self.emit("chat", role="assistant", who="Intake",
@@ -242,9 +207,39 @@ class Session:
 
     # feed
 
+    def _init_event_journal(self) -> None:
+        conn = sqlite3.connect(self.event_database)
+        try:
+            with conn:
+                conn.execute("PRAGMA journal_mode=WAL")
+                conn.execute(
+                    """CREATE TABLE IF NOT EXISTS studio_events (
+                           seq INTEGER PRIMARY KEY AUTOINCREMENT,
+                           emitted_at REAL NOT NULL,
+                           payload_json TEXT NOT NULL
+                       )"""
+                )
+        finally:
+            conn.close()
+
     def emit(self, kind: str, /, **data: Any) -> None:
-        with self._lock:
-            self.events.append({"seq": len(self.events) + 1, "t": round(time.time(), 3), "type": kind, **data})
+        emitted_at = round(time.time(), 3)
+        payload = {"t": emitted_at, "type": kind, **data}
+        encoded = json.dumps(payload, separators=(",", ":"), ensure_ascii=False)
+        with self._events_ready:
+            conn = sqlite3.connect(self.event_database)
+            try:
+                with conn:
+                    cursor = conn.execute(
+                        "INSERT INTO studio_events (emitted_at, payload_json) VALUES (?, ?)",
+                        (emitted_at, encoded),
+                    )
+                    seq = int(cursor.lastrowid)
+            finally:
+                conn.close()
+            event = {"seq": seq, **payload}
+            self.events.append(event)
+            self._events_ready.notify_all()
 
     def agent(self, card: str, **fields: Any) -> None:
         with self._lock:
@@ -254,8 +249,24 @@ class Session:
         self.emit("agent", **snapshot)
 
     def since(self, after: int) -> list[dict[str, Any]]:
-        with self._lock:
-            return self.events[after:]
+        conn = sqlite3.connect(self.event_database)
+        try:
+            rows = conn.execute(
+                "SELECT seq, payload_json FROM studio_events WHERE seq > ? ORDER BY seq",
+                (after,),
+            ).fetchall()
+        finally:
+            conn.close()
+        return [{"seq": int(seq), **json.loads(payload)} for seq, payload in rows]
+
+    def wait_since(self, after: int, timeout: float = 15.0) -> list[dict[str, Any]]:
+        """Wait for the next durable events; used by the SSE transport."""
+        with self._events_ready:
+            events = self.since(after)
+            if events:
+                return events
+            self._events_ready.wait(timeout)
+        return self.since(after)
 
     # intake and sources
 
@@ -392,11 +403,6 @@ class Session:
                 self.emit("chat", role="assistant", who="Orchestrator",
                           text=f"The scout couldn't write notes ({exc}). Add a paper and press Start again.")
                 return
-        n = len(self.sources)
-        self.agent("orchestrator", role="orchestrator", title="Orchestrator", status="running",
-                   detail=f"Team: Planner → {n} Reader{'s' if n != 1 else ''} → Writer → Reviewer → Quality gate")
-        self.agent("quality", role="quality", title="Quality gate", status="waiting",
-                   detail="Checks every quote against the lines each reader was given")
         stop = threading.Event()
         watcher = threading.Thread(target=self._watch, args=(project, stop), daemon=True)
         try:
@@ -416,21 +422,13 @@ class Session:
         self.report = build_report(project, status, self.open_questions)
         self.report["limitations"] = [*self.skipped, *self.report["limitations"]]
         self.status = "done" if status == "completed" else status
-        ok = status == "completed"
-        self.agent("orchestrator", status="done" if ok else "failed", detail=f"Run {status.replace('_', ' ')}")
-        self.agent("quality", status="done" if ok else "failed",
-                   detail=self._quality_line() + (", completion check passed" if ok else ", completion check not met"))
         self.emit("run", status=status, run=self.runs)
         self.emit("report", report=self.report)
         self.emit("chat", role="assistant", who="Orchestrator", text=_closing(self.report))
 
     # quality feed
 
-    _seen = (0, 0, 0)
-
-    def _quality_line(self) -> str:
-        c, r, v = self._seen
-        return f"{c} claim{'s' if c != 1 else ''} accepted, {r} rejected, {v} review{'s' if v != 1 else ''}"
+    _seen = (0, 0, 0, 0)
 
     def _poll(self, project: Path) -> None:
         database = project / ".research" / "state.sqlite"
@@ -439,10 +437,18 @@ class Session:
         conn = sqlite3.connect(f"file:{database}?mode=ro", uri=True, timeout=1)
         conn.row_factory = sqlite3.Row
         try:
-            c0, r0, v0 = self._seen
+            c0, r0, v0, e0 = self._seen
             claims = _rows(conn, "SELECT id, statement, origin_task FROM claims ORDER BY rowid")
             rejected = _rows(conn, "SELECT id, code, reason, hint FROM claim_rejections ORDER BY seq")
             reviews = _rows(conn, "SELECT revision, disposition, decision FROM reviews ORDER BY id")
+            runtime_events = _rows(
+                conn,
+                "SELECT id, run_id, task_id, kind, payload_json, created_at FROM events WHERE id > ? ORDER BY id",
+                (e0,),
+            )
+            for event in runtime_events:
+                self.emit("runtime", event=event["kind"], run=event["run_id"], task=event["task_id"],
+                          payload=json.loads(event["payload_json"]), at=event["created_at"])
             for c in claims[c0:]:
                 self.emit("quality", kind="accepted", text=f"{c['id']} accepted: {c['statement']}")
             for r in rejected[r0:]:
@@ -450,14 +456,13 @@ class Session:
                 self.emit("quality", kind="rejected", text=text + (f" {r['hint']}" if r["hint"] else ""))
             for v in reviews[v0:]:
                 self.emit("quality", kind="review", text=f"Gate on r{v['revision']}: reviewer said {v['disposition']}, decided {v['decision']}")
-            self._seen = (len(claims), len(rejected), len(reviews))
-            if (len(claims), len(rejected), len(reviews)) != (c0, r0, v0):
-                self.agent("quality", status="running", detail=self._quality_line())
+            last_event = int(runtime_events[-1]["id"]) if runtime_events else e0
+            self._seen = (len(claims), len(rejected), len(reviews), last_event)
         finally:
             conn.close()
 
     def _watch(self, project: Path, stop: threading.Event) -> None:
-        self._seen = (0, 0, 0)
+        self._seen = (0, 0, 0, 0)
         while not stop.wait(0.4):
             try:
                 self._poll(project)
@@ -465,9 +470,9 @@ class Session:
                 continue
 
 
-def _rows(conn: sqlite3.Connection, sql: str) -> list[sqlite3.Row]:
+def _rows(conn: sqlite3.Connection, sql: str, params: tuple = ()) -> list[sqlite3.Row]:
     try:
-        return conn.execute(sql).fetchall()
+        return conn.execute(sql, params).fetchall()
     except sqlite3.OperationalError:  # table not created yet
         return []
 
