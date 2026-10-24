@@ -328,7 +328,7 @@ mark { background: var(--acc); color: var(--ink); text-shadow: none; padding: 0 
 <div id="screen">
   <header class="hud top">
     <span class="brand">Res Loop</span>
-    <nav aria-label="Sections"><a href="#hero">Workspace</a><a href="#brief">Brief</a><a href="#signal">Progress</a><a href="#report">Report</a></nav>
+    <nav aria-label="Sections"><a href="#hero">1 Workspace</a><a href="#brief">2 Brief</a><a href="#report">3 Report</a><a href="#signal">4 Progress</a></nav>
     <span class="sp"></span>
     <span class="hide-s">Session<b id="hud-sess">----</b></span>
     <span>Mode<b id="hud-mode">--</b></span>
@@ -349,7 +349,7 @@ mark { background: var(--acc); color: var(--ink); text-shadow: none; padding: 0 
       </section>
 
       <section class="win" id="stage" style="--d:1.45s" aria-label="Research workspace">
-        <div class="wbar"><span>Workspace</span><span id="stage-state">Ready</span></div>
+        <div class="wbar"><span>1 · Workspace</span><span id="stage-state">Ready</span></div>
         <div class="wbody" id="stage-body">
           <div class="shelfrow src" id="row-src" data-label="Source papers" role="list"></div>
           <div class="shelfrow team" id="row-team" data-label="Research team"></div>
@@ -379,28 +379,12 @@ mark { background: var(--acc); color: var(--ink); text-shadow: none; padding: 0 
       </section>
 
       <section class="win brief" id="brief" style="--d:1.55s" aria-label="Brief">
-        <div class="wbar"><span>Research brief</span><span id="ready">Needs input</span></div>
+        <div class="wbar"><span>2 · Research brief</span><span id="ready">Needs input</span></div>
         <div class="wbody"><dl id="brief-items"></dl></div>
       </section>
 
-      <section class="win signal" id="signal" style="--d:1.65s" aria-label="Live progress">
-        <div class="wbar"><span>Live progress</span><span id="sig-state">Waiting</span></div>
-        <div class="wbody">
-          <canvas id="dither" aria-hidden="true"></canvas>
-          <div class="sig-in">
-            <div class="sig-l"><div class="code" id="code" aria-live="off"></div></div>
-            <div class="sig-r">
-              <div><canvas class="px" id="stat-claims" aria-label="verified claims"></canvas><div class="cap">verified claims</div></div>
-              <div><canvas class="px" id="stat-rejected" aria-label="rejected evidence"></canvas><div class="cap">rejected evidence</div></div>
-              <div class="loadbar"><span id="load-label">Idle</span><div class="blocks" id="blocks"></div><span id="pct">0%</span></div>
-            </div>
-            <div class="sig-side" id="sig-date"></div>
-          </div>
-        </div>
-      </section>
-
       <section class="win hidden" id="report" aria-label="Report">
-        <div class="wbar"><span>Report</span><span><span id="report-outcome"></span> · <span id="report-meta"></span></span></div>
+        <div class="wbar"><span>3 · Report</span><span><span id="report-outcome"></span> · <span id="report-meta"></span></span></div>
         <div class="rbody">
           <h2 class="rtitle" id="report-title">Report</h2>
           <div class="tabs" role="tablist">
@@ -415,6 +399,22 @@ mark { background: var(--acc); color: var(--ink); text-shadow: none; padding: 0 
           <div class="pane" id="pane-evidence" hidden><ul class="list" id="claims"></ul></div>
           <div class="pane" id="pane-rejected" hidden><ul class="list" id="rejections"></ul></div>
           <div class="pane" id="pane-open" hidden><div class="rep-grid"><ul class="notes" id="open"></ul><ul class="notes" id="limits"></ul></div></div>
+        </div>
+      </section>
+
+      <section class="win signal" id="signal" style="--d:1.65s" aria-label="Live progress">
+        <div class="wbar"><span>4 · Live progress</span><span id="sig-state">Waiting</span></div>
+        <div class="wbody">
+          <canvas id="dither" aria-hidden="true"></canvas>
+          <div class="sig-in">
+            <div class="sig-l"><div class="code" id="code" aria-live="off"></div></div>
+            <div class="sig-r">
+              <div><canvas class="px" id="stat-claims" aria-label="verified claims"></canvas><div class="cap">verified claims</div></div>
+              <div><canvas class="px" id="stat-rejected" aria-label="rejected evidence"></canvas><div class="cap">rejected evidence</div></div>
+              <div class="loadbar"><span id="load-label">Idle</span><div class="blocks" id="blocks"></div><span id="pct">0%</span></div>
+            </div>
+            <div class="sig-side" id="sig-date"></div>
+          </div>
         </div>
       </section>
     </main>
