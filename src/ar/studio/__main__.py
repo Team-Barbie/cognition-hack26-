@@ -12,7 +12,7 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="ar studio", description="Open the research studio in your browser.")
+    parser = argparse.ArgumentParser(prog="ar studio", description="Open Res Loop, the research studio, in your browser.")
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--provider", choices=["openai", "anthropic"], help="default: whichever key is in .env")
     parser.add_argument("--model", help="model id (default: gpt-5.6-terra for openai)")
@@ -22,7 +22,7 @@ def main(argv: list[str] | None = None) -> int:
     httpd = serve(args.port, provider=args.provider, model=args.model, fake=args.fake,
                   env_files=(Path.cwd() / ".env", REPO_ROOT / ".env"))
     url = f"http://127.0.0.1:{httpd.server_address[1]}/"
-    print(f"Research studio: {url}  ({httpd.studio.mode})  Ctrl+C to stop")
+    print(f"Res Loop: {url}  ({httpd.studio.mode})  Ctrl+C to stop")
     if not args.no_browser:
         webbrowser.open(url)
     try:
