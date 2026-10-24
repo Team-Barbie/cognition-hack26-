@@ -20,6 +20,7 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 ar = ["fixtures/**/*.json"]
+"ar.studio" = ["app.html"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
