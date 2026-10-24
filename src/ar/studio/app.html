@@ -184,7 +184,6 @@ canvas.px { image-rendering: pixelated; max-width: 100%; filter: drop-shadow(0 0
 .rbody { padding: 28px 30px 34px; }
 .rtitle { margin: 0 0 4px; font: 800 clamp(20px, 2.4vw, 28px)/1.2 var(--mono); letter-spacing: .08em; text-transform: uppercase; text-shadow: 0 0 12px var(--glow); }
 #report.focus .rtitle { animation: focus 1s cubic-bezier(.2,.8,.2,1) backwards; }
-.rlede { max-width: 78ch; margin: 10px 0 0; color: var(--ph-2); font: 14px/1.65 var(--mono); }
 .report-overview { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 18px; }
 .report-stat { min-height: 86px; padding: 12px 14px; border: 1px solid var(--ph-4); border-radius: 10px; background: rgba(0,0,0,.18); display: grid; align-content: start; gap: 4px; }
 .report-stat .label { color: var(--ph-3); font: 800 10px var(--mono); letter-spacing: .16em; text-transform: uppercase; }
@@ -216,10 +215,6 @@ canvas.px { image-rendering: pixelated; max-width: 100%; filter: drop-shadow(0 0
 .cite.unknown { color: var(--ph-3); cursor: default; text-decoration: none; }
 .rail { display: grid; gap: 24px; align-content: start; padding: 18px; border: 1px dashed var(--ph-3); border-radius: 14px; }
 .rail-section { display: grid; gap: 7px; }
-.rail-copy { margin: 0; color: var(--ph-2); font: 11.5px/1.55 var(--mono); }
-.read-guide { margin: 0; padding-left: 1.5em; color: var(--ph-2); font: 11.5px/1.55 var(--mono); }
-.read-guide li { margin-top: 6px; padding-left: 3px; }
-.read-guide b { color: var(--ph-hi); }
 .layer { display: grid; grid-template-columns: minmax(0, 1fr) 46px; gap: 4px 10px; align-items: center; margin-top: 12px; }
 .layer .lbl { grid-column: 1 / -1; font: 12px var(--mono); overflow-wrap: anywhere; }
 .layer .bar { height: 14px; position: relative; overflow: hidden; background: repeating-linear-gradient(90deg, var(--ph-5) 0 8px, transparent 8px 11px); }
@@ -420,13 +415,11 @@ mark { background: rgba(185,240,74,.16); color: var(--ph-hi); border-bottom: 1px
         <div class="wbar"><span>3 · Report</span><span><span id="report-outcome"></span> · <span id="report-meta"></span></span></div>
         <div class="rbody">
           <h2 class="rtitle" id="report-title">Report</h2>
-          <p class="rlede" id="report-lede">A checked answer built from source-linked claims. Select any numbered citation to inspect the exact supporting text.</p>
           <div class="report-overview" aria-label="Report at a glance">
             <div class="report-stat"><span class="label">Review status</span><strong id="overview-status">—</strong><small id="overview-status-note">Quality gate result</small></div>
             <div class="report-stat"><span class="label">Evidence used</span><strong id="overview-evidence">—</strong><small id="overview-evidence-note">Verified claims and cited sources</small></div>
             <div class="report-stat"><span class="label">Known caveats</span><strong id="overview-caveats">—</strong><small id="overview-caveats-note">Open questions, limitations, and quality problems</small></div>
           </div>
-          <p class="subhead">Report views</p>
           <div class="tabs" role="tablist" aria-label="Report views">
             <button class="tab" role="tab" data-pane="report" aria-controls="pane-report" aria-selected="true">Answer</button>
             <button class="tab" role="tab" data-pane="evidence" aria-controls="pane-evidence" aria-selected="false">Verified evidence <span id="n-evidence"></span></button>
@@ -434,10 +427,9 @@ mark { background: rgba(185,240,74,.16); color: var(--ph-hi); border-bottom: 1px
             <button class="tab" role="tab" data-pane="open" aria-controls="pane-open" aria-selected="false">Gaps &amp; limits <span id="n-open"></span></button>
           </div>
           <div class="pane" id="pane-report"><div class="rep-grid"><article class="article" id="article"></article>
-            <aside class="rail" aria-label="How to read this report">
-              <div class="rail-section"><canvas class="px" id="report-n" aria-label="verified claims used in the answer"></canvas><div class="cap" id="report-cap">verified claims used</div><p class="rail-copy">These are source-linked statements that passed the evidence checks and appear in the answer.</p></div>
-              <div class="rail-section"><p class="hd">Evidence mix</p><p class="rail-copy">Share of citation links by source. This shows reliance, not source quality.</p><div id="layers"></div></div>
-              <div class="rail-section"><p class="hd">How to read it</p><ol class="read-guide"><li><b>Read the answer</b> for the recommendation.</li><li><b>Open a citation</b> to see its exact source lines.</li><li><b>Check gaps &amp; limits</b> before acting on the result.</li></ol></div>
+            <aside class="rail" aria-label="Report evidence summary">
+              <div class="rail-section"><canvas class="px" id="report-n" aria-label="verified claims used in the answer"></canvas><div class="cap" id="report-cap">verified claims used</div></div>
+              <div class="rail-section"><p class="hd">Evidence mix</p><div id="layers"></div></div>
             </aside></div></div>
           <div class="pane" id="pane-evidence" hidden><ul class="list" id="claims"></ul></div>
           <div class="pane" id="pane-rejected" hidden><ul class="list" id="rejections"></ul></div>
@@ -1078,7 +1070,6 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
     const citedSources = r.sources.filter(s => s.cited).length;
     const caveats = r.open_questions.length + r.limitations.length + r.problems.length;
     $("report-outcome").textContent = reportStatus(r.outcome); $("report-meta").textContent = `${r.sources.length} reviewed / ${r.rejections.length} rejected`;
-    $("report-lede").textContent = `${plural(r.cited.length, "verified claim")} ${r.cited.length === 1 ? "supports" : "support"} this answer, drawing on ${plural(citedSources, "cited source")}. Select any numbered citation to inspect the exact source text.`;
     $("overview-status").textContent = reportStatus(r.outcome);
     $("overview-status-note").textContent = r.outcome === "completed" ? "The final draft passed the research quality gate." : "The report may be unfinished; review the caveats before use.";
     $("overview-evidence").textContent = `${r.cited.length} claims / ${citedSources} sources`;
