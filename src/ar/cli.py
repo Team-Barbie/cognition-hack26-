@@ -61,6 +61,10 @@ def status(
     typer.echo(f"Project: {summary.project_id}")
     typer.echo(f"Runs: {summary.runs}")
     typer.echo(f"Tasks: {summary.tasks}")
+    if summary.latest_run_status:
+        typer.echo(f"Latest run: {summary.latest_run_status}")
+    for state, count in summary.task_states.items():
+        typer.echo(f"  {state}: {count}")
 
 
 @app.command("run")
