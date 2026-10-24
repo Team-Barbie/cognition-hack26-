@@ -13,7 +13,7 @@
   --red: #e0352b; --red-ink: #b8231b;
   --court: #63a7dc; --court-2: #569bd3; --court-line: rgba(255,255,255,.92); --court-shadow: rgba(17,58,112,.42);
   --p-orchestrator: #ffffff; --p-planner: #f6c343; --p-evidence_reader: #ff8a4c; --p-writer: #1f2d5c;
-  --p-reviewer: #e0352b; --p-quality: #2db36b;
+  --p-reviewer: #e0352b; --p-quality: #2db36b; --p-scout: #b98be0;
   --mark: #f7dc8b;
   --display: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
   --serif: "PT Serif", Charter, "Iowan Old Style", Georgia, serif;
@@ -303,7 +303,7 @@ mark { background: var(--mark); color: var(--ink); box-shadow: 0 2px 0 var(--red
     <section id="sources" data-sec="sources">
       <p class="kicker">02 · Sources</p>
       <h2 class="head">The reading list</h2>
-      <p class="dateline">The agents answer only from these. Upload or paste papers as plain text or markdown, or use the three demo papers.</p>
+      <p class="dateline">The agents answer only from these. Upload or paste papers as plain text or markdown, or use the three demo papers. Add nothing and the scout writes labelled background notes from the model's general knowledge instead.</p>
       <div style="margin-top:32px">
         <ul class="shelf" id="shelf"><li><span class="none">No sources yet.</span></li></ul>
         <div class="actions">
@@ -436,7 +436,7 @@ mark { background: var(--mark); color: var(--ink); box-shadow: 0 2px 0 var(--red
     for (const kid of kids.flat()) if (kid != null && kid !== false) el.append(kid instanceof Node ? kid : document.createTextNode(String(kid)));
     return el;
   }
-  const GLYPH = { orchestrator: "OR", planner: "PL", evidence_reader: "RD", writer: "WR", reviewer: "RV", quality: "QG" };
+  const GLYPH = { orchestrator: "OR", scout: "SC", planner: "PL", evidence_reader: "RD", writer: "WR", reviewer: "RV", quality: "QG" };
   const STATE_WORD = { running: "on the ball", done: "done", failed: "stopped", waiting: "waiting" };
   const LAYER_COLORS = ["#3b6fd6", "#e9c23a", "#e8664f", "#22306b", "#c8343a", "#5aa86b", "#7b5ea7", "#2a9bb3"];
   const state = { briefReady: false, sources: 0, running: false, reportShown: false };
@@ -478,7 +478,7 @@ mark { background: var(--mark); color: var(--ink); box-shadow: 0 2px 0 var(--red
     $("msgs").scrollTop = $("msgs").scrollHeight;
   }
   function addTurn(e, color) {
-    const kind = e.role === "user" ? "you" : (["Intake", "Orchestrator"].includes(e.who) ? "agent" : "team");
+    const kind = e.role === "user" ? "you" : (["Intake", "Orchestrator", "Res Loop", "Scout"].includes(e.who) ? "agent" : "team");
     if (kind !== "you") typing(false);
     const b = h("div", { class: `bubble ${kind}` }, h("span", { class: "who" }, e.who || "Agent"), h("p", {}, e.text));
     if (color) b.style.setProperty("--bc", color);
@@ -527,7 +527,6 @@ mark { background: var(--mark); color: var(--ink); box-shadow: 0 2px 0 var(--red
   }
   function missing() {
     if (!state.briefReady) return "First tell me what to research: type your question in the chat.";
-    if (!state.sources) return "Add at least one source: upload a paper or press Use demo papers.";
     return null;
   }
 
@@ -550,6 +549,7 @@ mark { background: var(--mark); color: var(--ink); box-shadow: 0 2px 0 var(--red
   function spot(id) {
     if (id === "orchestrator") return [24, 50];
     if (id === "planner") return [11, 24];
+    if (id === "scout") return [11, 76];
     if (id === "reviewer") return [74, 74];
     if (id === "quality") return [86, 50];
     if (id.startsWith("writer:")) { const n = +id.split(":")[1] || 1; return [62, 22 + (n - 1) * 18]; }

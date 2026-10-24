@@ -358,3 +358,22 @@ def test_requirement_may_map_to_several_sections(project):
     assert a.complete and a.rows[0].claim_ids == ["claim-1", "claim-2"]
     a = _assess(conn, coverage={"req-1": "Supported baseline; Nowhere", "req-2": "Contradictions"})
     assert not a.complete and any("'Nowhere'" in p for p in a.problems)
+
+
+def test_a_section_made_only_of_subsections_is_not_empty(project):
+    _, conn, b = project
+    _two_claims(conn, b)
+    draft = ("# Report\n\n## Supported baseline\n\n### Detail\n\n- A [claim:claim-1]\n\n"
+             "## Contradictions\n\n### Short series\n\n- paper-b says B [claim:claim-2]\n\n### Limits\n\nNone.\n")
+    review.gate(conn, _review(), artifact=_art(draft), reviewer_task="t-review")
+    a = _assess(conn, content=draft)
+    assert a.complete, a.problems
+    assert [(r.requirement_id, r.claim_ids) for r in a.rows] == [("req-1", ["claim-1"]), ("req-2", ["claim-2"])]
+
+
+def test_sections_stop_at_a_heading_of_the_same_or_higher_level():
+    from ar.completion import sections
+
+    found = sections("# T\n\n## A\n\ntext a\n\n### A1\n\nnested\n\n## B\n\ntext b\n")
+    assert "nested" in found["a"] and "text b" not in found["a"]
+    assert found["a1"].strip() == "nested" and found["b"].strip() == "text b"
