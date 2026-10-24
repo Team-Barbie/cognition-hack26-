@@ -39,6 +39,17 @@ The live stage is driven by a durable SQLite event journal. The runtime records 
 acceptance, and completion events; the browser consumes them over an authenticated server-sent event stream.
 `GET /api/events` remains as a reconnect fallback rather than the primary update loop.
 
+For local live mode, copy `.env.example` to `.env`, fill in `OPENAI_API_KEY` and
+`STUDIO_PASSWORD`, then restart Studio without `--fake`. The real `.env` is ignored by Git.
+For Vercel, add those same two names under the project's Environment Variables for every target you use
+(Production and, if needed, Preview), then redeploy. Never upload `.env` or expose either value through a
+client-side variable.
+
+The server rate-limits each client IP to 120 API requests per minute, with tighter caps of 12 new sessions
+per minute, 6 agent runs per 10 minutes, and 20 event-stream connections per minute. A rejected request
+returns HTTP 429 with `Retry-After`. This in-process layer limits accidental abuse and simple bots; use
+Vercel Firewall/WAF rules as the outer layer for distributed traffic and DDoS protection.
+
 ## The five-minute demo
 
 Run it in one go with `scripts/demo.ps1` (Windows) or `scripts/demo.sh`. Or step by step, from the repo root
