@@ -73,7 +73,7 @@ class AgentRunner(Protocol):
 
 PacketBuilder = Callable[[Sequence[AgentResult], str, str], Packet]
 PacketPreparer = Callable[[Role, Packet], Packet]
-NON_BLOCKING_RESEARCH_ROLES = frozenset({"source_scout", "theorist", "analyst"})
+NON_BLOCKING_RESEARCH_ROLES = frozenset({"source_scout", "research_agent", "theorist", "analyst"})
 
 
 @dataclass(frozen=True)
@@ -105,7 +105,8 @@ def _validate_workflow(steps: Sequence[WorkflowStep]) -> None:
     writer_index = roles.index("writer")
     reviewer_index = roles.index("reviewer")
     research_roles = {
-        "source_scout", "evidence_reader", "theorist", "experiment_runner", "reproducer", "analyst"
+        "source_scout", "evidence_reader", "research_agent", "theorist",
+        "experiment_runner", "reproducer", "analyst",
     }
     if any(role not in research_roles for role in roles[1:writer_index]):
         raise ValueError("only bounded research specialists may run between planner and writer")
@@ -113,7 +114,8 @@ def _validate_workflow(steps: Sequence[WorkflowStep]) -> None:
         if roles.count(singleton) > 1:
             raise ValueError(f"workflow may contain at most one {singleton}")
     order = {role: i for i, role in enumerate(
-        ("source_scout", "evidence_reader", "theorist", "experiment_runner", "reproducer", "analyst")
+        ("source_scout", "evidence_reader", "research_agent", "theorist",
+         "experiment_runner", "reproducer", "analyst")
     )}
     middle = roles[1:writer_index]
     if [order[role] for role in middle] != sorted(order[role] for role in middle):
@@ -286,7 +288,7 @@ def _planned_middle(
                 rejected.append({"task": task.model_dump(mode="json"), "reason": "duplicate reader source"})
                 continue
             readers.append((valid[0], task.objective))
-        elif task.role in {"source_scout", "theorist", "experiment_runner", "reproducer", "analyst"}:
+        elif task.role in {"source_scout", "research_agent", "theorist", "experiment_runner", "reproducer", "analyst"}:
             if task.role in {"experiment_runner", "reproducer"}:
                 expected = [experiment_spec.id] if experiment_spec else []
                 if task.source_ids != expected:
@@ -323,6 +325,8 @@ def _planned_middle(
     optional: list[tuple[Role, str | None, str]] = []
     if "source_scout" in wants:
         optional.append(("source_scout", None, objectives["source_scout"]))
+    if "research_agent" in wants:
+        optional.append(("research_agent", None, objectives["research_agent"]))
     if "theorist" in wants:
         optional.append(("theorist", None, objectives["theorist"]))
     if "experiment_runner" in wants:
@@ -511,7 +515,7 @@ def run_project(
     def research_dependencies(previous):
         dependencies: list[DependencyItem] = []
         for result in previous:
-            if result.role in {"theorist", "analyst"}:
+            if result.role in {"research_agent", "theorist", "analyst"}:
                 dependencies.append(DependencyItem(
                     kind="artifact", id=result.task_id,
                     content=result.model_dump_json(indent=2),
@@ -536,6 +540,15 @@ def run_project(
             packet_id=packet_id(task_id, attempt_id), task_id=task_id, attempt_id=attempt_id,
             role="theorist", objective=question, requirements=requirements,
             dependencies=claim_dependencies(previous), skills=["hypothesis_design"],
+        )
+
+    def research_agent_packet(previous, task_id, attempt_id):
+        return Packet(
+            packet_id=packet_id(task_id, attempt_id), task_id=task_id, attempt_id=attempt_id,
+            role="research_agent", objective=question, requirements=requirements,
+            dependencies=[*claim_dependencies(previous), *research_dependencies(previous)],
+            available_sources=available,
+            skills=["source_screening", "literature_extraction", "hypothesis_design", "result_analysis"],
         )
 
     def experiment_packet(role: Role, previous, task_id, attempt_id):
@@ -611,6 +624,7 @@ def run_project(
 
     specialist_steps: dict[Role, WorkflowStep] = {
         "source_scout": WorkflowStep(role="source_scout", build_packet=source_scout_packet),
+        "research_agent": WorkflowStep(role="research_agent", build_packet=research_agent_packet),
         "theorist": WorkflowStep(role="theorist", build_packet=theorist_packet),
         "experiment_runner": WorkflowStep(
             role="experiment_runner",

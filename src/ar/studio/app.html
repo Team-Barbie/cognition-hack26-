@@ -671,8 +671,8 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
     skull: [parse(`.XXXXXXXX.\nXXXXXXXXXX\nXX..XX..XX\nXX..XX..XX\nXXXXXXXXXX\n.XXX..XXX.\n..XXXXXX..\n..X.XX.X..`), parse(`.XXXXXXXX.\nXXXXXXXXXX\nXX..XX..XX\nXX..XX..XX\nXXXXXXXXXX\n.XXXXXXXX.\n..X.XX.X..\n..XXXXXX..`)],
     cannon: [parse(`......X......\n.....XXX.....\n.....XXX.....\n.XXXXXXXXXXX.\nXXXXXXXXXXXXX\nXXXXXXXXXXXXX\nXXXXXXXXXXXXX\nXXXXXXXXXXXXX`), parse(`.............\n......X......\n.....XXX.....\n.XXXXXXXXXXX.\nXXXXXXXXXXXXX\nXXXXXXXXXXXXX\nXXXXXXXXXXXXX\nXXXXXXXXXXXXX`)],
   };
-  const ROLE_SPR = { orchestrator: "crab", scout: "ufo", planner: "squid", source_scout: "ufo", evidence_reader: "octo", theorist: "squid", experiment_runner: "cannon", reproducer: "cannon", analyst: "crab", writer: "ant", reviewer: "skull", quality: "cannon" };
-  const ROLE_NAME = { orchestrator: "Orchestrator", scout: "Scout", planner: "Planner", source_scout: "Source scout", evidence_reader: "Reader", theorist: "Theorist", experiment_runner: "Experiment", reproducer: "Reproducer", analyst: "Analyst", writer: "Writer", reviewer: "Reviewer", quality: "Quality gate" };
+  const ROLE_SPR = { orchestrator: "crab", scout: "ufo", planner: "squid", source_scout: "ufo", evidence_reader: "octo", research_agent: "crab", theorist: "squid", experiment_runner: "cannon", reproducer: "cannon", analyst: "crab", writer: "ant", reviewer: "skull", adversarial_reviewer: "skull", quality: "cannon" };
+  const ROLE_NAME = { orchestrator: "Orchestrator", scout: "Scout", planner: "Planner", source_scout: "Source scout", evidence_reader: "Reader", research_agent: "Research agent", theorist: "Theorist", experiment_runner: "Experiment", reproducer: "Reproducer", analyst: "Analyst", writer: "Writer", reviewer: "Reviewer", adversarial_reviewer: "Adversarial review", quality: "Quality gate" };
   function drawSprite(ctx, rows, x, y, s) { for (let r = 0; r < rows.length; r++) for (let c = 0; c < rows[r].length; c++) if (rows[r][c] === "X") ctx.fillRect(x + c * s, y + r * s, s, s); }
 
   // ================= boot, clock, hud =================
@@ -886,8 +886,8 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
     });
     renderTeam(); updateHint(); updateStart(); hudStats();
   }
-  const ROLE_RANK = { source_scout: 3, theorist: 5, experiment_runner: 6, reproducer: 7, analyst: 8 };
-  const rankOf = (key, src) => key === "orchestrator" ? [0, 0] : key === "scout" ? [1, 0] : key === "planner" ? [2, 0] : key.startsWith("reader:") ? [4, Math.max(0, src.indexOf(key.slice(7)))] : ROLE_RANK[key] ? [ROLE_RANK[key], 0] : key.startsWith("writer:") ? [9, +key.split(":")[1] || 1] : key === "reviewer" ? [10, 0] : [11, 0];
+  const ROLE_RANK = { source_scout: 3, research_agent: 5, theorist: 6, experiment_runner: 7, reproducer: 8, analyst: 9 };
+  const rankOf = (key, src) => key === "orchestrator" ? [0, 0] : key === "scout" ? [1, 0] : key === "planner" ? [2, 0] : key.startsWith("reader:") ? [4, Math.max(0, src.indexOf(key.slice(7)))] : ROLE_RANK[key] ? [ROLE_RANK[key], 0] : key.startsWith("writer:") ? [10, +key.split(":")[1] || 1] : key === "reviewer" ? [11, 0] : [12, 0];
   function teamKeys() {
     const src = state.sourceList.map(s => s.id), set = new Set(["orchestrator", "planner", "writer:1", "reviewer", "quality"]);
     if (!src.length) { set.add("scout"); set.add("reader:*"); } else src.forEach(id => set.add("reader:" + id));
@@ -908,7 +908,7 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
 
   // ================= signal: live log, counters, block loader =================
   const seenStatus = {};
-  const FN = { orchestrator: "orchestrator.dispatch", scout: "scout.write", planner: "planner.plan", source_scout: "source_scout.screen", evidence_reader: "reader.read", theorist: "theorist.hypothesize", experiment_runner: "experiment.run", reproducer: "experiment.repeat", analyst: "analyst.interpret", writer: "writer.draft", reviewer: "reviewer.check", quality: "gate.check" };
+  const FN = { orchestrator: "orchestrator.dispatch", scout: "scout.write", planner: "planner.plan", source_scout: "source_scout.screen", evidence_reader: "reader.read", research_agent: "research_agent.assess", theorist: "theorist.hypothesize", experiment_runner: "experiment.run", reproducer: "experiment.repeat", analyst: "analyst.interpret", writer: "writer.draft", reviewer: "reviewer.check", adversarial_reviewer: "adversary.check", quality: "gate.check" };
   const IDLE = ["plan(question);", "read(each paper);", "write(claims);", "review(draft);", "gate.check(every quote);"];
   function setCode(lines) { $("code").replaceChildren(...lines.map(t => h("div", { class: "ln2" }, t))); }
   function pushLog(text, cls, full) {
@@ -1067,7 +1067,7 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
     if (current.role === "planner" || current.role === "reviewer") current.id = current.role;
     else if (current.role === "writer") current.id = `writer:${++writerPasses}`;
     else if (current.role === "evidence_reader" && current.packet) current.id = `reader:${current.packet.reads[0]?.label || task}`;
-    else if (["source_scout", "theorist", "experiment_runner", "reproducer", "analyst"].includes(current.role)) current.id = current.role;
+    else if (["source_scout", "research_agent", "theorist", "experiment_runner", "reproducer", "analyst", "adversarial_reviewer"].includes(current.role)) current.id = current.role;
     return current.id;
   }
   function runtimeTitle(role, id) {
