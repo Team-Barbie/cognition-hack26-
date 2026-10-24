@@ -132,10 +132,10 @@ class StageAgent:
     def _card(self, role: Role, packet: Packet) -> tuple[str, str]:
         if role == "evidence_reader":
             label = packet.reads[0].label if packet.reads else "source"
-            return f"reader:{label}", f"Reader · {label}"
+            return f"reader:{label}", f"Reader {label}"
         if role == "writer":
             self.writer_passes += 1
-            suffix = "" if self.writer_passes == 1 else f" · rewrite {self.writer_passes - 1}"
+            suffix = "" if self.writer_passes == 1 else f" rewrite {self.writer_passes - 1}"
             return f"writer:{self.writer_passes}", f"Writer{suffix}"
         return role, ROLE_TITLES.get(role, role)
 
@@ -419,7 +419,7 @@ class Session:
         ok = status == "completed"
         self.agent("orchestrator", status="done" if ok else "failed", detail=f"Run {status.replace('_', ' ')}")
         self.agent("quality", status="done" if ok else "failed",
-                   detail=self._quality_line() + (" · completion check passed" if ok else " · completion check not met"))
+                   detail=self._quality_line() + (", completion check passed" if ok else ", completion check not met"))
         self.emit("run", status=status, run=self.runs)
         self.emit("report", report=self.report)
         self.emit("chat", role="assistant", who="Orchestrator", text=_closing(self.report))
