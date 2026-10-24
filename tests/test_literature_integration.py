@@ -1,19 +1,100 @@
-"""The literature specialist composes with Codex without replacing its lead runtime."""
+"""Independent literature services use API decisions and never native Codex workers."""
 import json
+import io
 import threading
-from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
-import yaml
 
-from ar import db
-from ar.codex_research import run_research
+from ar import cli, db, literature_mcp
 from ar.literature import LiteratureReviewAgent, ReviewSpec
-from ar.literature_client import CodexDecisionClient
+from ar import literature_client
 from ar.literature_mcp import handle
 from ar.literature_service import LiteratureService
-from tests.test_codex_research import ResearchRuntime
 from tests.test_literature import Decisions, Search, Web
+from typer.testing import CliRunner
+
+
+@pytest.fixture(autouse=True)
+def forbid_native_codex_in_literature(monkeypatch):
+    def forbidden(*args, **kwargs):
+        raise AssertionError("Literature must use API decisions, never native Codex")
+
+    monkeypatch.setattr("subprocess.Popen", forbidden)
+    monkeypatch.setattr("ar.codex_runtime.CodexRuntime.__init__", forbidden)
+    monkeypatch.setattr("ar.codex_runtime.CodexRuntime.run", forbidden)
+
+
+@pytest.mark.parametrize("provider", ["anthropic", "openai"])
+def test_literature_client_uses_requested_api_provider(project, monkeypatch, provider):
+    calls = []
+    client = object()
+    monkeypatch.setattr(literature_client, "load_env", lambda *args: None)
+    monkeypatch.setattr(literature_client, "make_client", lambda *args: calls.append(args) or client)
+    agent = literature_client.review_agent(project, provider=provider, model="chosen-model", base_url="https://fixture.invalid")
+    assert agent.client is client
+    assert calls == [(provider, "chosen-model", "medium", "https://fixture.invalid")]
+    assert not hasattr(literature_client, "CodexDecisionClient")
+
+
+def test_literature_default_is_api_provider_and_codex_is_rejected(project, monkeypatch):
+    calls = []
+    monkeypatch.setattr(literature_client, "load_env", lambda *args: None)
+    monkeypatch.setattr(literature_client, "make_client", lambda *args: calls.append(args) or object())
+    literature_client.review_agent(project)
+    assert calls[0][0] in {"anthropic", "openai"}
+    with pytest.raises((ValueError, RuntimeError), match="provider"):
+        literature_client.review_agent(project, provider="codex")
+    assert len(calls) == 1
+
+
+def test_default_literature_service_constructs_api_decision_agent(project, monkeypatch):
+    providers = []
+
+    def api_agent(root, *, provider, **kwargs):
+        providers.append(provider)
+        assert provider in {"anthropic", "openai"}
+        return Decisions()
+
+    monkeypatch.setattr("ar.literature_service.review_agent", api_agent)
+    service = LiteratureService(project, runner_factory=runner)
+    job = service.start({"id": "api-only", "question": "Does treatment help?"})
+    assert service.wait(job["job_id"], 60)["status"] == "finished"
+    assert len(providers) == 1
+
+
+def test_literature_cli_uses_api_provider_and_rejects_codex(project, monkeypatch):
+    providers = []
+    monkeypatch.setattr(literature_client, "review_agent", lambda root, **kwargs: providers.append(kwargs["provider"]) or Decisions())
+
+    class Review:
+        def __init__(self, *args):
+            pass
+
+        def run(self, spec):
+            return SimpleNamespace(id=spec.id, status="finished", claim_ids=[], searches=0, model_calls=0,
+                                   report_path="output/literature/report.md", stop_reason="finished")
+
+    monkeypatch.setattr("ar.literature.LiteratureReviewAgent", Review)
+    args = ["literature", str(project), "--question", "Does treatment help?"]
+    result = CliRunner().invoke(cli.app, args)
+    assert result.exit_code == 0, result.output
+    assert providers == ["anthropic"]
+    rejected = CliRunner().invoke(cli.app, [*args, "--provider", "codex"])
+    assert rejected.exit_code != 0 and "provider" in rejected.output.lower()
+    assert providers == ["anthropic"]
+
+
+def test_literature_mcp_defaults_to_api_provider(project, monkeypatch):
+    configured = []
+    monkeypatch.setattr(literature_mcp, "LiteratureService", lambda root, **kwargs: configured.append(kwargs))
+    monkeypatch.setattr(literature_mcp.sys, "stdin", io.StringIO(""))
+    monkeypatch.setattr(literature_mcp.sys, "stdout", io.StringIO())
+    literature_mcp.main([str(project)])
+    assert configured[0]["provider"] == "anthropic"
+    with pytest.raises(SystemExit) as exc:
+        literature_mcp.main([str(project), "--provider", "codex"])
+    assert exc.value.code == 2
 
 
 @pytest.fixture
@@ -25,65 +106,6 @@ def project(tmp_path):
 
 def runner(project, agent, **kwargs):
     return LiteratureReviewAgent(project, agent, search=Search(), web=Web(), **kwargs)
-
-
-def test_native_lead_receives_two_verified_specialists_and_keeps_its_tools(project):
-    specs = [ReviewSpec(id=name, question="Does treatment help?") for name in ("methods", "limitations")]
-    (project / "input" / "literature.yaml").write_text(yaml.safe_dump({"reviews": [s.model_dump() for s in specs]}))
-    native = ResearchRuntime(artifacts=["output/result.txt"])
-    report = run_research(project, native, literature_runner=runner(project, Decisions()))
-    assert report["outcome"] == "completed"
-    assert len(native.calls) == 1 and native.max_agents == 2
-    assert "native tools remain" in native.calls[0][2]
-    assert len(report["literature_reviews"]) == 2
-    assert all(review["claim_ids"] for review in report["literature_reviews"])
-    assert report["executions"][0]["command"] == "python simulate.py"
-    assert report["artifacts"][0]["path"] == "output/result.txt"
-    staged = list((native.calls[0][0] / "literature-evidence").iterdir())
-    assert len(staged) == 4
-    manifest = json.loads((project / ".research" / "codex-inputs.json").read_text())["inputs"]
-    assert len([item for item in manifest if item["path"].startswith("literature-evidence/")]) == 4
-    provenance = json.loads((project / "output" / "provenance.json").read_text())
-    assert provenance["literature_reviews"] == report["literature_reviews"]
-    # Removed reviews cannot leave stale evidence in the resumed native workspace.
-    (project / "input" / "literature.yaml").unlink()
-    assert run_research(project, native)["literature_reviews"] == []
-    assert not list((native.calls[-1][0] / "literature-evidence").iterdir())
-
-
-def test_partial_specialist_cannot_be_hidden_by_native_completion(project):
-    spec = ReviewSpec(id="bounded", question="Does treatment help?", max_model_calls=0)
-    (project / "input" / "literature.yaml").write_text(yaml.safe_dump({"reviews": [spec.model_dump()]}))
-    result = run_research(project, ResearchRuntime(), literature_runner=runner(project, Decisions()))
-    assert result["outcome"] == "blocked"
-    assert result["literature_reviews"][0]["status"] == "partial"
-    assert any("bounded is partial" in message for message in result["limitations"])
-
-
-def test_cancelled_native_run_does_not_start_specialists_or_lead(project):
-    spec = ReviewSpec(id="methods", question="Does treatment help?")
-    (project / "input" / "literature.yaml").write_text(yaml.safe_dump({"reviews": [spec.model_dump()]}))
-    native = ResearchRuntime()
-    native.cancelled = threading.Event()
-    native.cancelled.set()
-    result = run_research(project, native, literature_runner=runner(project, Decisions()))
-    assert result["outcome"] == "cancelled" and not native.calls
-    assert result["literature_reviews"] == []
-    assert not (project / ".research" / "codex.lock").exists()
-
-
-def test_cli_pause_signal_interrupts_literature_before_native_lead(project, monkeypatch):
-    spec = ReviewSpec(id="methods", question="Does treatment help?")
-    (project / "input" / "literature.yaml").write_text(yaml.safe_dump({"reviews": [spec.model_dump()]}))
-    monkeypatch.setattr("ar.literature_client.review_agent", lambda *args, **kwargs: Decisions())
-    native = ResearchRuntime()
-    def pause(method, event):
-        if method == "literature.review":
-            (project / ".research" / "codex-stop").touch()
-    result = run_research(project, native, on_event=pause)
-    assert result["outcome"] == "cancelled" and not native.calls
-    with db.connect(project) as conn:
-        assert conn.execute("SELECT status FROM literature_jobs WHERE key=?", (spec.key,)).fetchone()[0] == "interrupted"
 
 
 def test_review_cancellation_preserves_completed_operations_for_resume(project):
@@ -132,28 +154,6 @@ def test_mcp_discovers_specialist_and_validates_protocol_before_dispatch(project
     assert call("tools/call", name="literature.status", arguments={"job_id": job})["result"]["structuredContent"]["status"] == "finished"
     assert handle(service, {"jsonrpc": "2.0", "method": "notifications/initialized"}) is None
     assert handle(service, {"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": []})["error"]["code"] == -32602
-
-
-def test_codex_decisions_are_stateless_and_do_not_inherit_user_tool_configuration(monkeypatch):
-    commands = []
-    class Process:
-        returncode = 0
-        def __init__(self, command, **kwargs):
-            self.command = command
-            commands.append(command)
-            assert kwargs["encoding"] == "utf-8"
-        def communicate(self, prompt, **kwargs):
-            assert "Do not call tools" in prompt and "supplied packet" in prompt
-            Path(self.command[self.command.index("-o") + 1]).write_text('{"payload":{}}')
-            return '{"type":"item.completed","item":{"type":"agent_message"}}\n', ""
-    monkeypatch.setattr("ar.literature_client.codex_binary", lambda: "fixture-codex")
-    monkeypatch.setattr("ar.literature_client.subprocess.Popen", Process)
-    assert CodexDecisionClient("explicit-model").complete("instructions", "supplied packet") == '{"payload":{}}'
-    command = commands[0]
-    assert command[command.index("--sandbox") + 1] == "read-only"
-    assert "--ignore-user-config" in command and "--ephemeral" in command
-    assert "features.shell_tool=false" in command and "features.multi_agent=false" in command
-    assert 'web_search="disabled"' in command and "explicit-model" in command
 
 
 def test_service_capacity_and_unknown_job_errors_are_explicit(project):

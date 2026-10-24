@@ -17,7 +17,7 @@ class LiteratureService:
     Keep the host alive while jobs run. A restart never silently retries an
     operation whose outcome is unknown; identical finished specs reuse results.
     """
-    def __init__(self, project: Path, *, provider="codex", model=None, base_url=None,
+    def __init__(self, project: Path, *, provider="anthropic", model=None, base_url=None,
                  agent_factory=None, runner_factory=LiteratureReviewAgent, max_parallel=4):
         if not 1 <= max_parallel <= 8:
             raise ValueError("max_parallel must be between 1 and 8")

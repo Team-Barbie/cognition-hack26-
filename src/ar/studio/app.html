@@ -405,7 +405,7 @@ mark { background: rgba(185,240,74,.16); color: var(--ph-hi); border-bottom: 1px
             <div class="web-results" id="web-results" aria-live="polite"></div>
           </form>
           <div class="paste" id="literature-panel" hidden>
-              <p class="web-note">Each review searches and reads real sources with its own question and budget. Add several to compare topics. Codex integrates their results while retaining its native tools.</p>
+              <p class="web-note">Each review searches and reads real sources with its own question and budget. Add several to compare topics. The research agents use their findings as evidence.</p>
             <form id="literature-form">
               <input id="literature-id" placeholder="review id, e.g. methods" pattern="[a-zA-Z][a-zA-Z0-9_-]{0,47}" required aria-label="Literature review id">
               <input id="literature-question" placeholder="question for this review" minlength="3" maxlength="2000" required aria-label="Literature review question">
@@ -695,8 +695,8 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
     skull: [parse(`.XXXXXXXX.\nXXXXXXXXXX\nXX..XX..XX\nXX..XX..XX\nXXXXXXXXXX\n.XXX..XXX.\n..XXXXXX..\n..X.XX.X..`), parse(`.XXXXXXXX.\nXXXXXXXXXX\nXX..XX..XX\nXX..XX..XX\nXXXXXXXXXX\n.XXXXXXXX.\n..X.XX.X..\n..XXXXXX..`)],
     cannon: [parse(`......X......\n.....XXX.....\n.....XXX.....\n.XXXXXXXXXXX.\nXXXXXXXXXXXXX\nXXXXXXXXXXXXX\nXXXXXXXXXXXXX\nXXXXXXXXXXXXX`), parse(`.............\n......X......\n.....XXX.....\n.XXXXXXXXXXX.\nXXXXXXXXXXXXX\nXXXXXXXXXXXXX\nXXXXXXXXXXXXX\nXXXXXXXXXXXXX`)],
   };
-  const ROLE_SPR = { codex: "crab", codex_delegate: "octo", orchestrator: "crab", scout: "ufo", literature_review: "ufo", planner: "squid", source_scout: "ufo", evidence_reader: "octo", research_agent: "crab", synthesis_agent: "crab", theorist: "squid", experiment_runner: "cannon", reproducer: "cannon", analyst: "crab", writer: "ant", reviewer: "skull", adversarial_effect_agent: "skull", quality: "cannon" };
-  const ROLE_NAME = { codex: "Codex", codex_delegate: "Codex delegate", orchestrator: "Orchestrator", scout: "Scout", literature_review: "Literature review", planner: "Planner", source_scout: "Source scout", evidence_reader: "Reader", research_agent: "Research agent", synthesis_agent: "Synthesis", theorist: "Theorist", experiment_runner: "Experiment", reproducer: "Reproducer", analyst: "Analyst", writer: "Writer", reviewer: "Reviewer", adversarial_effect_agent: "Adverse effects", quality: "Quality gate" };
+  const ROLE_SPR = { orchestrator: "crab", scout: "ufo", literature_review: "ufo", planner: "squid", source_scout: "ufo", evidence_reader: "octo", research_agent: "crab", synthesis_agent: "crab", theorist: "squid", experiment_runner: "cannon", reproducer: "cannon", analyst: "crab", writer: "ant", reviewer: "skull", adversarial_effect_agent: "skull", quality: "cannon" };
+  const ROLE_NAME = { orchestrator: "Orchestrator", scout: "Scout", literature_review: "Literature review", planner: "Planner", source_scout: "Source scout", evidence_reader: "Reader", research_agent: "Research agent", synthesis_agent: "Synthesis", theorist: "Theorist", experiment_runner: "Experiment", reproducer: "Reproducer", analyst: "Analyst", writer: "Writer", reviewer: "Reviewer", adversarial_effect_agent: "Adverse effects", quality: "Quality gate" };
   function drawSprite(ctx, rows, x, y, s) { for (let r = 0; r < rows.length; r++) for (let c = 0; c < rows[r].length; c++) if (rows[r][c] === "X") ctx.fillRect(x + c * s, y + r * s, s, s); }
 
   // ================= boot, clock, hud =================
@@ -890,7 +890,7 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
   // ================= shelf: sources and the agent team =================
   const SPINE_COL = ["#b9f04a", "#8cc03a", "#a6d63e"];
   const hash = s => { let x = 7; for (const c of s) x = (x * 31 + c.charCodeAt(0)) >>> 0; return x; };
-  const roleOf = key => key.startsWith("codex:") ? "codex_delegate" : key.startsWith("reader:") ? "evidence_reader" : key.startsWith("writer:") ? "writer" : key.startsWith("literature:") ? "literature_review" : key;
+  const roleOf = key => key.startsWith("reader:") ? "evidence_reader" : key.startsWith("writer:") ? "writer" : key.startsWith("literature:") ? "literature_review" : key;
   const cards = {}, spines = {}, srcSpines = {}, runtimeTasks = {};
   let accepted = 0, rejected = 0, reviews = 0, writerPasses = 0, runFinished = false;
   function syncRow(parent, sel, keys, map, make) {
@@ -917,9 +917,9 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
   const ROLE_RANK = { source_scout: 3, research_agent: 5, theorist: 6, experiment_runner: 7, reproducer: 8, analyst: 9 };
   const rankOf = (key, src) => key === "orchestrator" ? [0, 0] : (key === "scout" || key.startsWith("literature:")) ? [1, 0] : key === "planner" ? [2, 0] : key.startsWith("reader:") ? [4, Math.max(0, src.indexOf(key.slice(7)))] : ROLE_RANK[key] ? [ROLE_RANK[key], 0] : key.startsWith("writer:") ? [10, +key.split(":")[1] || 1] : key === "reviewer" ? [11, 0] : [12, 0];
   function teamKeys() {
-    const src = state.sourceList.map(s => s.id), set = new Set(state.nativeCodex ? ["codex"] : ["orchestrator", "planner", "writer:1", "reviewer", "quality"]);
+    const src = state.sourceList.map(s => s.id), set = new Set(["orchestrator", "planner", "writer:1", "reviewer", "quality"]);
     snap.literature_reviews.forEach(r => set.add(`literature:${r.id}`));
-    if (!state.nativeCodex) {
+    {
       if (!src.length && !snap.literature_reviews.length) set.add("literature:literature");
       else src.forEach(id => set.add("reader:" + id));
     }
@@ -1065,10 +1065,6 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
   $("drawer").addEventListener("click", e => { if (e.target === $("drawer")) closeProof(); });
   document.addEventListener("keydown", e => { if (e.key === "Escape") closeProof(); });
   function layers(r) {
-    if (r.runtime === "codex") {
-      $("layers").replaceChildren(h("div", { class: "web-note" }, `${r.sources.length} staged inputs. Native citations are model-reported; specialist quotation checks apply only to the literature evidence.`));
-      return;
-    }
     const counts = {}; for (const id of r.cited) for (const l of (r.claimMap[id] || { links: [] }).links) counts[l.source] = (counts[l.source] || 0) + 1;
     const total = Object.values(counts).reduce((a, b) => a + b, 0) || 1, box = $("layers"); box.replaceChildren();
     for (const row of r.sources.map(s => ({ id: s.id, n: counts[s.id] || 0 })).sort((a, b) => b.n - a.n)) {
@@ -1088,25 +1084,9 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
     for (const m of (r.markdown || "").matchAll(CITE)) if (r.claimMap[m[1]] && !r.numbers[m[1]]) r.numbers[m[1]] = ++k; for (const id of r.cited) if (!r.numbers[id] && r.claimMap[id]) r.numbers[id] = ++k;
     const h1 = (r.markdown.match(/^#\s+(.+)$/m) || [])[1]; $("report-title").textContent = h1 || state.question || "Report";
     const caveats = r.open_questions.length + r.limitations.length + r.problems.length;
-    const native = r.runtime === "codex";
-    $("report-outcome").textContent = native && r.outcome === "completed" ? "Codex completed" : reportStatus(r.outcome);
-    $("report-meta").textContent = native ? `${(r.literature_reviews || []).length} literature reviews / ${(r.executions || []).length} captured executions` : `${r.sources.length} reviewed / ${r.rejections.length} rejected`;
+    $("report-outcome").textContent = reportStatus(r.outcome); $("report-meta").textContent = `${r.sources.length} reviewed / ${r.rejections.length} rejected`;
     $("article").replaceChildren(r.markdown ? markdown(r.markdown) : h("p", {}, "No report. See Rejected and Open."));
-    if (native) {
-      $("article").prepend(h("p", { class: "web-note" }, r.assurance || "Native citations and check summaries are model-reported."));
-      for (const review of (r.literature_reviews || [])) $("article").append(h("details", {},
-        h("summary", {}, `Literature: ${review.id} — ${review.status}; ${review.claim_ids.length} checked quotations`),
-        h("div", {}, markdown(review.summary_markdown || "No supported synthesis.")),
-        h("p", { class: "web-note" }, `${review.stop_reason}. Report: ${review.report_path}`),
-        h("ul", {}, review.limitations.map(text => h("li", {}, text)))));
-      if ((r.executions || []).length) $("article").append(h("details", {}, h("summary", {}, "Captured executions"),
-        r.executions.map(item => h("div", {}, h("pre", {}, `${item.command || "Command"}\nExit: ${item.exitCode ?? "unknown"}\n${String(item.aggregatedOutput || "").slice(0, 20000)}`)))));
-      if ((r.artifacts || []).length) $("article").append(h("details", {}, h("summary", {}, "Captured deliverables"),
-        h("ul", {}, r.artifacts.map(item => h("li", {}, `${item.captured_path} (${item.bytes} bytes)`)))));
-    }
-    setCount($("report-n"), native ? (r.executions || []).length : r.cited.length, 8);
-    $("report-cap").textContent = native ? "captured executions" : `verified claim${r.cited.length === 1 ? "" : "s"} used`;
-    $("report-n").setAttribute("aria-label", native ? "captured native executions" : "verified claims used in the answer"); layers(r);
+    setCount($("report-n"), r.cited.length, 8); $("report-cap").textContent = `verified claim${r.cited.length === 1 ? "" : "s"} used`; layers(r);
     const claimItem = c => h("li", {}, h("div", { class: "top2" }, h("span", { class: "id" }, r.numbers[c.id] ? `[${r.numbers[c.id]}]` : "-"), c.links.map(l => h("span", { class: `rel ${l.relation}` }, REL[l.relation] || l.relation)),
       h("span", { class: "src" }, c.links.map(l => `${l.source} lines ${l.start}-${l.end}`).join("   ")), h("span", { class: "sp" }), h("button", { class: "act", type: "button", onclick: () => openProof(c.id) }, "View evidence")), h("span", { class: "stmt" }, c.statement));
     $("claims").replaceChildren(...(r.claims.length ? r.claims.map(claimItem) : [h("li", {}, h("span", { class: "why" }, "No claims."))]));
@@ -1193,10 +1173,7 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
     else if (e.type === "sources") for (const k of Object.keys(snap.sources)) if (!e.sources.some(x => x.id === k)) delete snap.sources[k];
     if (e.type === "chat") addTurn(e); else if (e.type === "brief") renderBrief(e.brief, e.ready); else if (e.type === "sources") renderSources(e.sources);
     else if (e.type === "web_results") renderWebResults(e.results || [], e.query || "", false);
-    else if (e.type === "agent") { if (e.id === "scout" || e.role === "codex" || e.role === "codex_delegate") upsertAgent(e); }
-    else if (e.type === "codex" && e.event === "item/completed" && e.payload?.item?.type === "commandExecution") {
-      const item = e.payload.item; pushLog(`Codex: ${item.command || "command"} (exit ${item.exitCode ?? "unknown"})`, item.exitCode === 0 ? "c" : "bad", item.aggregatedOutput || item.command);
-    }
+    else if (e.type === "agent") { if (e.id === "scout") upsertAgent(e); }
     else if (e.type === "quality") addTicker(e); else if (e.type === "runtime") applyRuntime(e);
     else if (e.type === "run") { if (e.status === "started") { report = null; resetTeam(); } setRun(e.status); } else if (e.type === "report") renderReport(e.report);
   }
@@ -1283,7 +1260,7 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
   async function startStudio() {
     try {
       const attach = new URLSearchParams(location.search).get("session"); const s = attach ? { id: attach, ...(await api("/api/info")) } : await api("/api/session", {});
-      sid = s.id; state.nativeCodex = String(s.mode || "").includes("codex"); const live = String(s.mode || "").startsWith("live"), label = live ? String(s.mode).replace(/^live\W+/, "") : "demo"; $("chat-mode").textContent = label; $("hud-mode").textContent = label.toUpperCase(); renderTeam();
+      sid = s.id; const live = String(s.mode || "").startsWith("live"), label = live ? String(s.mode).replace(/^live\W+/, "") : "demo"; $("chat-mode").textContent = label; $("hud-mode").textContent = label.toUpperCase(); renderTeam();
       unlock(); renderBrief({}, false); streamEvents(); if (location.hash === "#chat") openChat(true); else if (!narrow.matches) $("input").focus();
     } catch (err) { if (!$("lock").hidden) { if (attempted) $("lock-error").textContent = "Incorrect password."; } else toast("Could not reach the studio server."); }
   }

@@ -72,7 +72,7 @@ def handle(service, message):
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Make the bounded literature-review agent callable by another agent")
     parser.add_argument("project", type=Path)
-    parser.add_argument("--provider", choices=["codex", "anthropic", "openai"], default="codex")
+    parser.add_argument("--provider", choices=["anthropic", "openai"], default="anthropic")
     parser.add_argument("--model")
     parser.add_argument("--base-url")
     args = parser.parse_args(argv)

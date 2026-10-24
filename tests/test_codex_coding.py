@@ -6,8 +6,8 @@ import os
 
 import pytest
 
-from ar import codex_research
-from ar.codex_research import _capture_artifacts, run_research, stage_inputs
+from ar import codex_coding
+from ar.codex_coding import _capture_artifacts, run_coding, stage_inputs
 from ar.codex_runtime import CodexError
 
 
@@ -19,7 +19,7 @@ def project(tmp_path):
     return tmp_path
 
 
-class ResearchRuntime:
+class CodingRuntime:
     max_agents = 2
 
     def __init__(self, *, text=None, status="completed", artifacts=None, error=None, permission_blocked=False):
@@ -45,9 +45,9 @@ class ResearchRuntime:
 
 
 def test_report_captures_actual_executions_artifacts_and_distinct_provenance(project):
-    runtime = ResearchRuntime(artifacts=["output/result.txt", "output/result.txt"])
+    runtime = CodingRuntime(artifacts=["output/result.txt", "output/result.txt"])
     observed = []
-    report = run_research(project, runtime, on_event=lambda *event: observed.append(event))
+    report = run_coding(project, runtime, on_event=lambda *event: observed.append(event))
     assert report["runtime"] == "codex" and report["outcome"] == "completed"
     assert report["checks"] == ["Agent says baseline test passed"]
     assert report["claims"] == [] and report["cited"] == []
@@ -73,21 +73,41 @@ def test_report_captures_actual_executions_artifacts_and_distinct_provenance(pro
     assert runtime.calls[0][4]["additionalProperties"] is False
 
 
+def test_coding_runner_does_not_start_literature_review_or_take_over_research(project, monkeypatch):
+    (project / "input" / "literature.yaml").write_text("reviews:\n  - id: methods\n    question: Does treatment help?\n")
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("Coding must not trigger a literature prepass")
+
+    import sys
+    from types import SimpleNamespace
+
+    monkeypatch.setitem(sys.modules, "ar.literature", SimpleNamespace(
+        LiteratureReviewAgent=forbidden, load_reviews=forbidden))
+    runtime = CodingRuntime()
+    report = run_coding(project, runtime)
+    assert report["outcome"] == "completed"
+    assert len(runtime.calls) == 1
+    assert "coding specialist" in runtime.calls[0][3]
+    assert not report.get("literature_reviews")
+    assert not (runtime.calls[0][0] / "literature-evidence").exists()
+
+
 @pytest.mark.parametrize("text", [
     "not JSON", "[]", '{"status":"completed"}',
     json.dumps({"status": "completed", "summary": "x", "report_markdown": "x", "limitations": [], "checks": [], "artifacts": [], "invented_field": True}),
 ])
 def test_malformed_or_schema_invalid_final_output_fails(project, text):
-    report = run_research(project, ResearchRuntime(text=text))
+    report = run_coding(project, CodingRuntime(text=text))
     assert report["outcome"] == "failed"
-    assert any("valid research result" in problem for problem in report["problems"])
+    assert any("valid coding result" in problem for problem in report["problems"])
     assert report["artifacts"] == []
     assert not (project / ".research" / "codex.lock").exists()
 
 
 @pytest.mark.parametrize("artifact", ["../secret.txt", "output/missing.txt", "output", "/absolute.txt", "C:/Windows/win.ini"])
 def test_missing_directory_and_traversing_deliverables_block_completion(project, artifact):
-    report = run_research(project, ResearchRuntime(artifacts=[artifact]))
+    report = run_coding(project, CodingRuntime(artifacts=[artifact]))
     assert report["outcome"] == "blocked"
     assert report["artifacts"] == []
     assert any("missing or outside" in problem for problem in report["problems"])
@@ -95,15 +115,15 @@ def test_missing_directory_and_traversing_deliverables_block_completion(project,
 
 def test_empty_report_and_permission_denial_cannot_claim_completion(project):
     empty = json.dumps({"status": "completed", "summary": "done", "report_markdown": "  ", "limitations": [], "checks": [], "artifacts": []})
-    assert run_research(project, ResearchRuntime(text=empty))["outcome"] == "blocked"
-    report = run_research(project, ResearchRuntime(permission_blocked=True))
+    assert run_coding(project, CodingRuntime(text=empty))["outcome"] == "blocked"
+    report = run_coding(project, CodingRuntime(permission_blocked=True))
     assert report["outcome"] == "blocked"
     assert any("permission" in line for line in report["limitations"])
 
 
 @pytest.mark.parametrize("status, expected", [("cancelled", "cancelled"), ("interrupted", "cancelled"), ("timed_out", "timed_out"), ("failed", "failed")])
 def test_incomplete_status_and_error_are_preserved(project, status, expected):
-    report = run_research(project, ResearchRuntime(status=status, error={"message": "upstream stopped"}))
+    report = run_coding(project, CodingRuntime(status=status, error={"message": "upstream stopped"}))
     assert report["outcome"] == expected
     assert any("upstream stopped" in problem for problem in report["problems"])
     if expected in {"cancelled", "timed_out"}:
@@ -122,7 +142,7 @@ def test_environment_block_is_persisted_with_original_command_logs(project):
                 "aggregatedOutput": output}})
             return {"status": "blocked", "thread_id": "lead-1", "text": "", "error": output}
 
-    report = run_research(project, EnvironmentFailure())
+    report = run_coding(project, EnvironmentFailure())
     assert report["outcome"] == "blocked"
     assert report["problems"] == [output]
     assert report["executions"][0]["aggregatedOutput"] == output
@@ -189,7 +209,7 @@ def test_oversized_artifact_is_a_reported_failure(project, monkeypatch):
     workspace.mkdir()
     destination.mkdir()
     (workspace / "large.txt").write_text("123456789")
-    monkeypatch.setattr(codex_research, "MAX_ARTIFACT_BYTES", 4)
+    monkeypatch.setattr(codex_coding, "MAX_ARTIFACT_BYTES", 4)
     artifacts, problems = _capture_artifacts(workspace, destination, ["large.txt"])
     assert artifacts == []
     assert "capture limit" in problems[0]
@@ -220,9 +240,9 @@ def test_existing_lock_prevents_second_run(project):
     metadata = project / ".research"
     metadata.mkdir()
     (metadata / "codex.lock").write_text("another process owns this")
-    runtime = ResearchRuntime()
+    runtime = CodingRuntime()
     with pytest.raises(CodexError, match="already holds"):
-        run_research(project, runtime)
+        run_coding(project, runtime)
     assert runtime.calls == []
     assert (metadata / "codex.lock").read_text() == "another process owns this"
 
@@ -235,6 +255,6 @@ def test_transport_error_releases_lock_and_does_not_publish_result(project):
             raise CodexError("server unavailable")
 
     with pytest.raises(CodexError, match="server unavailable"):
-        run_research(project, BrokenRuntime())
+        run_coding(project, BrokenRuntime())
     assert not (project / ".research" / "codex.lock").exists()
     assert not (project / "output" / "codex-result.json").exists()

@@ -1,53 +1,21 @@
-# ar: research and engineering with Codex
+# ar: autoresearch with explicit contracts
 
-The default live runtime is one native Codex agent. Give it an objective and optional papers/data/code;
-it chooses how to research, implement, build, simulate and test. It retains context in one resumable
-Codex thread and can delegate focused work to native subagents when useful. There is no fixed sequence
-of specialist agents in this path. The existing broker-based pipeline remains available for the offline
-demo and explicit legacy providers.
+Research, literature review, evidence extraction, planning and review use their own agents and model
+adapters. `ar run`, `ar resume`, `ar literature` and Studio run that research workflow.
 
-Codex runs through its installed App Server, with workspace-write permissions and no automatic escalation.
-The application captures native tool events, command exit statuses, output artifacts and SHA-256 hashes.
-Codex citations and check summaries remain model-reported; they do not acquire the legacy pipeline's
-broker-verified quote/read-receipt guarantees. Codex's installed platform sandbox must be configured.
+Codex is used only for an explicit coding assignment: implementing or debugging code, builds, tests,
+and simulation programs. The planner/orchestrator may call the coding worker when code is needed;
+it retains responsibility for the research question, literature and synthesis. Coding jobs do not
+launch literature reviews or replace the research controller.
 
-## Native Codex workflow (default)
+Use `ar code "Implement and test the baseline" --project my-project --input src --input tests`, or call
+the Python/MCP worker below. Install and authenticate Codex (`codex login`) only for coding tasks.
+`AR_CODEX_BIN` selects its executable. Native coding jobs retain their Codex tools, optional coding
+delegates, resumable sessions and captured build/test outputs.
 
-Install the Codex CLI, authenticate with `codex login`, then install this Python project as below.
-No additional agent SDK is required: the backend speaks the native App Server JSON-RPC protocol over stdio.
-The transport was checked against Codex CLI 0.144.5. Set `AR_CODEX_BIN` if Codex is not on PATH.
+## Coding worker (Codex, explicit tasks only)
 
-```text
-ar init my-project
-# Edit my-project/input/brief.md; put papers, datasets and source code under input/.
-ar run my-project --max-agents 3 --timeout 1800
-ar resume my-project
-ar status my-project
-ar pause my-project
-ar studio
-```
-
-Use `--max-agents 0` to keep all work in the lead agent. Use `--model MODEL` to choose an available
-Codex model explicitly; otherwise the runtime selects the default advertised by Codex's model catalog.
-An explicit model is never silently substituted. `--effort` sets reasoning effort. The wall-clock
-`--timeout` bounds each turn; legacy `--max-model-calls` and `--max-tasks` apply only to the old pipeline.
-Run `ar studio --fake` for the offline fixture demo. Studio also defaults to Codex and its backend supports
-follow-up steering through `/api/chat` during a run and cancellation through `/api/stop`.
-
-Outputs are `output/report.md`, `run-summary.md`, `codex-result.json`, `provenance.json`, and captured
-files in `output/deliverables/`. The native thread id, staged-input hashes and event journal live under
-`.research/`; the writable agent workspace is `.research/codex-workspace/`. Resuming reuses the thread
-and workspace while refreshing the current inputs. One project permits one active run. If a host crash
-leaves `.research/codex.lock`, verify the old worker has stopped before removing that lock.
-
-For long runs use the local persistent server or a dedicated worker host with Codex installed and
-authenticated. A serverless deployment does not automatically provide a Codex executable, credentials,
-or a working platform sandbox. Sandbox startup failures are reported as failed/blocked work, never as
-successful builds or tests. Keep the native sandbox enabled; configure/fix it or use a supported worker.
-
-## Callable by a planner or another agent
-
-The worker is also a Python API and a standalone MCP server. The caller supplies a free-form objective;
+Codex is an optional coding specialist exposed through Python and a standalone MCP server. The caller supplies a coding assignment;
 it does not need to follow the old role graph or required-reading contracts. Native workspace permissions
 and the configured timeout still apply.
 
@@ -80,12 +48,6 @@ directory requests skip Git/runtime/dependency caches and environment files. Com
 artifacts persist under `.research/coding-jobs/`. After an unexpected server restart an in-flight job
 is reported as `execution_unknown`, rather than claimed successful or automatically rerun. Keep the
 MCP connection open while jobs run; shutdown requests cancellation of active jobs.
-
-## Legacy research pipeline
-
-`PROJECTSPEC.md`, `PLAN.md`, and `INTERFACES.md` describe the earlier contracts-based architecture.
-Its role-specific behavior and quote/read-receipt guarantees below apply to `--fake` or explicit
-`--provider anthropic` / `--provider openai`, rather than the default Codex runtime.
 
 ## Install
 
@@ -132,13 +94,10 @@ ar run my-project
 ar run my-project --provider anthropic --max-model-calls 80
 ```
 
-`ar literature` defaults to the existing Codex login. Codex supplies stateless JSON decisions in a
-separate read-only workspace with inherited user tool configuration, web search, shell, plugins and
-delegation disabled. The literature runtime performs and journals actual retrieval and validates
-evidence. One model-call unit is one decision turn, including any provider-internal work/retries.
-Use `--provider anthropic` or `--provider openai` for API-based decisions instead.
+`ar literature` uses the research model adapter (Anthropic by default, or `--provider openai`).
+It never starts Codex or invokes the coding worker.
 
-`ar literature` uses each configured review's budget. `ar run --provider anthropic` (or `openai`) shares its model-call allowance across
+`ar literature` uses each configured review's budget. `ar run` shares its model-call allowance across
 configured reviews, reserves six calls for the final report, and passes accepted claims and review
 summaries into planning/writing. Partially covered reviews keep the overall run incomplete. The normal
 CLI provider/model/base-URL options also apply to `ar literature`.
@@ -169,20 +128,14 @@ with ThreadPoolExecutor(max_workers=2) as pool:
     results = list(pool.map(reviewer.run, specs))
 ```
 
-In Studio, **Literature reviews** adds/removes named review instances for either runtime. An API-provider
+In Studio, **Literature reviews** adds/removes named review instances. An API-provider
 run without uploaded papers automatically creates a review of the brief. Search and acquisition progress appears separately for each
 instance on the stage. Demo mode continues to use the built-in fixture and does not perform web research.
 These are bounded automated reviews, not a claim of exhaustive or formally systematic coverage.
 
-The default native Codex runner executes configured literature specialists before its lead turn and
-stages their reports and search ledgers in `literature-evidence/`. Its lead session, native tools,
-delegation, coding-worker API and artifacts stay available. Review results are included in the report
-and provenance JSON; a partial/failed review keeps the combined outcome blocked. Broker quotation checks
-apply to the specialists' accepted claims; the lead's final interpretations retain native citation assurances.
-The same specialist is integrated with `ar studio --provider anthropic` and `--provider openai`.
-Long multi-review runs are best run
-locally or in a worker, since hosted request limits can end an in-flight job. `max_seconds` is checked
-between operations; an in-flight model call follows the provider timeout (120 seconds for a Codex decision).
+Literature specialists run through the research controller or their own service. Their retrieval,
+claims, review results and budgets are independent of coding jobs. Long reviews are best run locally
+or in a persistent worker because hosted request limits can end an in-flight job.
 
 For a planner or any other agent harness, the dedicated specialist has a non-blocking Python API:
 

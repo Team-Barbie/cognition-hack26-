@@ -64,7 +64,7 @@ class Brief:
                 if clean:
                     setattr(self, name, list(dict.fromkeys(clean)))
 
-    def to_markdown(self, *, native_codex: bool = False) -> str:
+    def to_markdown(self) -> str:
         """`Label: text` lines; each becomes a requirement. Context rides on the question line,
         which is the objective every agent receives."""
         question = _one_line(self.question)
@@ -73,9 +73,6 @@ class Brief:
         lines = ["# Brief", "", f"Question: {question}"]
         lines += [f"Constraint: {_one_line(c)}" for c in self.constraints]
         lines += [f"Open question: {_one_line(q)}" for q in self.open_questions]
-        if native_codex:
-            lines.append("Deliverable: Complete the requested research or engineering objective, including code, builds, simulations or tests when needed; provide the resulting artifacts and a report with evidence and limitations.")
-            return "\n".join(lines) + "\n"
         lines.append(
             "Deliverable: A report that answers the question from the supplied sources, cites a source "
             "passage for every finding, names contradictions, and states limitations."

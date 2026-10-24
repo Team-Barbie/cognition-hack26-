@@ -42,34 +42,6 @@ def _live_agent(
     return LiveAgent(make_client(provider, model, effort, base_url))
 
 
-def _run_codex(root: Path, model: str | None, effort: str, max_agents: int, timeout: float) -> None:
-    from ar.codex_research import run_research
-    from ar.codex_runtime import CodexRuntime
-
-    load_env(root / ".env", Path.cwd() / ".env")
-    def progress(method: str, params: dict) -> None:
-        item = params.get("item", {})
-        if method == "session.ready":
-            typer.echo(f"Codex session: {params['threadId']}" + (" (resumed)" if params.get("resumed") else ""))
-        elif method == "item/started" and item.get("type") == "commandExecution":
-            typer.echo(f"$ {item.get('command', '')}")
-        elif method == "item/completed" and item.get("type") == "commandExecution":
-            typer.echo(f"  exit: {item.get('exitCode')}")
-        elif method == "item/completed" and item.get("type") == "agentMessage" and item.get("phase") == "commentary":
-            typer.echo(item.get("text", ""))
-    try:
-        result = run_research(root, CodexRuntime(model, effort=effort, max_agents=max_agents, timeout=timeout), on_event=progress)
-    except (OSError, ValueError, RuntimeError) as exc:
-        typer.echo(f"Codex run failed: {exc}", err=True)
-        raise typer.Exit(code=1) from None
-    typer.echo(f"Status: {result['outcome']}")
-    typer.echo(f"Report: {root / 'output' / 'report.md'}")
-    for problem in result["problems"]:
-        typer.echo(problem, err=True)
-    if result["outcome"] != "completed":
-        raise typer.Exit(code=1)
-
-
 @app.command("init")
 def init_project(
     path: Path = typer.Argument(Path.cwd(), help="Directory to initialize."),
@@ -97,16 +69,6 @@ def status(
 ) -> None:
     """Show the persisted status of an autoresearch project."""
 
-    codex_result = path.resolve() / "output" / "codex-result.json"
-    codex_session = path.resolve() / ".research" / "codex-session.json"
-    if codex_session.exists():
-        import json
-        state = json.loads(codex_session.read_text(encoding="utf-8"))
-        typer.echo(f"Runtime: Codex\nSession: {state['thread_id']}\nTurn: {state['status']}")
-        if codex_result.exists():
-            result = json.loads(codex_result.read_text(encoding="utf-8"))
-            typer.echo(f"Latest outcome: {result['outcome']}")
-        return
     try:
         summary = read_status(_database(path.resolve()))
     except FileNotFoundError:
@@ -127,27 +89,20 @@ def status(
 def run_project(
     path: Path = typer.Argument(Path.cwd(), help="Project directory."),
     fake: bool = typer.Option(False, "--fake", help="Use the deterministic fixture agent."),
-    provider: str = typer.Option("codex", "--provider", help="codex (default), or legacy anthropic/openai."),
+    provider: str = typer.Option("anthropic", "--provider", help="Research model provider: anthropic or openai."),
     model: str | None = typer.Option(None, "--model", help="Model id for a live run."),
     base_url: str | None = typer.Option(None, "--base-url", help="OpenAI-compatible endpoint (openai provider)."),
     effort: str = typer.Option("medium", "--effort", help="Live model effort."),
-    max_tasks: int = typer.Option(12, min=4, help="Maximum tasks dispatched by the legacy pipeline."),
-    max_model_calls: int = typer.Option(20, min=0, help="Model-call budget for legacy providers and --fake."),
+    max_tasks: int = typer.Option(12, min=4, help="Maximum research tasks dispatched."),
+    max_model_calls: int = typer.Option(20, min=0, help="Maximum model calls for the research run."),
     idempotency_key: str | None = typer.Option(None, "--idempotency-key"),
-    max_agents: int = typer.Option(3, min=0, max=8, help="Maximum concurrent Codex delegates; 0 disables delegation."),
-    timeout: float = typer.Option(1800, min=1, help="Codex turn timeout in seconds."),
 ) -> None:
-    """Run one Codex agent; it may delegate focused work when useful."""
+    """Run the research agents with the configured model provider."""
 
     root = path.resolve()
     if not _database(root).is_file():
         connection = initialize_project(root)
         connection.close()
-    if provider == "codex" and not fake:
-        _run_codex(root, model, effort, max_agents, timeout)
-        return
-    if provider == "codex" and fake:
-        provider = "anthropic"
     if provider not in PROVIDERS:
         typer.echo(f"--provider must be one of: {', '.join(PROVIDERS)}.", err=True)
         raise typer.Exit(code=2)
@@ -179,7 +134,7 @@ def literature(
     review_id: str = typer.Option("literature", "--id", help="Independent review instance id."),
     reviews: list[str] | None = typer.Option(None, "--review", help="Run selected configured ids; repeat for multiple reviews."),
     backends: list[str] | None = typer.Option(None, "--backend", help="crossref, europe_pmc, or brave; repeat to combine."),
-    provider: str = typer.Option("codex", help="codex (existing login), anthropic, or openai."),
+    provider: str = typer.Option("anthropic", help="Literature model provider: anthropic or openai."),
     model: str | None = typer.Option(None),
     base_url: str | None = typer.Option(None),
     max_model_calls: int = typer.Option(24, min=0),
@@ -192,8 +147,8 @@ def literature(
 
     root = path.resolve()
     try:
-        if provider not in ("codex", *PROVIDERS):
-            raise ValueError(f"provider must be one of codex, {', '.join(PROVIDERS)}")
+        if provider not in PROVIDERS:
+            raise ValueError(f"provider must be one of {', '.join(PROVIDERS)}")
         if not _database(root).is_file():
             initialize_project(root).close()
         specs = ([ReviewSpec(id=review_id, question=question, backends=backends or ["crossref", "europe_pmc"],
@@ -269,10 +224,6 @@ def export_project(
 ) -> None:
     """Re-export the newest committed deliverable."""
 
-    if (path.resolve() / "output" / "codex-result.json").is_file():
-        for name in ("report.md", "run-summary.md", "provenance.json", "codex-result.json"):
-            typer.echo(str(path.resolve() / "output" / name))
-        return
     try:
         paths = export_committed_project(path.resolve())
     except (FileNotFoundError, RuntimeError, ValueError) as exc:
@@ -288,10 +239,6 @@ def pause(
 ) -> None:
     """Request that the active run stop before its next task."""
 
-    if (path.resolve() / ".research" / "codex.lock").is_file():
-        (path.resolve() / ".research" / "codex-stop").touch()
-        typer.echo("Requested interruption of the active Codex turn. Use 'ar resume' to continue.")
-        return
     try:
         run_id = request_pause(_database(path.resolve()))
     except (FileNotFoundError, RuntimeError) as exc:
@@ -304,15 +251,13 @@ def pause(
 def resume(
     path: Path = typer.Argument(Path.cwd(), help="Project directory."),
     fake: bool = typer.Option(False, "--fake", help="Use the deterministic fixture agent."),
-    provider: str = typer.Option("codex", "--provider", help="codex (default), or legacy anthropic/openai."),
+    provider: str = typer.Option("anthropic", "--provider", help="Research model provider: anthropic or openai."),
     model: str | None = typer.Option(None, "--model", help="Model id for a live run."),
     base_url: str | None = typer.Option(None, "--base-url", help="OpenAI-compatible endpoint (openai provider)."),
     effort: str = typer.Option("medium", "--effort", help="Live model effort."),
     max_tasks: int = typer.Option(12, min=4),
     max_model_calls: int = typer.Option(20, min=0),
     idempotency_key: str | None = typer.Option(None, "--idempotency-key"),
-    max_agents: int = typer.Option(3, min=0, max=8),
-    timeout: float = typer.Option(1800, min=1),
 ) -> None:
     """Resume the active paused or interrupted run."""
 
@@ -320,11 +265,6 @@ def resume(
     if not _database(root).is_file():
         typer.echo("Not an autoresearch project.", err=True)
         raise typer.Exit(code=1)
-    if provider == "codex" and not fake:
-        _run_codex(root, model, effort, max_agents, timeout)
-        return
-    if provider == "codex" and fake:
-        provider = "anthropic"
     if provider not in PROVIDERS:
         typer.echo(f"--provider must be one of: {', '.join(PROVIDERS)}.", err=True)
         raise typer.Exit(code=2)
@@ -346,15 +286,50 @@ def resume(
     typer.echo(f"Status: {outcome.value}")
 
 
+@app.command("code")
+def code(
+    objective: str = typer.Argument(help="Implementation, debugging, build, or test assignment."),
+    project: Path = typer.Option(Path.cwd(), "--project", help="Project whose files the coding worker may use."),
+    input_paths: list[str] | None = typer.Option(None, "--input", help="Project-relative source path; repeat as needed."),
+    job_id: str | None = typer.Option(None, "--job-id", help="Resume a previous coding job."),
+    model: str | None = typer.Option(None, help="Codex coding model."),
+    effort: str = typer.Option("high", help="Coding reasoning effort."),
+    max_agents: int = typer.Option(3, min=0, max=8, help="Maximum coding delegates; 0 keeps one coding agent."),
+    timeout: float = typer.Option(1800, min=1, help="Coding turn timeout in seconds."),
+) -> None:
+    """Invoke Codex only for a coding assignment; research stays with its own agents."""
+    from ar.coding_agent import CodingAgent
+
+    load_env(project.resolve() / ".env", Path.cwd() / ".env")
+    worker = CodingAgent(project.resolve())
+    try:
+        job = worker.start(objective, input_paths=input_paths, job_id=job_id, model=model,
+                           effort=effort, max_agents=max_agents, timeout=timeout)
+        typer.echo(f"Coding job: {job['job_id']}")
+        result = worker.wait(job["job_id"])
+    except (OSError, ValueError, RuntimeError) as exc:
+        typer.echo(f"Coding job failed: {exc}", err=True)
+        raise typer.Exit(code=1) from None
+    finally:
+        worker.close()
+    typer.echo(f"Status: {result['status']}")
+    for artifact in result.get("result", {}).get("artifacts", []):
+        typer.echo(f"Artifact: {artifact['path']} ({artifact['sha256']})")
+    if result["status"] != "completed":
+        if result.get("error"):
+            typer.echo(result["error"], err=True)
+        raise typer.Exit(code=1)
+
+
 @app.command()
 def studio(
     port: int = typer.Option(8765, help="Port on 127.0.0.1."),
-    provider: str | None = typer.Option(None, help="codex (default), or legacy openai/anthropic."),
-    model: str | None = typer.Option(None, help="Model id; defaults to the available Codex catalog default."),
+    provider: str | None = typer.Option(None, help="openai or anthropic (default: whichever key is in .env)."),
+    model: str | None = typer.Option(None, help="Model id for the configured research provider."),
     fake: bool = typer.Option(False, "--fake", help="Demo mode on the built-in papers, no API key."),
     no_browser: bool = typer.Option(False, "--no-browser", help="Do not open a browser tab."),
 ) -> None:
-    """Open the research chat with one Codex agent and optional delegates."""
+    """Open the research chat with the existing research and literature agents."""
     from ar.studio.__main__ import main as studio_main
 
     args = ["--port", str(port)] + (["--provider", provider] if provider else []) + (["--model", model] if model else [])
