@@ -104,6 +104,8 @@ def handle(studio: Studio, method: str, path: str, query: str, raw_body: bytes) 
             session.chat(str(data.get("message", ""))[:8000])
         elif path == "/api/source":
             session.add_source(str(data.get("name", "source"))[:120], str(data.get("text", "")))
+        elif path == "/api/source/remove":
+            session.remove_source(str(data.get("source", "")))
         elif path == "/api/demo":
             session.use_demo()
         elif path == "/api/run":

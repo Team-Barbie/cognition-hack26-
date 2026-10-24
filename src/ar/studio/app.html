@@ -132,7 +132,11 @@ h3.sub { font: 400 clamp(26px, 2.6vw, 36px)/1.1 var(--display); letter-spacing: 
 
 /* 02 sources */
 .shelf { list-style: none; margin: 0 0 22px; padding: 0; border-top: 2px solid var(--ink); }
-.shelf li { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; gap: 12px; align-items: baseline; padding: 12px 0; border-bottom: 1px solid var(--rule); }
+.shelf li { position: relative; display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; gap: 12px; align-items: baseline; padding: 12px 40px 12px 0; border-bottom: 1px solid var(--rule); }
+.shelf .remove { position: absolute; top: 8px; right: 0; width: 28px; height: 28px; border: 1px solid transparent; background: none; border-radius: 50%; cursor: pointer; font: 400 20px/1 var(--sans); color: var(--muted); }
+.shelf .remove:hover { color: #fff; background: var(--red); }
+.shelf .remove:focus-visible { outline: 2px solid var(--red); outline-offset: 2px; }
+.shelf .remove:disabled { visibility: hidden; }
 .shelf .no { font: 600 11px var(--mono); color: var(--muted); }
 .shelf .name { font: 700 18px var(--serif); overflow-wrap: anywhere; }
 .shelf .meta { font: 500 12px var(--mono); color: var(--muted); }
@@ -308,7 +312,7 @@ mark { background: var(--mark); color: var(--ink); box-shadow: 0 2px 0 var(--red
           <button class="link" id="paste-toggle" type="button">Paste a source</button>
           <button class="link" id="demo" type="button">Use demo papers</button>
           <span class="spacer"></span>
-          <button class="go" id="start" type="button" disabled>Start research</button>
+          <button class="go" id="start" type="button">Start research</button>
         </div>
         <form class="paste" id="paste" hidden>
           <input id="paste-name" placeholder="Source name, e.g. smith-2024" required aria-label="Source name">
@@ -403,7 +407,7 @@ mark { background: var(--mark); color: var(--ink); box-shadow: 0 2px 0 var(--red
       <div class="chips">
         <button class="chip" id="chip-demo" type="button">Use demo papers</button>
         <label class="chip" for="file" tabindex="0">Upload a paper</label>
-        <button class="chip go-chip" id="chip-start" type="button" disabled>Start research</button>
+        <button class="chip go-chip" id="chip-start" type="button">Start research</button>
       </div>
       <form class="chat-form" id="composer">
         <textarea id="input" rows="1" placeholder="Ask a research question…" aria-label="Message Res Loop"></textarea>
@@ -442,8 +446,18 @@ mark { background: var(--mark); color: var(--ink); box-shadow: 0 2px 0 var(--red
     const res = await fetch(path, { method: body === undefined ? "GET" : "POST",
       headers: { "Content-Type": "application/json" }, body: body === undefined ? undefined : JSON.stringify({ id: sid, ...body }) });
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    if (!res.ok) {
+      if (/unknown session/.test(data.error || "")) restarted();
+      throw new Error(data.error || `HTTP ${res.status}`);
+    }
     return data;
+  }
+  let recovering = false;
+  function restarted() {
+    if (recovering) return;
+    recovering = true;
+    toast("Res Loop restarted, so this page's session is gone. Opening a fresh one…");
+    setTimeout(() => { location.href = location.pathname; }, 1600);
   }
   function toast(msg) { const t = $("toast"); t.textContent = msg; t.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => { t.hidden = true; }, 4500); }
   function chapter(name) {
@@ -508,9 +522,13 @@ mark { background: var(--mark); color: var(--ink); box-shadow: 0 2px 0 var(--red
     updateStart();
   }
   function updateStart() {
-    const off = !(state.briefReady && state.sources && !state.running);
     const label = state.running ? "Running…" : (state.reportShown ? "Run again" : "Start research");
-    for (const id of ["start", "chip-start"]) { $(id).disabled = off; $(id).textContent = label; }
+    for (const id of ["start", "chip-start"]) { $(id).disabled = state.running; $(id).textContent = label; }
+  }
+  function missing() {
+    if (!state.briefReady) return "First tell me what to research: type your question in the chat.";
+    if (!state.sources) return "Add at least one source: upload a paper or press Use demo papers.";
+    return null;
   }
 
   // 02 sources
@@ -519,7 +537,10 @@ mark { background: var(--mark); color: var(--ink); box-shadow: 0 2px 0 var(--red
     state.sources = list.length;
     if (!list.length) shelf.append(h("li", {}, h("span", { class: "none" }, "No sources yet.")));
     list.forEach((s, i) => shelf.append(h("li", {}, h("span", { class: "no" }, String(i + 1).padStart(2, "0")),
-      h("span", { class: "name" }, s.id), h("span", { class: "meta" }, `${s.lines} lines`))));
+      h("span", { class: "name" }, s.id), h("span", { class: "meta" }, `${s.lines} lines`),
+      h("button", { class: "remove", type: "button", title: `Remove ${s.id}`, "aria-label": `Remove ${s.id}`, disabled: state.running,
+        onclick: async () => { try { await api("/api/source/remove", { source: s.id }); } catch (err) { toast(err.message); } } }, "×"))));
+    state.sourceList = list;
     updateStart();
   }
 
@@ -600,6 +621,7 @@ mark { background: var(--mark); color: var(--ink); box-shadow: 0 2px 0 var(--red
     state.running = status === "started" || status === "running";
     const words = { started: "Tip-off", completed: "Final whistle · completed", blocked: "Final whistle · blocked", failed: "Stopped · failed", budget_exhausted: "Out of time · budget exhausted", cancelled: "Cancelled" };
     if (words[status]) $("court-status").textContent = words[status];
+    if (state.sourceList) renderSources(state.sourceList);  // hide or show the remove buttons
     if (state.running) { chapter("team"); chatStatus("Team on the court", true); }
     else if (words[status]) chatStatus(status === "completed" ? "Report ready" : words[status], false);
     updateStart();
@@ -800,6 +822,8 @@ mark { background: var(--mark); color: var(--ink); box-shadow: 0 2px 0 var(--red
   $("chat-close").addEventListener("click", () => openChat(false));
   document.querySelector('.chip[for="file"]').addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); $("file").click(); } });
   $("start").addEventListener("click", async () => {
+    const why = missing();
+    if (why) { addTurn({ role: "assistant", who: "Res Loop", text: why }); openChat(true); toast(why); return; }
     state.running = true; updateStart();
     try { await api("/api/run", {}); } catch (err) { state.running = false; updateStart(); toast(err.message); }
   });
