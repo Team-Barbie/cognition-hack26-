@@ -47,20 +47,23 @@ class OpenAICompatClient:
     def __init__(
         self, base_url: str = DEFAULT_BASE_URL, api_key: str = "", model: str = DEFAULT_MODEL,
         timeout: float = 120,
+        reasoning_effort: str | None = None,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.model = model
         self.timeout = timeout
+        self.reasoning_effort = reasoning_effort
         self._api_key = api_key
 
     @classmethod
-    def from_env(cls, model: str | None = None, base_url: str | None = None) -> OpenAICompatClient:
+    def from_env(cls, model: str | None = None, base_url: str | None = None, *,
+                 reasoning_effort: str | None = None) -> OpenAICompatClient:
         """Reads OPENAI_API_KEY and OPENAI_BASE_URL; a key is required only for the hosted URL."""
         base_url = base_url or os.environ.get("OPENAI_BASE_URL", DEFAULT_BASE_URL)
         key = os.environ.get("OPENAI_API_KEY", "")
         if not key and base_url.rstrip("/") == DEFAULT_BASE_URL:
             raise AdapterError("OPENAI_API_KEY is not set")
-        return cls(base_url, key, model or DEFAULT_MODEL)
+        return cls(base_url, key, model or DEFAULT_MODEL, reasoning_effort=reasoning_effort)
 
     def complete(self, system: str, user: str) -> str:
         body = {
@@ -71,6 +74,8 @@ class OpenAICompatClient:
                 {"role": "user", "content": user},
             ],
         }
+        if self.reasoning_effort is not None:
+            body["reasoning_effort"] = self.reasoning_effort
         request = urllib.request.Request(
             f"{self.base_url}/chat/completions",
             data=json.dumps(body).encode("utf-8"),

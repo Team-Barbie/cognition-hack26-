@@ -102,6 +102,15 @@ def test_demo_without_gpt_credentials_uses_fixture_instead_of_expensive_provider
     assert session.test_model is None
 
 
+def test_nano_test_client_uses_minimal_reasoning_and_normal_client_keeps_its_default(tmp_path, monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", "fixture-token")
+    monkeypatch.delenv("STUDIO_TEST_MODEL", raising=False)
+    studio = server.Studio(tmp_path, provider="openai")
+    session = studio.new_session()
+    assert session.make_test_agent().client.reasoning_effort == "minimal"
+    assert session.make_agent().client.reasoning_effort is None
+
+
 def test_demo_cannot_replace_sources_during_a_running_job(tmp_path):
     session = Session(tmp_path, None)
     session._thread = SimpleNamespace(is_alive=lambda: True)

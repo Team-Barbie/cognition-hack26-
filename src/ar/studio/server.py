@@ -19,7 +19,7 @@ from urllib.parse import parse_qs, urlparse
 
 from ar.adapter import LiveAgent, load_env, make_client
 from ar.agents.fake import FakeAgent
-from ar.openai_client import DEFAULT_TEST_MODEL
+from ar.openai_client import DEFAULT_TEST_MODEL, OpenAICompatClient
 from ar.studio.session import Session
 
 MAX_BODY = 1_000_000
@@ -145,13 +145,19 @@ class Studio:
     def _client(self):
         return make_client(self.provider, self.model) if self.provider in {"openai", "anthropic"} else None
 
+    def _test_client(self):
+        client = make_client("openai", self.test_model)
+        if isinstance(client, OpenAICompatClient) and client.model == DEFAULT_TEST_MODEL:
+            client.reasoning_effort = "minimal"
+        return client
+
     def new_session(self) -> Session:
         make_agent = (lambda: LiveAgent(self._client())) if self.provider else None
         make_test_agent = None
         test_model = None
         if self.provider:
             if os.environ.get("OPENAI_API_KEY"):
-                make_test_agent = lambda: LiveAgent(make_client("openai", self.test_model))
+                make_test_agent = lambda: LiveAgent(self._test_client())
                 test_model = self.test_model
             else:
                 make_test_agent = FakeAgent  # no GPT credentials: keep the demo free

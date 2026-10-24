@@ -15,7 +15,7 @@ from ar.adapter import PROVIDERS, LiveAgent, make_client  # noqa: E402
 from ar.agents.fake import load_answer_key  # noqa: E402
 from ar.models import LineSelector, SourceRef  # noqa: E402
 from ar.packet import DeliveredRead, Packet  # noqa: E402
-from ar.openai_client import DEFAULT_TEST_MODEL  # noqa: E402
+from ar.openai_client import DEFAULT_TEST_MODEL, OpenAICompatClient  # noqa: E402
 
 FIXTURE = ROOT / "fixtures" / "baselines"
 
@@ -26,10 +26,13 @@ def main() -> int:
     parser.add_argument("--provider", default="openai", choices=PROVIDERS)
     parser.add_argument("--model")
     parser.add_argument("--base-url")
-    parser.add_argument("--effort", default="medium", choices=["low", "medium", "high", "xhigh", "max"])
+    parser.add_argument("--effort", choices=["minimal", "low", "medium", "high", "xhigh", "max"])
     args = parser.parse_args()
     model = args.model or (DEFAULT_TEST_MODEL if args.provider == "openai" else None)
-    client = make_client(args.provider, model, args.effort, args.base_url)
+    effort = args.effort or ("minimal" if args.provider == "openai" and model == DEFAULT_TEST_MODEL else "medium")
+    client = make_client(args.provider, model, effort, args.base_url)
+    if isinstance(client, OpenAICompatClient) and model == DEFAULT_TEST_MODEL:
+        client.reasoning_effort = effort
     agent = LiveAgent(client)
     failures = 0
     for source_id, entry in key["sources"].items():

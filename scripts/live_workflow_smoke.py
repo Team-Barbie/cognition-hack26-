@@ -20,7 +20,8 @@ def main():
     parser.add_argument("--workdir", type=Path, default=ROOT / ".research" / "live-workflows")
     args = parser.parse_args()
     load_env(args.env_file)
-    client = OpenAICompatClient.from_env(model=args.model)
+    client = OpenAICompatClient.from_env(model=args.model,
+                                       reasoning_effort="minimal" if args.model == DEFAULT_TEST_MODEL else None)
     session = Session(args.workdir, lambda: LiveAgent(client),
                       make_test_agent=lambda: LiveAgent(client), test_model=args.model)
     session.use_demo()

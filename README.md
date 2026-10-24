@@ -71,7 +71,8 @@ python -m venv .venv
 Both paths share the same packet and the same `AgentResult` schema.
 
 Studio's **Load demo**, **Watch showcase**, and **Low-cost workflow test** use `gpt-5-nano` when an
-OpenAI API key is configured. Set `STUDIO_TEST_MODEL` to override only that test model. Normal research
+OpenAI API key is configured. Nano workflow checks use minimal reasoning to limit latency and token use.
+Set `STUDIO_TEST_MODEL` to override only that test model. Normal research
 retains its configured provider/model; explicit `--fake` and offline demo mode still make no model calls.
 The active test model appears in the page's mode label. API clients can pass `test_run: true` to
 `POST /api/run`, or `false` to return to normal research.
