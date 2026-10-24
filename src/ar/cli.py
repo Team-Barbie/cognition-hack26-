@@ -241,5 +241,22 @@ def resume(
     typer.echo(f"Status: {outcome.value}")
 
 
+@app.command()
+def studio(
+    port: int = typer.Option(8765, help="Port on 127.0.0.1."),
+    provider: str | None = typer.Option(None, help="openai or anthropic (default: whichever key is in .env)."),
+    model: str | None = typer.Option(None, help="Model id (default: gpt-5.6-terra for openai)."),
+    fake: bool = typer.Option(False, "--fake", help="Demo mode on the built-in papers, no API key."),
+    no_browser: bool = typer.Option(False, "--no-browser", help="Do not open a browser tab."),
+) -> None:
+    """Open the research chat: describe a question, add sources, and watch the agent team work."""
+    from ar.studio.__main__ import main as studio_main
+
+    args = ["--port", str(port)] + (["--provider", provider] if provider else []) + (["--model", model] if model else [])
+    args += ["--fake"] if fake else []
+    args += ["--no-browser"] if no_browser else []
+    raise typer.Exit(studio_main(args))
+
+
 if __name__ == "__main__":  # pragma: no cover
     app()
