@@ -289,13 +289,25 @@ blockquote { margin: 0; padding: 4px 0 4px 14px; border-left: 3px solid var(--ph
 .lock-error { min-height: 1.4em; font: 700 13px var(--mono); color: var(--ph-hi); }
 .drawer { position: fixed; inset: var(--bz); border-radius: var(--rad); z-index: 650; display: grid; justify-items: end; background: rgba(2,4,1,.7); overflow: hidden; }
 .drawer[hidden] { display: none; }
-.sheet { width: min(640px, 100%); height: 100%; overflow-y: auto; background: #0a1006; border-left: 2px solid var(--ph-2); padding: 0 0 40px; animation: slidein .35s cubic-bezier(.2,.8,.2,1) backwards; }
+.sheet { width: min(760px, 100%); height: 100%; overflow-y: auto; background: #0a1006; border-left: 2px solid var(--ph-2); padding: 0 0 48px; animation: slidein .35s cubic-bezier(.2,.8,.2,1) backwards; }
 .sheet .wbar { position: sticky; top: 0; z-index: 2; }
-.sheet .inner { padding: 20px 24px; display: grid; gap: 14px; align-content: start; }
+.sheet .inner { padding: 28px 32px 42px; display: grid; gap: 26px; align-content: start; }
 .sheet .no { font: 800 54px/1 var(--mono); color: var(--ph-hi); text-shadow: 0 0 16px var(--glow); }
-.sheet .stmt { font: 16px/1.6 var(--mono); margin: 0; color: var(--ph-hi); }
+.sheet .stmt { font: 16px/1.75 var(--mono); margin: 0; color: var(--ph-hi); }
 .sheet hr { border: 0; border-top: 1px dashed var(--sep); margin: 6px 0; width: 100%; }
 .sheet .kick { margin: 0; font: 800 11px var(--mono); letter-spacing: .16em; text-transform: uppercase; color: var(--ph-3); }
+.evidence-section { display: grid; gap: 18px; padding-bottom: 28px; border-bottom: 1px dashed var(--sep); }
+.evidence-section:last-child { padding-bottom: 0; border-bottom: 0; }
+.evidence-section > .subhead { color: var(--ph-2); }
+.evidence-ref { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; font-size: 14px; }
+.evidence-ref b { color: var(--ph-hi); }
+.evidence-section blockquote { margin: 0; padding: 12px 0 12px 18px; }
+.evidence-section .lines { margin: 2px 0; padding: 12px 0; }
+.evidence-verdict { padding: 10px 14px; border: 1px solid var(--ph-3); border-radius: 9px; color: var(--ph-hi); font: 800 11px/1.5 var(--mono); letter-spacing: .12em; text-transform: uppercase; }
+.evidence-verdict.bad { border-color: var(--acc); color: var(--acc-hi); }
+.evidence-trace { display: grid; gap: 12px; margin-top: 4px; padding: 16px 18px; border: 1px solid var(--ph-4); border-radius: 10px; background: rgba(0,0,0,.2); }
+.evidence-section .facts { gap: 7px 22px; }
+.evidence-limitations { display: grid; gap: 14px; }
 .lines { border: 1px solid var(--ph-4); border-radius: 10px; padding: 8px 0; font: 12.5px/1.8 var(--mono); overflow-x: auto; background: rgba(0,0,0,.35); }
 .ln { display: grid; grid-template-columns: 3em minmax(0, 1fr); padding-right: 12px; }
 .ln .n { text-align: right; padding-right: 12px; color: var(--ph-3); user-select: none; }
@@ -335,6 +347,7 @@ mark { background: var(--acc); color: var(--ink); text-shadow: none; padding: 0 
   :root { --bz: 6px; --rad: 20px; }
   .hud { padding: 9px 14px; gap: 14px; } .hud nav, .hud .hide-s { display: none; }
   .layout { padding: 12px 10px 20px; } .wbody { padding: 14px 14px 16px; } .rbody { padding: 16px 14px 20px; }
+  .sheet .inner { padding: 22px 18px 34px; } .evidence-section { gap: 15px; padding-bottom: 22px; }
   .hero { padding: 28px 10px 64px; }
   .shelfrow { padding-left: 8px; padding-right: 8px; } .sig-in { padding: 18px; }
 }
@@ -999,14 +1012,27 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
   function openProof(id) {
     const c = report.claimMap[id]; if (!c) return; returnFocus = document.activeElement;
     const sheet = $("sheet"), inner = h("div", { class: "inner" }); sheet.replaceChildren(sheetBar(`Evidence for ${id}`), inner); sheet.setAttribute("aria-label", `Evidence for ${id}`);
-    inner.append(h("div", { class: "no" }, report.numbers[id] ? `[${report.numbers[id]}]` : id), h("p", { class: "stmt" }, c.statement));
-    inner.append(h("dl", { class: "facts" }, h("dt", {}, "Status"), h("dd", {}, c.status), h("dt", {}, "Created by"), h("dd", {}, c.task)));
-    for (const l of c.links) {
-      inner.append(h("hr")); inner.append(h("div", {}, h("span", { class: `rel ${l.relation}` }, l.relation), "  ", h("b", {}, l.source), ` lines ${l.start}-${l.end}`)); inner.append(h("blockquote", {}, l.quote));
-      if (l.window.length) { const [box, found] = highlight(l.window, l); inner.append(box, h("p", { class: "kick", style: "margin:0" }, found ? "[OK] quote found in the cited lines" : "[ERR] quote not found in the cited lines")); }
-      const r = l.receipt || {}; inner.append(h("dl", { class: "facts" }, h("dt", {}, "Read record"), h("dd", {}, r.id || "?"), h("dt", {}, "Reader task"), h("dd", {}, r.task || "?"), h("dt", {}, "Provided lines"), h("dd", {}, r.start ? `${r.start}-${r.end}` : "?"), h("dt", {}, "Time"), h("dd", {}, r.at || "?")));
+    inner.append(h("section", { class: "evidence-section" },
+      h("p", { class: "subhead" }, "Claim"),
+      h("div", { class: "no" }, report.numbers[id] ? `[${report.numbers[id]}]` : id),
+      h("p", { class: "stmt" }, c.statement),
+      h("dl", { class: "facts" }, h("dt", {}, "Status"), h("dd", {}, c.status), h("dt", {}, "Created by"), h("dd", {}, c.task))));
+    for (const [index, l] of c.links.entries()) {
+      const evidence = h("section", { class: "evidence-section" },
+        h("p", { class: "subhead" }, `Source evidence ${index + 1}`),
+        h("div", { class: "evidence-ref" }, h("span", { class: `rel ${l.relation}` }, l.relation), h("b", {}, l.source), h("span", {}, `lines ${l.start}-${l.end}`)),
+        h("blockquote", {}, l.quote));
+      if (l.window.length) {
+        const [box, found] = highlight(l.window, l);
+        evidence.append(box, h("p", { class: `evidence-verdict${found ? "" : " bad"}` }, found ? "[OK] Quote verified in the cited lines" : "[ERR] Quote not found in the cited lines"));
+      }
+      const r = l.receipt || {};
+      evidence.append(h("div", { class: "evidence-trace" },
+        h("p", { class: "subhead" }, "Traceability"),
+        h("dl", { class: "facts" }, h("dt", {}, "Read record"), h("dd", {}, r.id || "?"), h("dt", {}, "Reader task"), h("dd", {}, r.task || "?"), h("dt", {}, "Provided lines"), h("dd", {}, r.start ? `${r.start}-${r.end}` : "?"), h("dt", {}, "Time"), h("dd", {}, r.at || "?"))));
+      inner.append(evidence);
     }
-    if (c.limitations && c.limitations.length) inner.append(h("ul", { class: "notes" }, c.limitations.map(x => h("li", {}, h("b", {}, "Limitation"), h("span", {}, x)))));
+    if (c.limitations && c.limitations.length) inner.append(h("section", { class: "evidence-section evidence-limitations" }, h("p", { class: "subhead" }, "Limitations"), h("ul", { class: "notes" }, c.limitations.map(x => h("li", {}, h("span", {}, x))))));
     $("drawer").hidden = false; sheet.querySelector("button").focus();
   }
   const packetLines = read => h("div", { class: "lines packet-lines" }, read.lines.map(row => h("div", { class: "ln in" }, h("span", { class: "n" }, row.n), h("span", { class: "t" }, row.text || " "))));
