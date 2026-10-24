@@ -74,6 +74,18 @@ class SlidingWindowLimiter:
 _RATE_LIMITER = SlidingWindowLimiter()
 
 
+class StudioHTTPServer(ThreadingHTTPServer):
+    """Threaded server whose listening port belongs to exactly one Studio process.
+
+    ``HTTPServer`` enables ``SO_REUSEADDR``.  On Windows that permits multiple
+    live processes to bind the same address, after which requests can be split
+    between unrelated in-memory session stores.  A second Studio should fail
+    clearly at startup instead of presenting an intermittently broken page.
+    """
+
+    allow_reuse_address = False
+
+
 def _rate_limit(client_id: str | None, path: str) -> tuple[int, str, bytes] | None:
     """Apply a broad API cap plus tighter caps around expensive or connection-heavy routes."""
     if not client_id or not path.startswith("/api/"):
@@ -279,6 +291,8 @@ def handle(studio: Studio, method: str, path: str, query: str, raw_body: bytes,
         return _json({"error": str(exc).strip("'\"")}, HTTPStatus.BAD_REQUEST)
     except (ValueError, RuntimeError) as exc:
         return _json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
+    except OSError as exc:
+        return _json({"error": f"studio storage is unavailable: {exc}"}, HTTPStatus.INTERNAL_SERVER_ERROR)
 
 
 def vercel_studio() -> Studio:
@@ -351,9 +365,12 @@ def make_handler(studio: Studio) -> type[BaseHTTPRequestHandler]:
 
 
 def serve(port: int = 8765, *, provider: str | None = None, model: str | None = None, fake: bool = False,
-          workdir: Path = DEFAULT_WORKDIR, env_files: tuple[Path, ...] = ()) -> ThreadingHTTPServer:
+          workdir: Path = DEFAULT_WORKDIR, env_files: tuple[Path, ...] = ()) -> StudioHTTPServer:
     load_env(*env_files)
+    # Fail before opening a browser if sessions cannot be persisted.  Otherwise
+    # the page loads normally and its first API request ends in an empty reply.
+    workdir.mkdir(parents=True, exist_ok=True)
     studio = Studio(workdir, provider, model, fake)
-    httpd = ThreadingHTTPServer(("127.0.0.1", port), make_handler(studio))
+    httpd = StudioHTTPServer(("127.0.0.1", port), make_handler(studio))
     httpd.studio = studio  # type: ignore[attr-defined]
     return httpd
