@@ -1,15 +1,16 @@
 import json
-import urllib.error
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
 
+import anthropic
+import httpx2 as httpx
 import pytest
 
-from ar import adapter
 from ar.adapter import (
+    DEFAULT_MODEL,
     ENVELOPE_INSTRUCTIONS,
     AdapterError,
+    AnthropicClient,
     LiveAgent,
-    OpenAICompatClient,
 )
 from ar.agents import roles
 from ar.models import Record
@@ -136,70 +137,61 @@ def test_client_exception_wrapped():
         LiveAgent(Boom()).run("writer", packet())
 
 
-def test_from_env_missing_key(monkeypatch):
-    monkeypatch.delenv("AR_API_KEY", raising=False)
-    with pytest.raises(AdapterError, match="AR_API_KEY"):
-        OpenAICompatClient.from_env()
+class FakeSdk:
+    """Stands in for anthropic.Anthropic; records the request and returns a canned response."""
+
+    def __init__(self, response=None, error: Exception | None = None) -> None:
+        self.response = response
+        self.error = error
+        self.kwargs: dict = {}
+        self.beta = SimpleNamespace(messages=SimpleNamespace(create=self._create))
+
+    def _create(self, **kwargs):
+        self.kwargs = kwargs
+        if self.error:
+            raise self.error
+        return self.response
 
 
-def test_from_env_reads_settings(monkeypatch):
-    monkeypatch.setenv("AR_API_KEY", "k")
-    monkeypatch.setenv("AR_MODEL", "m")
-    monkeypatch.delenv("AR_BASE_URL", raising=False)
-    client = OpenAICompatClient.from_env()
-    assert client.base_url == adapter.DEFAULT_BASE_URL
-    assert client.model == "m"
+def _response(blocks, stop_reason="end_turn", stop_details=None):
+    return SimpleNamespace(content=blocks, stop_reason=stop_reason, stop_details=stop_details)
 
 
-class FakeResponse:
-    def __init__(self, body: dict) -> None:
-        self._raw = json.dumps(body).encode()
-
-    def read(self) -> bytes:
-        return self._raw
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *exc):
-        return False
+def _text(text):
+    return SimpleNamespace(type="text", text=text)
 
 
-def test_request_shape(monkeypatch):
-    seen = {}
-
-    def fake_urlopen(request, timeout=None):
-        seen["url"] = request.full_url
-        seen["method"] = request.get_method()
-        seen["headers"] = {k.lower(): v for k, v in request.header_items()}
-        seen["body"] = json.loads(request.data)
-        seen["timeout"] = timeout
-        return FakeResponse({"choices": [{"message": {"content": "{}"}}]})
-
-    monkeypatch.setattr(adapter.urllib.request, "urlopen", fake_urlopen)
-    client = OpenAICompatClient("http://host/v1/", "secret", "mod", timeout=5)
-    assert client.complete("sys", "usr") == "{}"
-    assert seen["url"] == "http://host/v1/chat/completions"
-    assert seen["method"] == "POST"
-    assert seen["headers"]["authorization"] == "Bearer secret"
-    assert seen["timeout"] == 5
-    body = seen["body"]
-    assert body["model"] == "mod"
-    assert body["temperature"] == 0
-    assert body["response_format"] == {"type": "json_object"}
-    assert body["messages"] == [
-        {"role": "system", "content": "sys"},
-        {"role": "user", "content": "usr"},
-    ]
+def test_request_shape():
+    sdk = FakeSdk(_response([SimpleNamespace(type="thinking", thinking=""), _text("{}"), _text("!")]))
+    client = AnthropicClient(sdk, effort="high")
+    assert client.complete("sys", "usr") == "{}!"
+    kw = sdk.kwargs
+    assert kw["model"] == DEFAULT_MODEL == "claude-opus-5-5"
+    assert kw["system"] == "sys"
+    assert kw["messages"] == [{"role": "user", "content": "usr"}]
+    assert kw["output_config"] == {"effort": "high"}
+    assert kw["fallbacks"] == "default" and kw["betas"] == ["server-side-fallback-2026-07-01"]
+    assert "temperature" not in kw and "thinking" not in kw
 
 
-def test_http_error_wrapped_without_key(monkeypatch):
-    def fake_urlopen(request, timeout=None):
-        raise urllib.error.HTTPError(request.full_url, 401, "no", {}, None)
+def test_refusal_raises_adapter_error():
+    resp = _response([], "refusal", SimpleNamespace(category="cyber"))
+    with pytest.raises(AdapterError, match="cyber"):
+        AnthropicClient(FakeSdk(resp)).complete("s", "u")
 
-    monkeypatch.setattr(adapter.urllib.request, "urlopen", fake_urlopen)
-    client = OpenAICompatClient("http://host/v1", "secret", "mod")
+
+def test_http_error_wrapped():
+    request = httpx.Request("POST", "https://api.anthropic.com/v1/messages")
+    error = anthropic.AuthenticationError(
+        "bad key sk-secret", response=httpx.Response(401, request=request), body=None
+    )
     with pytest.raises(AdapterError) as info:
-        client.complete("s", "u")
+        AnthropicClient(FakeSdk(error=error)).complete("s", "u")
     assert "401" in str(info.value)
-    assert "secret" not in str(info.value)
+    assert "sk-secret" not in str(info.value)
+
+
+def test_connection_error_wrapped():
+    request = httpx.Request("POST", "https://api.anthropic.com/v1/messages")
+    with pytest.raises(AdapterError):
+        AnthropicClient(FakeSdk(error=anthropic.APIConnectionError(request=request))).complete("s", "u")
