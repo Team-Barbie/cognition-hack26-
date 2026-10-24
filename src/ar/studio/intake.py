@@ -105,9 +105,8 @@ class Intake:
 
     def opening(self) -> str:
         return (
-            "Hi, I'm the research intake agent. Tell me what you want researched. I'll ask a few questions "
-            "about context, constraints, and open questions, then you add the sources (paste text or upload "
-            ".md/.txt files) and I'll hand it to the agent team."
+            "What do you want to know? Give me the question, then answer a couple of follow-ups. "
+            "Add papers to the shelf, or skip them and I'll have a scout write background notes."
         )
 
     def reply(self, message: str) -> str:
@@ -129,7 +128,7 @@ class Intake:
         if self._step < len(SCRIPT):
             return SCRIPT[self._step][1]
         self.ready = bool(self.brief.question)
-        return "Got it. Add your sources on the right of the chat box, then press Start research."
+        return "Got it. Put papers on the shelf, or skip them, then press Start."
 
     def _live(self, message: str) -> str | None:
         transcript = "\n".join(f"{m['role']}: {m['content']}" for m in self.history)
@@ -149,6 +148,6 @@ class Intake:
             self.brief.merge({"question": message})
         self.ready = bool(data.get("ready")) and bool(self.brief.question)
         reply = str(data.get("reply") or "").strip()
-        if self.ready and "source" not in reply.lower():
-            reply += " Add your sources, then press Start research."
+        if self.ready and not any(w in reply.lower() for w in ("source", "paper", "shelf")):
+            reply += " Put papers on the shelf, then press Start."
         return reply or "Tell me a bit more about what you need."
