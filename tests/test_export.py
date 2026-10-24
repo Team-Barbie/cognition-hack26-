@@ -1,3 +1,4 @@
+import hashlib
 import json
 import re
 import sqlite3
@@ -5,12 +6,10 @@ from pathlib import Path
 
 from ar import evidence
 from ar.completion import CompletionAssessment, RequirementRow
-from ar.export import ASSURANCE, export_run
+from ar.export import ASSURANCE, ExportError, export_run
 from ar.models import ArtifactVersion, ClaimDraft, EvidenceLink, LineSelector, SourceRef
 
 KEY = json.loads((Path(__file__).parent.parent / "fixtures" / "baselines" / "answer_key.json").read_text())
-ART = ArtifactVersion(artifact_id="art-1", revision=2, artifact_type="report",
-                      content_sha256="ab" * 32, producing_task="t-writer")
 REPORT = """# Report
 
 ## Supported baseline
@@ -21,6 +20,14 @@ REPORT = """# Report
 
 - paper-b contradicts the exclusion rule. [claim:claim-2]
 """
+
+
+def art_for(content: str) -> ArtifactVersion:
+    return ArtifactVersion(artifact_id="art-1", revision=2, artifact_type="report",
+                           content_sha256=hashlib.sha256(content.encode()).hexdigest(), producing_task="t-writer")
+
+
+ART = art_for(REPORT)
 
 
 class AcceptAll:
@@ -51,7 +58,7 @@ def assessment(complete=True, problems=()) -> CompletionAssessment:
 
 
 def export(tmp_path, conn=None, content=REPORT, outcome="completed", **kw):
-    paths = export_run(conn or conn_(), project_root=tmp_path, artifact=ART, content=content,
+    paths = export_run(conn or conn_(), project_root=tmp_path, artifact=kw.pop("artifact", art_for(content)), content=content,
                        assessment=kw.pop("assessment", assessment()), outcome=outcome,
                        assurance=ASSURANCE, run_id="run-1", **kw)
     return paths
@@ -59,8 +66,9 @@ def export(tmp_path, conn=None, content=REPORT, outcome="completed", **kw):
 
 def test_report_footnotes_resolve(tmp_path):
     paths = export(tmp_path)
-    assert [p.name for p in paths] == ["report.md", "run-summary.md", "provenance.json"]
-    assert all(p.parent == tmp_path / "output" for p in paths)
+    assert [p.name for p in paths] == ["report.md", "run-summary.md", "provenance.json", "art-1-r2.md"]
+    assert all(p.parent == tmp_path / "output" for p in paths[:3])
+    assert paths[3].read_text(encoding="utf-8") == REPORT  # exact reviewed bytes
     report = paths[0].read_text(encoding="utf-8")
     assert "[claim:" not in report
     markers = set(re.findall(r"\[\^(claim-\d+)\](?!:)", report))
@@ -80,13 +88,15 @@ def test_summary_has_assurance_and_outcome(tmp_path):
 
 def test_provenance_lists_only_committed_claims(tmp_path):
     content = REPORT + "\n- Made up. [claim:claim-9]\n"
-    paths = export(tmp_path, content=content, assessment=assessment(False, ["citation [claim:claim-9] unknown"]))
+    paths = export(tmp_path, content=content, outcome="blocked",
+                   assessment=assessment(False, ["citation [claim:claim-9] unknown"]))
     prov = json.loads(paths[2].read_text(encoding="utf-8"))
     assert [c["id"] for c in prov["claims"]] == ["claim-1", "claim-2"]
     assert prov["claims"][1]["evidence_links"][0]["read_receipt_id"] == "read-paper-b"
     assert prov["claims"][0]["attempt_id"] == "a1"
     assert prov["assurance"] == ASSURANCE and prov["run_id"] == "run-1"
-    assert prov["artifact"] == {"id": "art-1", "revision": 2, "sha256": "ab" * 32}
+    assert prov["artifact"]["sha256"] == art_for(content).content_sha256
+    assert (prov["artifact"]["id"], prov["artifact"]["revision"]) == ("art-1", 2)
     assert prov["unresolved_citations"] == ["claim-9"]
     report = paths[0].read_text(encoding="utf-8")
     assert "[claim:claim-9 UNRESOLVED]" in report and "[^claim-9]" not in report
