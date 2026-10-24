@@ -184,12 +184,6 @@ canvas.px { image-rendering: pixelated; max-width: 100%; filter: drop-shadow(0 0
 .rbody { padding: 28px 30px 34px; }
 .rtitle { margin: 0 0 4px; font: 800 clamp(20px, 2.4vw, 28px)/1.2 var(--mono); letter-spacing: .08em; text-transform: uppercase; text-shadow: 0 0 12px var(--glow); }
 #report.focus .rtitle { animation: focus 1s cubic-bezier(.2,.8,.2,1) backwards; }
-.report-overview { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 18px; }
-.report-stat { min-height: 86px; padding: 12px 14px; border: 1px solid var(--ph-4); border-radius: 10px; background: rgba(0,0,0,.18); display: grid; align-content: start; gap: 4px; }
-.report-stat .label { color: var(--ph-3); font: 800 10px var(--mono); letter-spacing: .16em; text-transform: uppercase; }
-.report-stat strong { color: var(--ph-hi); font: 800 17px/1.3 var(--mono); overflow-wrap: anywhere; }
-.report-stat small { color: var(--ph-2); font: 11.5px/1.45 var(--mono); }
-@media (max-width: 680px) { .report-overview { grid-template-columns: minmax(0, 1fr); } .report-stat { min-height: 0; } }
 .tabs { display: flex; gap: 10px; margin: 22px 0 0; padding-bottom: 18px; border-bottom: 1px dashed var(--sep); overflow-x: auto; }
 .tab { background: none; border: 1px solid var(--ph-3); border-radius: 10px; padding: 8px 16px; cursor: pointer; font: 700 12px var(--mono); letter-spacing: .08em; color: var(--ph-2); white-space: nowrap; transition: background .15s, color .15s; }
 .tab:hover { color: var(--ph-hi); border-color: var(--ph); }
@@ -415,11 +409,6 @@ mark { background: rgba(185,240,74,.16); color: var(--ph-hi); border-bottom: 1px
         <div class="wbar"><span>3 · Report</span><span><span id="report-outcome"></span> · <span id="report-meta"></span></span></div>
         <div class="rbody">
           <h2 class="rtitle" id="report-title">Report</h2>
-          <div class="report-overview" aria-label="Report at a glance">
-            <div class="report-stat"><span class="label">Review status</span><strong id="overview-status">—</strong><small id="overview-status-note">Quality gate result</small></div>
-            <div class="report-stat"><span class="label">Evidence used</span><strong id="overview-evidence">—</strong><small id="overview-evidence-note">Verified claims and cited sources</small></div>
-            <div class="report-stat"><span class="label">Known caveats</span><strong id="overview-caveats">—</strong><small id="overview-caveats-note">Open questions, limitations, and quality problems</small></div>
-          </div>
           <div class="tabs" role="tablist" aria-label="Report views">
             <button class="tab" role="tab" data-pane="report" aria-controls="pane-report" aria-selected="true">Answer</button>
             <button class="tab" role="tab" data-pane="evidence" aria-controls="pane-evidence" aria-selected="false">Verified evidence <span id="n-evidence"></span></button>
@@ -1058,7 +1047,6 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
   function selectTab(name) { document.querySelectorAll(".tab").forEach(t => t.setAttribute("aria-selected", String(t.dataset.pane === name))); document.querySelectorAll(".pane").forEach(p => { p.hidden = p.id !== "pane-" + name; }); }
   document.querySelectorAll(".tab").forEach(t => t.addEventListener("click", () => selectTab(t.dataset.pane)));
   const REL = { supports: "[+] supports", contradicts: "[x] contradicts", qualifies: "[~] qualifies" };
-  const plural = (n, one, many = one + "s") => `${n} ${n === 1 ? one : many}`;
   function reportStatus(outcome) {
     const labels = { completed: "Quality checked", blocked: "Blocked", failed: "Stopped", budget_exhausted: "Incomplete", cancelled: "Cancelled" };
     return labels[outcome] || outcome.replace(/_/g, " ");
@@ -1067,15 +1055,8 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
     report = r; r.claimMap = Object.fromEntries(r.claims.map(c => [c.id, c])); r.numbers = {}; let k = 0;
     for (const m of (r.markdown || "").matchAll(CITE)) if (r.claimMap[m[1]] && !r.numbers[m[1]]) r.numbers[m[1]] = ++k; for (const id of r.cited) if (!r.numbers[id] && r.claimMap[id]) r.numbers[id] = ++k;
     const h1 = (r.markdown.match(/^#\s+(.+)$/m) || [])[1]; $("report-title").textContent = h1 || state.question || "Report";
-    const citedSources = r.sources.filter(s => s.cited).length;
     const caveats = r.open_questions.length + r.limitations.length + r.problems.length;
     $("report-outcome").textContent = reportStatus(r.outcome); $("report-meta").textContent = `${r.sources.length} reviewed / ${r.rejections.length} rejected`;
-    $("overview-status").textContent = reportStatus(r.outcome);
-    $("overview-status-note").textContent = r.outcome === "completed" ? "The final draft passed the research quality gate." : "The report may be unfinished; review the caveats before use.";
-    $("overview-evidence").textContent = `${r.cited.length} claims / ${citedSources} sources`;
-    $("overview-evidence-note").textContent = `${r.sources.length} total sources were reviewed.`;
-    $("overview-caveats").textContent = caveats ? plural(caveats, "separate item") : "See answer details";
-    $("overview-caveats-note").textContent = r.rejections.length ? `Also: ${plural(r.rejections.length, "evidence item")} rejected during checking.` : "No evidence items were rejected during checking.";
     $("article").replaceChildren(r.markdown ? markdown(r.markdown) : h("p", {}, "No report. See Rejected and Open."));
     setCount($("report-n"), r.cited.length, 8); $("report-cap").textContent = `verified claim${r.cited.length === 1 ? "" : "s"} used`; layers(r);
     const claimItem = c => h("li", {}, h("div", { class: "top2" }, h("span", { class: "id" }, r.numbers[c.id] ? `[${r.numbers[c.id]}]` : "-"), c.links.map(l => h("span", { class: `rel ${l.relation}` }, REL[l.relation] || l.relation)),
