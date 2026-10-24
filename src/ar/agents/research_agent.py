@@ -120,7 +120,7 @@ Reply with ONE JSON object and nothing else, matching this schema:
   },
   "limitations": [str],
   "unresolved": [str],
-  "proposed_tasks": [{"role": "source_scout" | "evidence_reader" | "theorist" | "analyst" | "writer" | "reviewer" | "adversarial_reviewer",
+  "proposed_tasks": [{"role": "source_scout" | "evidence_reader" | "theorist" | "analyst" | "writer" | "reviewer" | "adversarial_effect_agent",
                       "objective": str, "source_ids": [str]}]
 }
 The "checks" array is mandatory. It must contain all nine check ids, exactly once, in the order shown.
@@ -184,7 +184,7 @@ def _checks(*, has_material: bool, has_hypothesis: bool) -> list[ResearchCheck]:
         "packet_only": "The assessment names only packet documents, claims, artifacts, or source metadata.",
         "basis_distinguished": "Findings carry an explicit basis label.",
         "support_limited": "Support entries are derived from delivered reads and dependencies.",
-        "contrary_evidence": "Contrary evidence is routed to source screening, evidence reading, and adversarial review.",
+        "contrary_evidence": "Contrary evidence is routed to source screening, evidence reading, and adverse-effect review.",
         "hypotheses_are_proposals": "Hypotheses are stored separately from findings.",
         "falsifiers_specific": "Each hypothesis includes a falsifiers list.",
         "predictions_not_observed": "Proposed tests are listed as next steps, not completed results.",
@@ -261,8 +261,8 @@ def fake(packet: Packet, answer_key: dict[str, Any]) -> AgentResult:
         )
     tasks.append(
         ProposedTask(
-            role="adversarial_reviewer",
-            objective="Stress-test the research assessment for unsupported leaps, contrary evidence, and missing falsifiers.",
+            role="adversarial_effect_agent",
+            objective="Think in the opposite direction: identify adverse project effects, rank the decision risk, and route fixes to the right agents.",
         )
     )
     assessment = ResearchAssessment(

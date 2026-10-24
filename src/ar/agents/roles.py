@@ -14,7 +14,7 @@ ROLE_MODULES = {
     "theorist": "ar.agents.theorist",
     "analyst": "ar.agents.analyst",
     "research_agent": "ar.agents.research_agent",
-    "adversarial_reviewer": "ar.agents.adversarial_reviewer",
+    "adversarial_effect_agent": "ar.agents.adversarial_effect_agent",
     "literature_review": "ar.agents.literature_review",
 }
 

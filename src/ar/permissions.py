@@ -51,7 +51,7 @@ def default_policy() -> PermissionPolicy:
             "reproducer": ["files.read", "experiments.execute", "tasks.submit"],
             "analyst": ["files.read", "artifacts.create", "tasks.submit"],
             "research_agent": ["files.read", "artifacts.create", "tasks.submit"],
-            "adversarial_reviewer": ["files.read", "tasks.submit"],
+            "adversarial_effect_agent": ["files.read", "tasks.submit"],
         }
     )
 

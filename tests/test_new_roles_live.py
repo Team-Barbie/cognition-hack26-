@@ -27,8 +27,8 @@ def _hyp(**kw):
 
 
 def test_registry_and_fake_dispatch():
-    assert {"source_scout", "research_agent", "theorist", "analyst", "adversarial_reviewer"} <= set(ROLE_MODULES)
-    for role in ("source_scout", "research_agent", "theorist", "analyst", "adversarial_reviewer"):
+    assert {"source_scout", "research_agent", "theorist", "analyst", "adversarial_effect_agent"} <= set(ROLE_MODULES)
+    for role in ("source_scout", "research_agent", "theorist", "analyst", "adversarial_effect_agent"):
         mod = get_role(role)
         assert callable(mod.fake) and callable(mod.user_message) and mod.SYSTEM and mod.PAYLOAD
     assert FakeAgent({}).run("analyst", _packet("analyst")).role == "analyst"
