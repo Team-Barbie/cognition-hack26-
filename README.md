@@ -17,7 +17,7 @@ python -m venv .venv
 
 ## Agents: fake vs live
 
-- `FakeAgent` (`--fake`) replays `fixtures/baselines/answer_key.json` as typed results. No API key, no
+- `FakeAgent` (`--fake`) replays the packaged `src/ar/fixtures/baselines/answer_key.json` as typed results. No API key, no
   network, deterministic. The demo and the whole test suite use it.
 - Live uses the Claude API through the `anthropic` SDK (`AnthropicClient` + `LiveAgent`). Set
   `ANTHROPIC_API_KEY` (or sign in once with `ant auth login`). Options: `--model <id>`,

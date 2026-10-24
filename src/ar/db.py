@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Literal
 from uuid import uuid4
 
+from ar.clock import utc_now as _now
 from ar.models import AgentResult, Requirement
 
 DB_SCHEMA_VERSION = 4
@@ -42,10 +43,6 @@ class Lease:
 
 
 RunStatus = Literal["pending", "running", "completed", "budget_exhausted", "failed"]
-
-
-def _now() -> str:
-    return datetime.now(UTC).isoformat()
 
 
 def connect(project_root: Path) -> sqlite3.Connection:

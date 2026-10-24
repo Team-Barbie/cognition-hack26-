@@ -1,12 +1,12 @@
-import json
 from pathlib import Path
 
 from ar.agents import planner
+from ar.agents.fake import load_answer_key
 from ar.models import AgentResult, Requirement, SourceRef, LineSelector
 from ar.packet import DeliveredRead, Packet, SourceInfo
 
 FIXTURE = Path(__file__).parent.parent / "fixtures" / "baselines"
-KEY = json.loads((FIXTURE / "answer_key.json").read_text())
+KEY = load_answer_key()
 SOURCES = ["paper-a", "paper-b", "paper-c"]
 
 

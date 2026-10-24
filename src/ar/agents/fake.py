@@ -13,6 +13,11 @@ from ar.packet import Packet
 ANSWER_KEY_PATH = Path(__file__).resolve().parents[1] / "fixtures" / "baselines" / "answer_key.json"
 
 
+def load_answer_key() -> dict[str, Any]:
+    """Load the canonical baseline used by fake agents, tests, and live smoke checks."""
+    return json.loads(ANSWER_KEY_PATH.read_text(encoding="utf-8"))
+
+
 class FakeAgent:
     def __init__(self, answer_key: dict[str, Any] | None = None) -> None:
         self._key = answer_key
@@ -20,7 +25,7 @@ class FakeAgent:
     @property
     def answer_key(self) -> dict[str, Any]:
         if self._key is None:
-            self._key = json.loads(ANSWER_KEY_PATH.read_text(encoding="utf-8"))
+            self._key = load_answer_key()
         return self._key
 
     def run(self, role: Role, packet: Packet) -> AgentResult:

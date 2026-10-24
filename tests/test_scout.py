@@ -1,12 +1,9 @@
-import json
-from pathlib import Path
-
 from ar.agents import scout
-from ar.agents.fake import FakeAgent
+from ar.agents.fake import FakeAgent, load_answer_key
 from ar.models import LineSelector, SourceRef
 from ar.packet import DeliveredRead, Packet, SourceInfo
 
-KEY = json.loads((Path(__file__).parent.parent / "fixtures" / "baselines" / "answer_key.json").read_text())
+KEY = load_answer_key()
 
 
 def _packet(**kw) -> Packet:
