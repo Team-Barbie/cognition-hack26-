@@ -342,16 +342,16 @@ mark { background: var(--acc); color: var(--ink); text-shadow: none; padding: 0 
 <div id="screen">
   <header class="hud top">
     <span class="brand">Res Loop</span>
-    <nav aria-label="Sections"><a href="#hero">Shelf</a><a href="#brief">Brief</a><a href="#signal">Signal</a><a href="#report">Report</a></nav>
+    <nav aria-label="Sections"><a href="#hero">Workspace</a><a href="#brief">Brief</a><a href="#signal">Progress</a><a href="#report">Report</a></nav>
     <span class="sp"></span>
     <span class="hide-s">Session<b id="hud-sess">----</b></span>
-    <span>Link<b id="hud-mode">--</b></span>
+    <span>Mode<b id="hud-mode">--</b></span>
     <span class="hide-s"><b id="hud-clock">00:00:00</b></span>
   </header>
 
   <div class="layout">
     <main>
-      <section class="hero" id="hero" aria-label="Shelf">
+      <section class="hero" id="hero" aria-label="Research workspace">
         <canvas id="scene" aria-hidden="true"></canvas>
         <div class="stack">
           <h1 class="sr" id="headline">Ask a question</h1>
@@ -362,50 +362,50 @@ mark { background: var(--acc); color: var(--ink); text-shadow: none; padding: 0 
         </div>
       </section>
 
-      <section class="win" id="stage" style="--d:1.45s" aria-label="Stage">
-        <div class="wbar"><span>Shelf</span><span id="stage-state">Ready</span></div>
+      <section class="win" id="stage" style="--d:1.45s" aria-label="Research workspace">
+        <div class="wbar"><span>Workspace</span><span id="stage-state">Ready</span></div>
         <div class="wbody" id="stage-body">
-          <div class="shelfrow src" id="row-src" data-label="Sources" role="list"></div>
-          <div class="shelfrow team" id="row-team" data-label="Team"></div>
+          <div class="shelfrow src" id="row-src" data-label="Source papers" role="list"></div>
+          <div class="shelfrow team" id="row-team" data-label="Research team"></div>
           <canvas class="beams" id="beams" aria-hidden="true"></canvas>
           <p class="now" id="now" aria-live="polite"></p>
           <div class="foot">
-            <label class="act" for="file" tabindex="0" id="upload-label">Upload</label>
+            <label class="act" for="file" tabindex="0" id="upload-label">Upload papers</label>
             <input id="file" type="file" accept=".md,.txt,.markdown,text/plain,text/markdown" multiple hidden>
-            <button class="act" id="paste-toggle" type="button">Paste text</button>
-            <button class="act" id="search-toggle" type="button">Search web</button>
-            <button class="act" id="demo" type="button">Demo papers</button>
+            <button class="act" id="paste-toggle" type="button">Paste source</button>
+            <button class="act" id="search-toggle" type="button">Find papers</button>
+            <button class="act" id="demo" type="button">Load demo</button>
             <span class="sp"></span>
-            <button class="go" id="start" type="button">Start</button>
+            <button class="go" id="start" type="button">Run research</button>
           </div>
           <form class="paste" id="paste" hidden>
-            <input id="paste-name" placeholder="name, e.g. smith-2024" required aria-label="Source name">
-            <textarea id="paste-text" placeholder="paste the text here" required aria-label="Source text"></textarea>
+            <input id="paste-name" placeholder="source name, e.g. smith-2024" required aria-label="Source name">
+            <textarea id="paste-text" placeholder="paste the paper or source text" required aria-label="Source text"></textarea>
             <div><button class="act" type="submit">Add</button></div>
           </form>
           <form class="paste" id="web-search" hidden>
             <input id="web-query" placeholder="paper topic or title" required minlength="3" maxlength="500" aria-label="Web search query">
             <div><button class="act" id="web-submit" type="submit">Find papers</button></div>
-            <p class="web-note">Searches Crossref. Results are paper details only; upload the full text before running the research team.</p>
+            <p class="web-note">Crossref returns titles and DOI links. Upload a paper’s full text before using it as evidence.</p>
             <div class="web-results" id="web-results" aria-live="polite"></div>
           </form>
         </div>
       </section>
 
       <section class="win brief" id="brief" style="--d:1.55s" aria-label="Brief">
-        <div class="wbar"><span>Brief</span><span id="ready">Collecting</span></div>
+        <div class="wbar"><span>Research brief</span><span id="ready">Needs input</span></div>
         <div class="wbody"><dl id="brief-items"></dl></div>
       </section>
 
-      <section class="win signal" id="signal" style="--d:1.65s" aria-label="Signal">
-        <div class="wbar"><span>Signal</span><span id="sig-state">Waiting</span></div>
+      <section class="win signal" id="signal" style="--d:1.65s" aria-label="Live progress">
+        <div class="wbar"><span>Live progress</span><span id="sig-state">Waiting</span></div>
         <div class="wbody">
           <canvas id="dither" aria-hidden="true"></canvas>
           <div class="sig-in">
             <div class="sig-l"><div class="code" id="code" aria-live="off"></div></div>
             <div class="sig-r">
-              <div><canvas class="px" id="stat-claims" aria-label="claims checked"></canvas><div class="cap">claims checked</div></div>
-              <div><canvas class="px" id="stat-rejected" aria-label="quotes rejected"></canvas><div class="cap">quotes rejected</div></div>
+              <div><canvas class="px" id="stat-claims" aria-label="verified claims"></canvas><div class="cap">verified claims</div></div>
+              <div><canvas class="px" id="stat-rejected" aria-label="rejected evidence"></canvas><div class="cap">rejected evidence</div></div>
               <div class="loadbar"><span id="load-label">Idle</span><div class="blocks" id="blocks"></div><span id="pct">0%</span></div>
             </div>
             <div class="sig-side" id="sig-date"></div>
@@ -414,7 +414,7 @@ mark { background: var(--acc); color: var(--ink); text-shadow: none; padding: 0 
       </section>
 
       <section class="win hidden" id="report" aria-label="Report">
-        <div class="wbar"><span>Report</span><span><span id="report-outcome"></span> / <span id="report-meta"></span></span></div>
+        <div class="wbar"><span>Report</span><span><span id="report-outcome"></span> · <span id="report-meta"></span></span></div>
         <div class="rbody">
           <h2 class="rtitle" id="report-title">Report</h2>
           <p class="rlede" id="report-lede">A checked answer built from source-linked claims. Select any numbered citation to inspect the exact supporting text.</p>
@@ -447,13 +447,13 @@ mark { background: var(--acc); color: var(--ink); text-shadow: none; padding: 0 
       <div class="chat-msgs" id="msgs" aria-live="polite"></div>
       <div class="chat-foot">
         <div class="chips">
-          <button class="chip" id="chip-demo" type="button">Demo papers</button>
-          <label class="chip" for="file" tabindex="0" id="chip-upload">Upload</label>
-          <button class="chip go-chip" id="chip-start" type="button">Start</button>
+          <button class="chip" id="chip-demo" type="button">Load demo</button>
+          <label class="chip" for="file" tabindex="0" id="chip-upload">Upload papers</label>
+          <button class="chip go-chip" id="chip-start" type="button">Run research</button>
         </div>
         <form class="chat-form" id="composer">
           <span class="pr">&gt;</span>
-          <textarea id="input" rows="1" placeholder="type here" aria-label="Message Res Loop"></textarea>
+          <textarea id="input" rows="1" placeholder="ask a research question" aria-label="Message Res Loop"></textarea>
           <button class="send" type="submit" aria-label="Send">SEND</button>
         </form>
       </div>
@@ -461,8 +461,8 @@ mark { background: var(--acc); color: var(--ink); text-shadow: none; padding: 0 
   </div>
 
   <footer class="hud bot" aria-label="Stats">
-    <span>Sources<b id="h-src">0</b></span><span>Agents<b id="h-agents">0</b></span><span>Calls<b id="h-calls">0</b></span>
-    <span>Elapsed<b id="h-elapsed">00:00</b></span><span>Claims<b id="h-claims">0</b></span><span>Rejected<b id="h-rej">0</b></span>
+    <span>Sources<b id="h-src">0</b></span><span>Agents<b id="h-agents">0</b></span><span>Model calls<b id="h-calls">0</b></span>
+    <span>Elapsed<b id="h-elapsed">00:00</b></span><span>Verified<b id="h-claims">0</b></span><span>Rejected<b id="h-rej">0</b></span>
   </footer>
 </div>
 <button class="chat-fab" id="chat-fab" type="button" aria-label="Open chat">Chat <b id="unread" hidden>0</b></button>
@@ -555,6 +555,7 @@ mark { background: var(--acc); color: var(--ink); text-shadow: none; padding: 0 
   function renderWebResults(results, query, reveal = true) {
     const box = $("web-results"); box.replaceChildren(); if (query) $("web-query").value = query;
     if (reveal) $("web-search").hidden = false;
+    $("search-toggle").textContent = results.length ? `Related papers (${results.length})` : "Find papers";
     if (!results.length) { box.append(h("p", { class: "web-note" }, "No matching papers found. Try a broader search.")); return; }
     for (const item of results) box.append(h("article", { class: "web-result" },
       h("b", {}, item.title), h("small", {}, `${item.authors} · ${item.year || "year unknown"} · ${item.publisher}`),
@@ -840,24 +841,24 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
     const row = (label, body) => dl.append(h("dt", {}, label), h("dd", {}, body));
     if (b.question) row("Question", b.question); if (b.context) row("Context", b.context);
     if (b.constraints && b.constraints.length) { const first = b.constraints.slice(0, 4), rest = b.constraints.slice(4);
-      row("Limits", [h("ul", {}, first.map(c => h("li", {}, c))), rest.length ? h("details", {}, h("summary", {}, `${rest.length} more`), h("ul", { style: "margin-top:8px" }, rest.map(c => h("li", {}, c)))) : null]); }
-    if (b.open_questions && b.open_questions.length) row("Must answer", h("ul", {}, b.open_questions.map(q => h("li", {}, q))));
-    if (!dl.children.length) dl.append(h("dd", { class: "empty" }, "Empty until you answer a few questions."));
-    $("ready").textContent = ready ? "Ready" : "Collecting"; state.briefReady = ready || !!b.question; updateHint(); updateStart();
+      row("Constraints", [h("ul", {}, first.map(c => h("li", {}, c))), rest.length ? h("details", {}, h("summary", {}, `${rest.length} more`), h("ul", { style: "margin-top:8px" }, rest.map(c => h("li", {}, c)))) : null]); }
+    if (b.open_questions && b.open_questions.length) row("Questions to answer", h("ul", {}, b.open_questions.map(q => h("li", {}, q))));
+    if (!dl.children.length) dl.append(h("dd", { class: "empty" }, "Your question and requirements will appear here."));
+    $("ready").textContent = ready ? "Ready" : "Needs input"; state.briefReady = ready || !!b.question; updateHint(); updateStart();
   }
   function updateHint() {
     let t;
-    if (state.running) t = "Click an agent to see what it was given.";
-    else if (state.reportShown) t = "Done. Report below.";
-    else if (!state.question) t = narrow.matches ? "Tap Chat and type your question." : "Type your question in the chat.";
-    else if (!state.sources) t = "Put papers on the shelf, or start without them and a scout writes notes.";
-    else t = "Press Start.";
+    if (state.running) t = "The team is working. Select an agent to inspect its input.";
+    else if (state.reportShown) t = "Research complete. Read the report below.";
+    else if (!state.question) t = narrow.matches ? "Open Chat and ask a research question." : "Ask a research question in the chat.";
+    else if (!state.sources) t = "Upload papers, or run with labelled background notes.";
+    else t = "Ready to run the research team.";
     $("hint").textContent = t;
     $("stage-state").textContent = state.running ? "Running" : state.reportShown ? "Done" : "Ready";
     if (!state.running) { setSub(!state.question ? "TYPE IT IN THE CHAT" : `${state.sources || "NO"} SOURCE${state.sources === 1 ? "" : "S"} ON THE SHELF`); setStateLine(state.reportShown ? "REPORT READY" : "READY", false, state.reportShown ? "done" : "ready"); }
   }
-  function updateStart() { const label = state.running ? "Running" : (state.reportShown ? "Run again" : "Start"); for (const id of ["start", "chip-start"]) { $(id).disabled = state.running; $(id).textContent = label; } }
-  const missing = () => state.briefReady ? null : "First ask your question in the chat.";
+  function updateStart() { const label = state.running ? "Researching" : (state.reportShown ? "Run again" : "Run research"); for (const id of ["start", "chip-start"]) { $(id).disabled = state.running; $(id).textContent = label; } }
+  const missing = () => state.briefReady ? null : "Ask a research question in the chat first.";
 
   // ================= shelf: sources and the agent team =================
   const SPINE_COL = ["#b9f04a", "#8cc03a", "#a6d63e"];
@@ -909,7 +910,7 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
   // ================= signal: live log, counters, block loader =================
   const seenStatus = {};
   const FN = { orchestrator: "orchestrator.dispatch", scout: "scout.write", planner: "planner.plan", source_scout: "source_scout.screen", evidence_reader: "reader.read", theorist: "theorist.hypothesize", experiment_runner: "experiment.run", reproducer: "experiment.repeat", analyst: "analyst.interpret", writer: "writer.draft", reviewer: "reviewer.check", quality: "gate.check" };
-  const IDLE = ["plan(question);", "read(each paper);", "write(claims);", "review(draft);", "gate.check(every quote);"];
+  const IDLE = ["1  Define the research question", "2  Read each source", "3  Build the evidence", "4  Write and review", "5  Verify every citation"];
   function setCode(lines) { $("code").replaceChildren(...lines.map(t => h("div", { class: "ln2" }, t))); }
   function pushLog(text, cls, full) {
     const code = $("code"); if (code.dataset.idle) { code.replaceChildren(); delete code.dataset.idle; }
@@ -917,16 +918,17 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
     while (code.children.length > 11) code.firstChild.remove(); [...code.children].forEach((el, i, all) => el.classList.toggle("old", i < all.length - 8));
   }
   function logAgent(e) {
-    const fn = FN[e.role] || "agent.run", arg = e.id.includes(":") ? `"${e.id.split(":")[1]}"` : "";
-    if (e.status === "running") pushLog(`${fn}(${arg});`, "", e.detail); else if (e.status === "done") pushLog(`// ${e.title}: ${e.detail || "done"}`, "c", e.detail); else if (e.status === "failed") pushLog(`// ${e.title} stopped: ${e.detail || ""}`, "bad", e.detail);
+    if (e.status === "running") pushLog(`${e.title}: ${e.detail || "Working"}`, "", e.detail);
+    else if (e.status === "done") pushLog(`[OK] ${e.title}: ${e.detail || "Done"}`, "c", e.detail);
+    else if (e.status === "failed") pushLog(`[STOPPED] ${e.title}: ${e.detail || "Could not finish"}`, "bad", e.detail);
   }
   function addTicker(e) {
     const id = (e.text.match(/^(\S+)/) || [])[1] || "";
-    if (e.kind === "accepted") { accepted++; setCount($("stat-claims"), accepted, 6); pushLog(`gate.accept("${id}");`, "", e.text); }
-    else if (e.kind === "rejected") { rejected++; setCount($("stat-rejected"), rejected, 6); pushLog(`gate.reject("${id}");  // ${(e.text.match(/\(([A-Z_]+)\)/) || [])[1] || "rejected"}`, "bad", e.text); }
-    else { reviews++; pushLog(`// ${e.text}`, "c", e.text); }
+    if (e.kind === "accepted") { accepted++; setCount($("stat-claims"), accepted, 6); pushLog(`[VERIFIED] ${id}`, "", e.text); }
+    else if (e.kind === "rejected") { rejected++; setCount($("stat-rejected"), rejected, 6); pushLog(`[REJECTED] ${id}`, "bad", e.text); }
+    else { reviews++; pushLog(e.text, "c", e.text); }
     const quality = cards.quality;
-    if (quality) upsertAgent({ ...quality, status: runFinished ? quality.status : "running", detail: `${accepted} accepted, ${rejected} rejected, ${reviews} reviews` });
+    if (quality) upsertAgent({ ...quality, status: runFinished ? quality.status : "running", detail: `${accepted} verified · ${rejected} rejected · ${reviews} review${reviews === 1 ? "" : "s"}` });
     hudStats();
   }
   const BLOCKS = 24; $("blocks").append(...Array.from({ length: BLOCKS }, () => h("i")));
@@ -945,11 +947,12 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
     for (const k of Object.keys(cards)) delete cards[k]; for (const k of Object.keys(seenStatus)) delete seenStatus[k]; for (const [k, el] of Object.entries(spines)) { el.remove(); delete spines[k]; }
     for (const k of Object.keys(runtimeTasks)) delete runtimeTasks[k];
     accepted = rejected = reviews = writerPasses = 0; runFinished = false; setCount($("stat-claims"), 0, 6); setCount($("stat-rejected"), 0, 6); setCode([]); $("now").textContent = ""; progress(false);
+    $("web-search").hidden = true; $("web-results").replaceChildren(); $("search-toggle").textContent = "Find papers";
     $("report").classList.add("hidden"); state.reportShown = false; state.t0 = Date.now(); state.tEnd = 0; renderTeam(); hudStats();
   }
   function setRun(status) {
     state.running = status === "started" || status === "running"; document.body.classList.toggle("working", state.running);
-    const words = { started: "Loading", completed: "Report ready", blocked: "Blocked", failed: "Stopped", budget_exhausted: "Out of budget", cancelled: "Cancelled" };
+    const words = { started: "Researching", completed: "Report ready", blocked: "Needs input", failed: "Stopped", budget_exhausted: "Limit reached", cancelled: "Cancelled" };
     if (words[status]) { $("sig-state").textContent = words[status]; $("load-label").textContent = words[status]; }
     if (state.running) { chatStatus("Team working"); setStateLine("RUNNING", true, "run"); $("signal").scrollIntoView({ block: "center", behavior: "smooth" }); }
     else if (words[status]) { state.tEnd = Date.now(); chatStatus(status === "completed" ? "Report ready" : words[status]); progress(status === "completed"); $("now").textContent = ""; }
@@ -986,30 +989,30 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
   const sheetBar = title => h("div", { class: "wbar" }, h("span", {}, title), h("button", { class: "act", type: "button", style: "color:var(--ink);border-bottom-color:var(--ink)", onclick: closeProof }, "Close"));
   function openProof(id) {
     const c = report.claimMap[id]; if (!c) return; returnFocus = document.activeElement;
-    const sheet = $("sheet"), inner = h("div", { class: "inner" }); sheet.replaceChildren(sheetBar(`Proof ${id}`), inner); sheet.setAttribute("aria-label", `Proof for ${id}`);
+    const sheet = $("sheet"), inner = h("div", { class: "inner" }); sheet.replaceChildren(sheetBar(`Evidence for ${id}`), inner); sheet.setAttribute("aria-label", `Evidence for ${id}`);
     inner.append(h("div", { class: "no" }, report.numbers[id] ? `[${report.numbers[id]}]` : id), h("p", { class: "stmt" }, c.statement));
-    inner.append(h("dl", { class: "facts" }, h("dt", {}, "Status"), h("dd", {}, c.status), h("dt", {}, "Made by"), h("dd", {}, c.task)));
+    inner.append(h("dl", { class: "facts" }, h("dt", {}, "Status"), h("dd", {}, c.status), h("dt", {}, "Created by"), h("dd", {}, c.task)));
     for (const l of c.links) {
       inner.append(h("hr")); inner.append(h("div", {}, h("span", { class: `rel ${l.relation}` }, l.relation), "  ", h("b", {}, l.source), ` lines ${l.start}-${l.end}`)); inner.append(h("blockquote", {}, l.quote));
       if (l.window.length) { const [box, found] = highlight(l.window, l); inner.append(box, h("p", { class: "kick", style: "margin:0" }, found ? "[OK] quote found in the cited lines" : "[ERR] quote not found in the cited lines")); }
-      const r = l.receipt || {}; inner.append(h("dl", { class: "facts" }, h("dt", {}, "Receipt"), h("dd", {}, r.id || "?"), h("dt", {}, "Delivered to"), h("dd", {}, r.task || "?"), h("dt", {}, "Lines given"), h("dd", {}, r.start ? `${r.start}-${r.end}` : "?"), h("dt", {}, "At"), h("dd", {}, r.at || "?")));
+      const r = l.receipt || {}; inner.append(h("dl", { class: "facts" }, h("dt", {}, "Read record"), h("dd", {}, r.id || "?"), h("dt", {}, "Reader task"), h("dd", {}, r.task || "?"), h("dt", {}, "Provided lines"), h("dd", {}, r.start ? `${r.start}-${r.end}` : "?"), h("dt", {}, "Time"), h("dd", {}, r.at || "?")));
     }
     if (c.limitations && c.limitations.length) inner.append(h("ul", { class: "notes" }, c.limitations.map(x => h("li", {}, h("b", {}, "Limitation"), h("span", {}, x)))));
     $("drawer").hidden = false; sheet.querySelector("button").focus();
   }
   const packetLines = read => h("div", { class: "lines packet-lines" }, read.lines.map(row => h("div", { class: "ln in" }, h("span", { class: "n" }, row.n), h("span", { class: "t" }, row.text || " "))));
   function openPacket(packet, trigger) {
-    returnFocus = trigger || document.activeElement; const sheet = $("sheet"), inner = h("div", { class: "inner" }); sheet.replaceChildren(sheetBar(`${packet.role.replace("_", " ")} input`), inner); sheet.setAttribute("aria-label", `Context packet ${packet.id}`);
-    inner.append(h("div", { class: "packet-note" }, "Everything this agent received. No chat history, no other sources."));
-    inner.append(h("dl", { class: "facts" }, h("dt", {}, "Packet"), h("dd", {}, packet.id), h("dt", {}, "Task"), h("dd", {}, packet.task), h("dt", {}, "Attempt"), h("dd", {}, packet.attempt)));
+    returnFocus = trigger || document.activeElement; const sheet = $("sheet"), inner = h("div", { class: "inner" }); sheet.replaceChildren(sheetBar(`${packet.role.replace("_", " ")} input`), inner); sheet.setAttribute("aria-label", `Agent input ${packet.id}`);
+    inner.append(h("div", { class: "packet-note" }, "This is everything the agent received. It did not receive the full chat or unrelated sources."));
+    inner.append(h("dl", { class: "facts" }, h("dt", {}, "Handoff ID"), h("dd", {}, packet.id), h("dt", {}, "Task ID"), h("dd", {}, packet.task), h("dt", {}, "Attempt"), h("dd", {}, packet.attempt)));
     inner.append(h("section", { class: "packet-section" }, h("h4", {}, "Objective"), h("p", { class: "packet-objective" }, packet.objective)));
-    if (packet.requirements.length) inner.append(h("section", { class: "packet-section" }, h("h4", {}, `Requirements ${packet.requirements.length}`), packet.requirements.map(r => h("div", { class: "packet-dep" }, h("b", {}, `${r.id} r${r.revision}`), h("div", {}, r.interpretation), r.acceptance_checks.length ? h("div", {}, `Checks: ${r.acceptance_checks.join("; ")}`) : null))));
-    if (packet.reads.length) inner.append(h("section", { class: "packet-section" }, h("h4", {}, `Delivered reads ${packet.reads.length}`), packet.reads.map(read => h("div", { class: "packet-dep" }, h("b", {}, `${read.label || read.source} / ${read.source} r${read.revision}`), h("dl", { class: "facts" }, h("dt", {}, "Selector"), h("dd", {}, `lines ${read.start}-${read.end}`), h("dt", {}, "Receipt"), h("dd", {}, read.receipt)), packetLines(read)))));
-    if (packet.dependencies.length) inner.append(h("section", { class: "packet-section" }, h("h4", {}, `Accepted dependencies ${packet.dependencies.length}`), packet.dependencies.map(dep => { const text = dep.kind === "claim" && dep.claim ? dep.claim.statement : dep.content; return h("div", { class: "packet-dep" }, h("b", {}, `${dep.id} / ${dep.kind} r${dep.revision}`), text ? h("pre", {}, text) : h("span", {}, "No inline content")); })));
-    if (packet.available_sources.length) inner.append(h("section", { class: "packet-section" }, h("h4", {}, "Source metadata"), h("ul", {}, packet.available_sources.map(src => h("li", {}, `${src.source_id}, ${src.path}`)))));
+    if (packet.requirements.length) inner.append(h("section", { class: "packet-section" }, h("h4", {}, `Instructions ${packet.requirements.length}`), packet.requirements.map(r => h("div", { class: "packet-dep" }, h("b", {}, `${r.id} r${r.revision}`), h("div", {}, r.interpretation), r.acceptance_checks.length ? h("div", {}, `Checks: ${r.acceptance_checks.join("; ")}`) : null))));
+    if (packet.reads.length) inner.append(h("section", { class: "packet-section" }, h("h4", {}, `Source extracts ${packet.reads.length}`), packet.reads.map(read => h("div", { class: "packet-dep" }, h("b", {}, `${read.label || read.source} / ${read.source} r${read.revision}`), h("dl", { class: "facts" }, h("dt", {}, "Lines"), h("dd", {}, `${read.start}-${read.end}`), h("dt", {}, "Read record"), h("dd", {}, read.receipt)), packetLines(read)))));
+    if (packet.dependencies.length) inner.append(h("section", { class: "packet-section" }, h("h4", {}, `Verified inputs ${packet.dependencies.length}`), packet.dependencies.map(dep => { const text = dep.kind === "claim" && dep.claim ? dep.claim.statement : dep.content; return h("div", { class: "packet-dep" }, h("b", {}, `${dep.id} / ${dep.kind} r${dep.revision}`), text ? h("pre", {}, text) : h("span", {}, "No text included")); })));
+    if (packet.available_sources.length) inner.append(h("section", { class: "packet-section" }, h("h4", {}, "Available sources"), h("ul", {}, packet.available_sources.map(src => h("li", {}, `${src.source_id}, ${src.path}`)))));
     if (packet.review_feedback.length) inner.append(h("section", { class: "packet-section" }, h("h4", {}, "Review feedback"), h("ul", {}, packet.review_feedback.map(item => h("li", {}, item)))));
-    if (packet.skills.length) inner.append(h("section", { class: "packet-section" }, h("h4", {}, "Method skills"), packet.skills.map(skill => h("pre", { class: "packet-dep" }, skill))));
-    inner.append(h("section", { class: "packet-section" }, h("h4", {}, "Not included"), h("div", { class: "packet-note" }, "Other agents' chat, unlisted sources, unaccepted outputs, the database.")));
+    if (packet.skills.length) inner.append(h("section", { class: "packet-section" }, h("h4", {}, "Methods"), packet.skills.map(skill => h("pre", { class: "packet-dep" }, skill))));
+    inner.append(h("section", { class: "packet-section" }, h("h4", {}, "Not included"), h("div", { class: "packet-note" }, "Other agents’ conversations, unrelated sources, rejected work, and internal database records.")));
     $("drawer").hidden = false; sheet.querySelector("button").focus();
   }
   function closeProof() { if ($("drawer").hidden) return; $("drawer").hidden = true; if (returnFocus && document.contains(returnFocus)) returnFocus.focus(); returnFocus = null; }
@@ -1048,7 +1051,7 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
     $("article").replaceChildren(r.markdown ? markdown(r.markdown) : h("p", {}, "No report. See Rejected and Open."));
     setCount($("report-n"), r.cited.length, 8); $("report-cap").textContent = `verified claim${r.cited.length === 1 ? "" : "s"} used`; layers(r);
     const claimItem = c => h("li", {}, h("div", { class: "top2" }, h("span", { class: "id" }, r.numbers[c.id] ? `[${r.numbers[c.id]}]` : "-"), c.links.map(l => h("span", { class: `rel ${l.relation}` }, REL[l.relation] || l.relation)),
-      h("span", { class: "src" }, c.links.map(l => `${l.source} lines ${l.start}-${l.end}`).join("   ")), h("span", { class: "sp" }), h("button", { class: "act", type: "button", onclick: () => openProof(c.id) }, "Proof")), h("span", { class: "stmt" }, c.statement));
+      h("span", { class: "src" }, c.links.map(l => `${l.source} lines ${l.start}-${l.end}`).join("   ")), h("span", { class: "sp" }), h("button", { class: "act", type: "button", onclick: () => openProof(c.id) }, "View evidence")), h("span", { class: "stmt" }, c.statement));
     $("claims").replaceChildren(...(r.claims.length ? r.claims.map(claimItem) : [h("li", {}, h("span", { class: "why" }, "No claims."))]));
     $("rejections").replaceChildren(...(r.rejections.length ? r.rejections.map(x => { const link = x.link_index != null ? x.draft.evidence_links[x.link_index] : null;
       return h("li", { class: "rejected" }, h("div", { class: "top2" }, h("span", { class: "id" }, x.id), h("span", { class: "rel contradicts" }, x.code), h("span", { class: "src" }, x.task_id)), h("span", { class: "stmt" }, x.draft.statement), link ? h("blockquote", {}, link.quote) : null, h("span", { class: "why" }, x.reason + (x.hint ? " " + x.hint : ""))); }) : [h("li", {}, h("span", { class: "why" }, "Nothing rejected."))]));
@@ -1078,14 +1081,14 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
   function resultDetail(result) {
     const p = result.payload || {};
     if (result.outcome !== "produced") return `Stopped: ${String(result.outcome || "unknown").replaceAll("_", " ")}`;
-    if (result.role === "planner") { const tasks = result.proposed_tasks || []; return `Proposed ${tasks.length} tasks (${tasks.filter(t => t.role === "evidence_reader").length} readers)`; }
-    if (result.role === "evidence_reader") return p.relevant === false ? "Not relevant, no claims" : `Produced ${(result.claims || []).length} claim${(result.claims || []).length === 1 ? "" : "s"}`;
+    if (result.role === "planner") { const tasks = result.proposed_tasks || []; return `Created ${tasks.length} tasks for ${tasks.filter(t => t.role === "evidence_reader").length} readers`; }
+    if (result.role === "evidence_reader") return p.relevant === false ? "No relevant evidence found" : `Found ${(result.claims || []).length} claim${(result.claims || []).length === 1 ? "" : "s"}`;
     if (result.role === "source_scout") return `Screened ${(p.screened || []).length} source${(p.screened || []).length === 1 ? "" : "s"}`;
     if (result.role === "theorist") return `Proposed ${(p.hypotheses || []).length} testable hypothes${(p.hypotheses || []).length === 1 ? "is" : "es"}`;
-    if (["experiment_runner", "reproducer"].includes(result.role)) return `${p.analysis_record?.run_id || "Run"}: ${p.analysis_record?.status || "recorded"}`;
+    if (["experiment_runner", "reproducer"].includes(result.role)) return `${p.analysis_record?.run_id || "Research run"}: ${p.analysis_record?.status || "recorded"}`;
     if (result.role === "analyst") return `Interpreted ${(p.observations || []).length} observation${(p.observations || []).length === 1 ? "" : "s"}`;
-    if (result.role === "writer") return `Draft ready, ${new Set(Array.from(String(p.content_markdown || "").matchAll(/\[claim:([^\]\s]+)\]/g), m => m[1])).size} claims cited`;
-    if (result.role === "reviewer") return `Verdict: ${p.disposition || "recorded"}`;
+    if (result.role === "writer") return `Drafted the report with ${new Set(Array.from(String(p.content_markdown || "").matchAll(/\[claim:([^\]\s]+)\]/g), m => m[1])).size} cited claims`;
+    if (result.role === "reviewer") return p.disposition === "accept" ? "Accepted the report" : p.disposition === "revise" ? "Requested changes" : "Review recorded";
     return "Done";
   }
   function updateRuntimeTask(task, patch) {
@@ -1097,33 +1100,33 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
   function applyRuntime(e) {
     const p = e.payload || {};
     if (e.event === "run.started") {
-      upsertAgent({ id: "orchestrator", role: "orchestrator", title: "Orchestrator", status: "running", detail: "Run committed to SQLite" });
-      upsertAgent({ id: "quality", role: "quality", title: "Quality gate", status: "waiting", detail: "Waiting for committed evidence" });
+      upsertAgent({ id: "orchestrator", role: "orchestrator", title: "Orchestrator", status: "running", detail: "Research started" });
+      upsertAgent({ id: "quality", role: "quality", title: "Quality gate", status: "waiting", detail: "Waiting for evidence" });
     } else if (e.event === "planner_proposals") {
       for (const chosen of (p.selected || [])) {
         const role = chosen.role, id = role === "evidence_reader" ? `reader:${chosen.source_id}` : role;
         if (!id || role === "evidence_reader") continue;
         upsertAgent({ id, role, title: runtimeTitle(role, id), status: "waiting", detail: "Selected by planner" });
       }
-    } else if (e.event === "task.created") updateRuntimeTask(e.task, { role: p.role, status: "waiting", detail: "Task committed" });
-    else if (e.event === "attempt.started") updateRuntimeTask(e.task, { status: "running", detail: `Attempt ${p.number} started` });
-    else if (e.event === "packet.dispatched") updateRuntimeTask(e.task, { role: p.packet?.role, status: "running", packet: p.packet, detail: "Exact context packet dispatched" });
+    } else if (e.event === "task.created") updateRuntimeTask(e.task, { role: p.role, status: "waiting", detail: "Task ready" });
+    else if (e.event === "attempt.started") updateRuntimeTask(e.task, { status: "running", detail: `Working on attempt ${p.number}` });
+    else if (e.event === "packet.dispatched") updateRuntimeTask(e.task, { role: p.packet?.role, status: "running", packet: p.packet, detail: "Received the required context" });
     else if (e.event === "attempt.accepted") {
       const result = p.result || p, skipped = p.role === "evidence_reader" && String(result.payload?.summary || "").startsWith("Skipped:");
       updateRuntimeTask(e.task, { role: p.role, status: p.outcome === "produced" && !skipped ? "done" : "failed",
-        detail: skipped ? "Skipped after two attempts" : resultDetail(result), calls: p.model_calls, questions: (result.unresolved || []).slice(0, 4) });
+        detail: skipped ? "Skipped after two unsuccessful attempts" : resultDetail(result), calls: p.model_calls, questions: (result.unresolved || []).slice(0, 4) });
     }
     else if (e.event === "run.finished") {
       runFinished = true; const ok = p.status === "completed";
-      upsertAgent({ id: "orchestrator", role: "orchestrator", title: "Orchestrator", status: ok ? "done" : "failed", detail: `Run ${p.outcome || p.status}, ${p.model_calls} model calls` });
-      upsertAgent({ id: "quality", role: "quality", title: "Quality gate", status: ok ? "done" : "failed", detail: `${accepted} accepted, ${rejected} rejected, ${reviews} reviews` });
+      upsertAgent({ id: "orchestrator", role: "orchestrator", title: "Orchestrator", status: ok ? "done" : "failed", detail: ok ? `Research complete · ${p.model_calls} model calls` : `Stopped: ${p.outcome || p.status}` });
+      upsertAgent({ id: "quality", role: "quality", title: "Quality gate", status: ok ? "done" : "failed", detail: ok ? "Final checks complete" : "Quality checks stopped" });
     }
   }
   function apply(e) {
     if (e.type === "brief") { snap.brief = e.brief; snap.ready = !!e.ready; }
     else if (e.type === "sources") for (const k of Object.keys(snap.sources)) if (!e.sources.some(x => x.id === k)) delete snap.sources[k];
     if (e.type === "chat") addTurn(e); else if (e.type === "brief") renderBrief(e.brief, e.ready); else if (e.type === "sources") renderSources(e.sources);
-    else if (e.type === "web_results") renderWebResults(e.results || [], e.query || "");
+    else if (e.type === "web_results") renderWebResults(e.results || [], e.query || "", false);
     else if (e.type === "agent") { if (e.id === "scout") upsertAgent(e); }
     else if (e.type === "quality") addTicker(e); else if (e.type === "runtime") applyRuntime(e);
     else if (e.type === "run") { if (e.status === "started") { report = null; resetTeam(); } setRun(e.status); } else if (e.type === "report") renderReport(e.report);

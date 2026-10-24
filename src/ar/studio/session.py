@@ -64,10 +64,6 @@ SCOUT_CONSTRAINT = (
     "The only sources are model-generated background notes, not published literature or data; "
     "say so in the limitations and treat every finding as unverified."
 )
-SCOPE_CONSTRAINT = (
-    "Research claims must come only from the supplied full text. A parallel web search may find related paper metadata, "
-    "but those candidates are not evidence. List any missing full text or data work as concrete next steps."
-)
 SCOUT_SYSTEM = """You are the source scout for a research team that may only cite text it is given.
 The user supplied no sources, so write background notes about the SUBJECT of the research question:
 established facts, definitions, known surveys and catalogues, standard methods, known pitfalls, and open problems.
@@ -231,10 +227,10 @@ class Session:
         self._events_ready = threading.Condition(self._lock)
         self._thread: threading.Thread | None = None
         self._init_event_journal()
-        self.emit("chat", role="assistant", who="Intake", text=self.intake.opening())
+        opening = self.intake.opening()
         if make_agent is None:
-            self.emit("chat", role="assistant", who="Intake",
-                      text="No API key, so this is the demo: three built-in papers and a scripted agent. Press Demo papers.")
+            opening += " Demo mode is active; choose Load demo to try the full workflow."
+        self.emit("chat", role="assistant", who="Intake", text=opening)
 
     # feed
 
@@ -469,9 +465,6 @@ class Session:
         from ar.controller import run_project
 
         self.emit("run", status="started", run=self.runs, project=str(project))
-        if SCOPE_CONSTRAINT not in self.intake.brief.constraints:
-            self.intake.brief.constraints.append(SCOPE_CONSTRAINT)
-            self.emit("brief", brief=self.intake.brief.as_dict(), ready=True)
         if not self.sources:
             try:
                 self._scout()
@@ -538,7 +531,8 @@ class Session:
                 text = f"{r['id']} rejected ({r['code']}): {r['reason']}"
                 self.emit("quality", kind="rejected", text=text + (f" {r['hint']}" if r["hint"] else ""))
             for v in reviews[v0:]:
-                self.emit("quality", kind="review", text=f"Gate on r{v['revision']}: reviewer said {v['disposition']}, decided {v['decision']}")
+                decision = "accepted" if v["decision"] == "accept" else str(v["decision"]).replace("_", " ")
+                self.emit("quality", kind="review", text=f"Review {v['revision']}: {decision}")
             last_event = int(runtime_events[-1]["id"]) if runtime_events else e0
             self._seen = (len(claims), len(rejected), len(reviews), last_event)
         finally:
@@ -563,7 +557,7 @@ def _rows(conn: sqlite3.Connection, sql: str, params: tuple = ()) -> list[sqlite
 def _closing(report: dict[str, Any]) -> str:
     n = len(report.get("cited", []))
     head = "Done." if report["outcome"] == "completed" else f"Stopped: {report['outcome'].replace('_', ' ')}."
-    parts = [f"{head} {n} claim{'s' if n != 1 else ''} in the report, every quote checked."]
+    parts = [f"{head} The report uses {n} verified claim{'s' if n != 1 else ''}."]
     rejected = len(report.get("rejections", []))
     if rejected:
         parts.append(f"{rejected} quote{'s' if rejected != 1 else ''} rejected.")

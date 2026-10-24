@@ -209,7 +209,7 @@ def test_demo_run_shows_every_agent_and_a_verified_report(tmp_path):
     assert any(row["n"] == 7 and "Excluding short series" in row["text"] for row in proof["window"])
     assert proof["receipt"]["id"].startswith("read-") and proof["receipt"]["start"] == 1
     assert {x["id"]: x["cited"] for x in r["sources"]} == {"paper-a": True, "paper-b": True, "paper-c": False}
-    assert s.events[-1]["type"] == "chat" and s.events[-1]["text"].startswith("Done. 2 claims in the report")
+    assert s.events[-1]["type"] == "chat" and s.events[-1]["text"] == "Done. The report uses 2 verified claims."
 
 
 def test_http_api_runs_a_demo_end_to_end(tmp_path):
