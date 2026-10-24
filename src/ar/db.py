@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 import sqlite3
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -12,7 +13,7 @@ from uuid import uuid4
 
 from ar.models import AgentResult
 
-DB_SCHEMA_VERSION = 2
+DB_SCHEMA_VERSION = 3
 
 
 @dataclass(frozen=True)
@@ -38,9 +39,14 @@ def _now() -> str:
     return datetime.now(UTC).isoformat()
 
 
-def connect(database: Path) -> sqlite3.Connection:
+def connect(project_root: Path) -> sqlite3.Connection:
     """Open a configured connection to an existing project database."""
 
+    database = (
+        project_root
+        if project_root.name == "state.sqlite"
+        else project_root / ".research" / "state.sqlite"
+    )
     connection = sqlite3.connect(database)
     connection.row_factory = sqlite3.Row
     connection.execute("PRAGMA foreign_keys = ON")
@@ -58,6 +64,23 @@ def _migrate(connection: sqlite3.Connection) -> None:
         with connection:
             if "result_json" not in columns:
                 connection.execute("ALTER TABLE tasks ADD COLUMN result_json TEXT")
+            connection.execute(f"PRAGMA user_version = {DB_SCHEMA_VERSION}")
+    if version < 3:
+        with connection:
+            connection.executescript(
+                """
+                CREATE TABLE IF NOT EXISTS events (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    run_id TEXT, task_id TEXT, kind TEXT NOT NULL,
+                    payload_json TEXT NOT NULL, created_at TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS requirements (
+                    id TEXT PRIMARY KEY, revision INTEGER NOT NULL,
+                    source_passage TEXT NOT NULL, interpretation TEXT NOT NULL,
+                    acceptance_checks_json TEXT NOT NULL, deliverable TEXT NOT NULL
+                );
+                """
+            )
             connection.execute(f"PRAGMA user_version = {DB_SCHEMA_VERSION}")
 
 
@@ -125,6 +148,16 @@ def initialize(database: Path, project_root: Path) -> InitResult:
                     finished_at TEXT,
                     UNIQUE (task_id, number)
                 );
+                CREATE TABLE events (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    run_id TEXT, task_id TEXT, kind TEXT NOT NULL,
+                    payload_json TEXT NOT NULL, created_at TEXT NOT NULL
+                );
+                CREATE TABLE requirements (
+                    id TEXT PRIMARY KEY, revision INTEGER NOT NULL,
+                    source_passage TEXT NOT NULL, interpretation TEXT NOT NULL,
+                    acceptance_checks_json TEXT NOT NULL, deliverable TEXT NOT NULL
+                );
                 """
             )
             connection.execute(
@@ -135,6 +168,54 @@ def initialize(database: Path, project_root: Path) -> InitResult:
         return InitResult(database=database, project_id=project_id, created=True)
     finally:
         connection.close()
+
+
+def init_project(project_root: Path, source_dir: Path | None = None) -> sqlite3.Connection:
+    """Initialize all track schemas and register markdown inputs."""
+
+    root = project_root.resolve()
+    if source_dir is not None:
+        source_input = source_dir.resolve() / "input"
+        if not source_input.is_dir():
+            raise FileNotFoundError(source_input)
+        shutil.copytree(source_input, root / "input", dirs_exist_ok=True)
+    for relative in (
+        "input/papers", "input/datasets", "input/notes", "policies", "skills",
+        ".research/blobs", ".research/manifests", ".research/workspaces", "output",
+    ):
+        (root / relative).mkdir(parents=True, exist_ok=True)
+    initialize(root / ".research" / "state.sqlite", root)
+    connection = connect(root)
+    from ar.broker import Broker, ensure_schema as ensure_broker_schema
+    from ar.evidence import ensure_schema as ensure_evidence_schema
+    from ar.review import ensure_schema as ensure_review_schema
+
+    ensure_broker_schema(connection)
+    ensure_evidence_schema(connection)
+    ensure_review_schema(connection)
+    broker = Broker(connection, root)
+    brief = root / "input" / "brief.md"
+    if brief.is_file():
+        broker.register_source("brief", brief)
+        requirements = []
+        for number, line in enumerate(brief.read_text(encoding="utf-8").splitlines(), start=1):
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#"):
+                continue
+            text = stripped[2:].strip() if stripped.startswith("- ") else stripped
+            if ":" not in text and not stripped.startswith("- "):
+                continue
+            requirements.append((f"req-{number}", 1, stripped, text, "[]", "report.md"))
+        with connection:
+            connection.executemany(
+                """INSERT OR REPLACE INTO requirements
+                   (id, revision, source_passage, interpretation, acceptance_checks_json, deliverable)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                requirements,
+            )
+    for paper in sorted((root / "input" / "papers").glob("*.md")):
+        broker.register_source(paper.stem, paper)
+    return connection
 
 
 def read_status(database: Path) -> StatusSummary:

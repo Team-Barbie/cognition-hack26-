@@ -1,4 +1,7 @@
 import sqlite3
+import json
+import shutil
+from pathlib import Path
 
 import pytest
 from typer.testing import CliRunner
@@ -11,6 +14,7 @@ from ar.packet import Packet
 
 
 runner = CliRunner()
+FIXTURE = Path(__file__).parent.parent / "fixtures" / "baselines"
 
 
 def test_init_creates_project_and_is_idempotent(tmp_path):
@@ -52,11 +56,11 @@ def test_task_state_transitions_are_explicit():
 
 
 def _step(role):
-    def packet(previous):
+    def packet(previous, task_id, attempt_id):
         return Packet(
             packet_id=f"packet-{role}",
-            task_id="assigned-by-controller",
-            attempt_id="assigned-by-controller",
+            task_id=task_id,
+            attempt_id=attempt_id,
             role=role,
             objective="test the Wave 1 order",
         )
@@ -180,3 +184,18 @@ def test_model_call_budget_stops_before_next_dispatch(tmp_path):
     status = read_status(database)
     assert status.latest_run_status == "budget_exhausted"
     assert status.task_states == {"accepted": 2}
+
+
+def test_fake_cli_run_exports_reviewed_report(tmp_path):
+    shutil.copytree(FIXTURE / "input", tmp_path / "input")
+
+    result = runner.invoke(app, ["run", str(tmp_path), "--fake"])
+
+    assert result.exit_code == 0, result.output
+    assert "Status: completed" in result.output
+    report = (tmp_path / "output" / "report.md").read_text(encoding="utf-8")
+    assert "Seasonal naive" in report
+    assert "paper-b contradicts" in report
+    assert "[^claim-1]" in report and "[^claim-2]" in report
+    provenance = json.loads((tmp_path / "output" / "provenance.json").read_text())
+    assert len(provenance["claims"]) == 2
