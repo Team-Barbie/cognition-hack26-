@@ -141,16 +141,16 @@ class StageAgent:
 
     def _start_detail(self, role: Role, packet: Packet) -> str:
         if role == "planner":
-            return f"Planning against {len(packet.requirements)} requirements and {len(packet.available_sources)} sources"
+            return f"Planning: {len(packet.requirements)} requirements, {len(packet.available_sources)} sources"
         if role == "evidence_reader" and packet.reads:
             r = packet.reads[0]
             return f"Reading lines {r.selector.start}-{r.selector.end} (receipt {r.read_receipt_id})"
         if role == "writer":
             n = len(packet.claim_items())
             extra = f", addressing {len(packet.review_feedback)} review findings" if packet.review_feedback else ""
-            return f"Drafting from {n} committed claims{extra}"
+            return f"Drafting from {n} claims{extra}"
         if role == "reviewer":
-            return "Checking citations, coverage, and contradictions on the exact draft"
+            return "Checking the draft"
         return "Working"
 
     @staticmethod
@@ -163,7 +163,7 @@ class StageAgent:
             return f"Proposed {len(result.proposed_tasks)} tasks ({readers} readers)"
         if role == "evidence_reader":
             if p.get("relevant") is False:
-                return "Off-topic for this question; no claims"
+                return "Not relevant, no claims"
             return f"Proposed {len(result.claims)} claim{'s' if len(result.claims) != 1 else ''}"
         if role == "writer":
             cited = len(set(CITATION.findall(p.get("content_markdown", ""))))
@@ -238,8 +238,7 @@ class Session:
         self.emit("chat", role="assistant", who="Intake", text=self.intake.opening())
         if make_agent is None:
             self.emit("chat", role="assistant", who="Intake",
-                      text="No API key found, so I'm in demo mode: the agents run on the three built-in "
-                           "papers with a deterministic fake agent. Press Demo papers to try it.")
+                      text="No API key, so this is the demo: three built-in papers and a scripted agent. Press Demo papers.")
 
     # feed
 
@@ -268,7 +267,7 @@ class Session:
         if self.status in ("done", "blocked", "failed") and self.open_questions:
             self.intake.brief.context = (self.intake.brief.context + " Answers from the user: " + message).strip()
             self.emit("chat", role="assistant", who="Intake",
-                      text="Thanks. I've added that to the context. Press Run again to research with your answers.")
+                      text="Noted. Run again to use it.")
             return
         reply = self.intake.reply(message)
         self.emit("chat", role="assistant", who="Intake", text=reply)
@@ -295,7 +294,7 @@ class Session:
             self.intake.brief = Brief(**DEMO_BRIEF.as_dict())
             self.intake.ready = True
             self.emit("chat", role="assistant", who="Intake",
-                      text="Loaded the three demo papers and the demo question about seasonal-naive baselines.")
+                      text="Demo papers and question loaded.")
         self.emit("brief", brief=self.intake.brief.as_dict(), ready=True)
         self.emit("sources", sources=self.source_list())
 
@@ -317,13 +316,13 @@ class Session:
         if self._thread and self._thread.is_alive():
             raise RuntimeError("a run is already in progress")
         if not self.intake.brief.question:
-            raise ValueError("tell the intake agent your research question first")
+            raise ValueError("ask your question in the chat first")
         if not self.sources and self.make_agent is None:
             self.use_demo()  # demo mode can only read the demo papers
             self.emit("chat", role="assistant", who="Res Loop",
-                      text="No sources were added, so I loaded the demo papers. Add OPENAI_API_KEY to .env to research without sources.")
+                      text="No papers, so I loaded the demo ones. Add OPENAI_API_KEY to .env to start without papers.")
         if self.make_agent is None and set(self.sources) - {p.stem for p in (FIXTURE / "input" / "papers").glob("*.md")}:
-            raise ValueError("demo mode can only run the demo papers; add OPENAI_API_KEY to .env for your own sources")
+            raise ValueError("Demo mode only reads the demo papers. Add OPENAI_API_KEY to .env to use your own.")
         self.runs += 1
         self.status = "running"
         self.report = None
@@ -359,8 +358,8 @@ class Session:
             self.emit("brief", brief=brief.as_dict(), ready=True)
         self.agent("scout", status="done", detail=f"Wrote {len(added)} labelled note documents: {', '.join(added)}")
         self.emit("chat", role="assistant", who="Scout",
-                  text=f"You gave no sources, so I wrote {len(added)} background note documents from the model's general "
-                       "knowledge. They are labelled model-generated. The team will cite them, but treat findings as unverified.")
+                  text=f"No sources, so I wrote {len(added)} notes from the model's own knowledge. They're labelled that way. "
+                       "Treat anything cited from them as unchecked.")
 
     def wait(self, timeout: float | None = None) -> None:
         if self._thread:
@@ -391,7 +390,7 @@ class Session:
                 self.status = "failed"
                 self.emit("run", status="failed", run=self.runs)
                 self.emit("chat", role="assistant", who="Orchestrator",
-                          text=f"The scout could not write background notes ({exc}). Add a paper and press Start again.")
+                          text=f"The scout couldn't write notes ({exc}). Add a paper and press Start again.")
                 return
         n = len(self.sources)
         self.agent("orchestrator", role="orchestrator", title="Orchestrator", status="running",
@@ -475,12 +474,13 @@ def _rows(conn: sqlite3.Connection, sql: str) -> list[sqlite3.Row]:
 
 def _closing(report: dict[str, Any]) -> str:
     n = len(report.get("cited", []))
-    status = report["outcome"].replace("_", " ")
-    parts = [f"Research {status}. The report cites {n} verified claim{'s' if n != 1 else ''}."]
-    if report.get("rejections"):
-        parts.append(f"{len(report['rejections'])} quote{'s were' if len(report['rejections']) != 1 else ' was'} rejected by the quality gate.")
+    head = "Done." if report["outcome"] == "completed" else f"Stopped: {report['outcome'].replace('_', ' ')}."
+    parts = [f"{head} {n} claim{'s' if n != 1 else ''} in the report, every quote checked."]
+    rejected = len(report.get("rejections", []))
+    if rejected:
+        parts.append(f"{rejected} quote{'s' if rejected != 1 else ''} rejected.")
     if report.get("open_questions"):
-        parts.append("The agents left some open questions. Answer them here and press Run again to dig further.")
+        parts.append("The agents left open questions. Answer them here and run again.")
     return " ".join(parts)
 
 
