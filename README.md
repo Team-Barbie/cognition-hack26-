@@ -93,3 +93,22 @@ summary and report say so and never label the run completed.
 <project>/.research/        state.sqlite and content-addressed blobs
 <project>/output/           report.md, run-summary.md, provenance.json
 ```
+
+## Wave 3: experiments, provenance, MCP
+
+- **Seeded experiment.** `ar.experiment.run_experiment(project, conn, spec)` copies the declared inputs
+  (`fixtures/experiment/data.csv`, `baseline_mae.py`) into `.research/workspaces/<run-id>/`, runs the command
+  there with a minimal environment and a timeout, stores stdout, stderr and each expected output as blobs, and
+  records an `ExperimentRun`. Same seed, same output hashes. This is a subprocess with a working-directory
+  jail, **not an OS sandbox**, and the run record says so. Exit 0 with a missing expected output is recorded
+  as process success but `result_acceptable=False`; `accept_result(run)` raises. A run that was started and
+  never finished is `execution_unknown` (`reconcile`) and is never rerun without `retry_unknown=True`. Cite a
+  run in a report with `[run:exp-001]`; it becomes a footnote.
+- **Provenance labels.** `ar.imports.register_import(...)` snapshots a host-produced file (an experiment log,
+  say) and labels it `host_reported`: the runtime did not run it or enforce its original permissions. Imports
+  can never be `runtime_captured`. A claim that cites an import shows the label in the `report.md` footnote,
+  `ar inspect claim`, and `provenance.json`. Bytes the project itself generated stay `derived`, and claiming
+  them as independent external evidence raises `SELF_CONFIRMATION_REJECTED`.
+- **MCP.** `python -m ar.mcp_server <project>` is a stdlib JSON-RPC 2.0 stdio server exposing
+  `project.status`, `files.read` and `tasks.submit` over the same broker. `tasks.submit` only checks required
+  reads; it runs nothing. Errors use `{code, message, retryable, details}`.
