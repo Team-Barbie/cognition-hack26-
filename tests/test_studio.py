@@ -79,6 +79,31 @@ def test_sources_are_named_validated_and_deduplicated(tmp_path):
         s.add_source("big.md", "x" * 500_001)
 
 
+def test_a_wrongly_uploaded_source_can_be_removed(tmp_path):
+    s = Session(tmp_path, None)
+    s.add_source("right.md", "keep me")
+    s.add_source("wrong.md", "oops")
+    s.remove_source("wrong")
+    assert list(s.sources) == ["right"]
+    assert s.events[-1]["type"] == "sources" and [x["id"] for x in s.events[-1]["sources"]] == ["right"]
+    with pytest.raises(ValueError, match="no source"):
+        s.remove_source("wrong")
+
+
+def test_sources_cannot_be_removed_mid_run(tmp_path):
+    s = Session(tmp_path, None)
+    s.use_demo()
+    s.start()
+    try:
+        if s._thread.is_alive():
+            with pytest.raises(RuntimeError, match="wait for the run"):
+                s.remove_source("paper-a")
+    finally:
+        s.wait(60)
+    s.remove_source("paper-a")  # allowed again once the run is over
+    assert "paper-a" not in s.sources
+
+
 def test_demo_mode_refuses_sources_the_fake_agent_cannot_read(tmp_path):
     s = Session(tmp_path, None)
     s.use_demo()
@@ -136,6 +161,9 @@ def test_http_api_runs_a_demo_end_to_end(tmp_path):
         assert post("/api/run", {"id": s["id"]})[0] == 400  # nothing to run yet
         assert post("/api/chat", {"id": "nope", "message": "hi"})[0] == 400
         assert post("/api/demo", {"id": s["id"]}) == (200, {"ok": True})
+        assert post("/api/source", {"id": s["id"], "name": "oops.md", "text": "wrong file"}) == (200, {"ok": True})
+        assert post("/api/source/remove", {"id": s["id"], "source": "oops"}) == (200, {"ok": True})
+        assert post("/api/source/remove", {"id": s["id"], "source": "oops"})[0] == 400
         assert post("/api/run", {"id": s["id"]}) == (200, {"ok": True})
 
         events, after, deadline = [], 0, time.time() + 60

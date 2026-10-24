@@ -195,6 +195,15 @@ class Session:
         self.emit("brief", brief=self.intake.brief.as_dict(), ready=True)
         self.emit("sources", sources=self.source_list())
 
+    def remove_source(self, sid: str) -> None:
+        """Drop an uploaded source before a run. A running team keeps reading what it was given."""
+        if self._thread and self._thread.is_alive():
+            raise RuntimeError("wait for the run to finish before removing sources")
+        if sid not in self.sources:
+            raise ValueError(f"no source named {sid}")
+        del self.sources[sid]
+        self.emit("sources", sources=self.source_list())
+
     def source_list(self) -> list[dict[str, Any]]:
         return [{"id": k, "lines": len(v.splitlines())} for k, v in self.sources.items()]
 
