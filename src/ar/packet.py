@@ -50,6 +50,7 @@ class Packet(Record):
     dependencies: list[DependencyItem] = Field(default_factory=list)
     available_sources: list[SourceInfo] = Field(default_factory=list)
     review_feedback: list[str] = Field(default_factory=list)  # blocking findings on a rewrite
+    skills: list[str] = Field(default_factory=list)  # method files to load; they add no capabilities
 
     def read_for(self, label: str) -> DeliveredRead | None:
         return next((r for r in self.reads if r.label == label), None)
