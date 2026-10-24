@@ -277,29 +277,30 @@ blockquote { margin: 0; padding: 4px 0 4px 14px; border-left: 3px solid var(--ph
 .drawer[hidden] { display: none; }
 .sheet { width: min(760px, 100%); height: 100%; overflow-y: auto; background: #0a1006; border-left: 2px solid var(--ph-2); padding: 0 0 48px; animation: slidein .35s cubic-bezier(.2,.8,.2,1) backwards; }
 .sheet .wbar { position: sticky; top: 0; z-index: 2; }
-.sheet .inner { padding: 28px 32px 42px; display: grid; gap: 26px; align-content: start; }
+.sheet .inner { padding: 32px 36px 48px; display: grid; gap: 36px; align-content: start; }
 .sheet .no { font: 800 54px/1 var(--mono); color: var(--ph-hi); text-shadow: 0 0 16px var(--glow); }
 .sheet .stmt { font: 16px/1.75 var(--mono); margin: 0; color: var(--ph-hi); }
 .sheet hr { border: 0; border-top: 1px dashed var(--sep); margin: 6px 0; width: 100%; }
 .sheet .kick { margin: 0; font: 800 11px var(--mono); letter-spacing: .16em; text-transform: uppercase; color: var(--ph-3); }
-.evidence-section { display: grid; gap: 18px; padding-bottom: 28px; border-bottom: 1px dashed var(--sep); }
+.evidence-section { display: grid; gap: 24px; padding-bottom: 38px; border-bottom: 1px dashed var(--sep); }
 .evidence-section:last-child { padding-bottom: 0; border-bottom: 0; }
 .evidence-section > .subhead { color: var(--ph-2); }
 .evidence-ref { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; font-size: 14px; }
 .evidence-ref b { color: var(--ph-hi); }
-.evidence-section blockquote { margin: 0; padding: 12px 0 12px 18px; }
-.evidence-section .lines { margin: 2px 0; padding: 12px 0; }
-.evidence-verdict { padding: 10px 14px; border: 1px solid var(--ph-3); border-radius: 9px; color: var(--ph-hi); font: 800 11px/1.5 var(--mono); letter-spacing: .12em; text-transform: uppercase; }
+.evidence-section blockquote { margin: 2px 0; padding: 16px 0 16px 22px; line-height: 1.8; }
+.evidence-section .lines { margin: 6px 0; padding: 16px 0; }
+.evidence-section .ln { padding-top: 4px; padding-bottom: 4px; }
+.evidence-verdict { padding: 14px 18px; border: 1px solid var(--ph-3); border-radius: 9px; color: var(--ph-hi); font: 800 11px/1.6 var(--mono); letter-spacing: .12em; text-transform: uppercase; }
 .evidence-verdict.bad { border-color: var(--acc); color: var(--acc-hi); }
-.evidence-trace { display: grid; gap: 12px; margin-top: 4px; padding: 16px 18px; border: 1px solid var(--ph-4); border-radius: 10px; background: rgba(0,0,0,.2); }
-.evidence-section .facts { gap: 7px 22px; }
+.evidence-trace { display: grid; gap: 16px; margin-top: 8px; padding: 22px 24px; border: 1px solid var(--ph-4); border-radius: 10px; background: rgba(0,0,0,.2); }
+.evidence-section .facts { gap: 10px 28px; }
 .evidence-limitations { display: grid; gap: 14px; }
 .lines { border: 1px solid var(--ph-4); border-radius: 10px; padding: 8px 0; font: 12.5px/1.8 var(--mono); overflow-x: auto; background: rgba(0,0,0,.35); }
 .ln { display: grid; grid-template-columns: 3em minmax(0, 1fr); padding-right: 12px; }
 .ln .n { text-align: right; padding-right: 12px; color: var(--ph-3); user-select: none; }
 .ln .t { white-space: pre-wrap; overflow-wrap: anywhere; color: var(--ph-2); }
 .ln.in { background: rgba(185,240,74,.1); } .ln.in .t { color: var(--ph); } .ln.in .n { color: var(--ph-hi); }
-mark { background: var(--acc); color: var(--ink); text-shadow: none; padding: 0 2px; }
+mark { background: rgba(185,240,74,.16); color: var(--ph-hi); border-bottom: 1px solid var(--ph-2); text-shadow: 0 0 6px var(--glow-s); padding: 1px 3px; }
 .facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 3px 16px; margin: 0; }
 .facts dt { font: 800 10.5px/2 var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--ph-3); }
 .facts dd { margin: 0; font: 13px/2 var(--mono); overflow-wrap: anywhere; }
@@ -333,7 +334,7 @@ mark { background: var(--acc); color: var(--ink); text-shadow: none; padding: 0 
   :root { --bz: 6px; --rad: 20px; }
   .hud { padding: 9px 14px; gap: 14px; } .hud nav, .hud .hide-s { display: none; }
   .layout { padding: 12px 10px 20px; } .wbody { padding: 14px 14px 16px; } .rbody { padding: 16px 14px 20px; }
-  .sheet .inner { padding: 22px 18px 34px; } .evidence-section { gap: 15px; padding-bottom: 22px; }
+  .sheet .inner { padding: 24px 18px 38px; gap: 28px; } .evidence-section { gap: 20px; padding-bottom: 30px; }
   .hero { padding: 28px 10px 64px; }
   .shelfrow { padding-left: 8px; padding-right: 8px; } .sig-in { padding: 18px; }
 }
