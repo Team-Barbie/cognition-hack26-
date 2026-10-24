@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import hmac
 import json
 import os
@@ -72,13 +73,27 @@ def _json(data: Any, status: int = 200) -> tuple[int, str, bytes]:
     return status, "application/json", json.dumps(data).encode("utf-8")
 
 
+# The built-in Vercel password is kept only as a salted scrypt hash, so the source does not show it.
+_SALT = b'res-loop-studio'
+VERCEL_PASSWORD_HASH = "451819a7f6dd488280c1ed427ed1394de003fa3da33c24e16c3ae257f8201ffc"
+
+
+def _scrypt(text: str) -> bytes:
+    return hashlib.scrypt(text.encode("utf-8"), salt=_SALT, n=2**14, r=8, p=1, dklen=32)
+
+
 def _authorized(authorization: str) -> bool:
-    """True when no STUDIO_PASSWORD is set, or the request carries `Authorization: Bearer <it>`."""
-    password = os.environ.get("STUDIO_PASSWORD", "")
-    if not password:
-        return True
+    """True when no password applies, or the request carries `Authorization: Bearer <it>`.
+
+    STUDIO_PASSWORD, if set, wins (empty turns the lock off). Otherwise Vercel uses the built-in hash.
+    """
     given = authorization[7:] if authorization.lower().startswith("bearer ") else ""
-    return hmac.compare_digest(given.encode("utf-8"), password.encode("utf-8"))
+    if "STUDIO_PASSWORD" in os.environ:
+        password = os.environ["STUDIO_PASSWORD"]
+        return not password or hmac.compare_digest(given.encode("utf-8"), password.encode("utf-8"))
+    if os.environ.get("VERCEL") == "1":
+        return hmac.compare_digest(_scrypt(given), bytes.fromhex(VERCEL_PASSWORD_HASH))
+    return True
 
 
 def handle(studio: Studio, method: str, path: str, query: str, raw_body: bytes,

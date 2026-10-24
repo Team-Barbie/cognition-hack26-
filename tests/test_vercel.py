@@ -5,6 +5,7 @@ import json
 from fastapi.testclient import TestClient
 
 from ar.studio.asgi import app
+from ar.studio import server
 from ar.studio.server import Studio
 
 
@@ -40,6 +41,7 @@ def test_vercel_run_waits_for_the_demo_before_returning(tmp_path, monkeypatch):
     studio = Studio(tmp_path, fake=True)
     monkeypatch.setattr("ar.studio.asgi.vercel_studio", lambda: studio)
     monkeypatch.setenv("VERCEL", "1")
+    monkeypatch.setenv("STUDIO_PASSWORD", "")  # this test is about the run, not the lock
     client = TestClient(app)
 
     sid = client.post("/api/session", json={}).json()["id"]
@@ -74,3 +76,17 @@ def test_no_studio_password_leaves_the_api_open(tmp_path, monkeypatch):
     monkeypatch.setattr("ar.studio.asgi.vercel_studio", lambda: studio)
     monkeypatch.delenv("STUDIO_PASSWORD", raising=False)
     assert TestClient(app).post("/api/session", json={}).status_code == 200
+
+
+def test_vercel_is_locked_with_the_built_in_password_hash(tmp_path, monkeypatch):
+    studio = Studio(tmp_path, fake=True)
+    monkeypatch.setattr("ar.studio.asgi.vercel_studio", lambda: studio)
+    monkeypatch.setattr("ar.studio.server.VERCEL_PASSWORD_HASH", server._scrypt("test-pass").hex())
+    monkeypatch.setenv("VERCEL", "1")
+    monkeypatch.delenv("STUDIO_PASSWORD", raising=False)
+    client = TestClient(app)
+    assert client.post("/api/session", json={}).status_code == 401
+    assert client.post("/api/session", json={}, headers={"Authorization": "Bearer wrong"}).status_code == 401
+    assert client.post("/api/session", json={}, headers={"Authorization": "Bearer test-pass"}).status_code == 200
+    monkeypatch.setenv("STUDIO_PASSWORD", "other")  # the environment variable still wins
+    assert client.post("/api/session", json={}, headers={"Authorization": "Bearer test-pass"}).status_code == 401
