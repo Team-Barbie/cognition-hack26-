@@ -151,3 +151,21 @@ def export_run(conn, *, project_root: Path, artifact: ArtifactVersion, content: 
 
 `CompletionAssessment` and `GateDecision` are small dataclasses/enums defined by Quality in
 `completion.py` / `review.py`.
+
+## Integration notes for Spine (as landed)
+
+Contracts and Quality are on main. These differ from the sketch above, so code against them:
+
+- `review.gate(conn, review, *, artifact, revision_pass=0)` returns `GateResult(decision, limitations, feedback)`.
+  Pass `revision_pass=1` on the second review. `feedback` is the writer packet's `review_feedback` on
+  `needs_revision`. A stale review (wrong artifact id/revision) raises `ValueError`.
+- `init_project` must call `broker.ensure_schema`, `evidence.ensure_schema`, and `review.ensure_schema`
+  (the last creates `review_findings`).
+- `completion.assess(...)` returns `CompletionAssessment(complete, rows, problems, limitations, unresolved_citations)`.
+- `export.export_run(...)` takes optional `cost: dict | None`; `assurance` defaults to `export.ASSURANCE`.
+- `Broker.register_source` with identical bytes returns the same ref; changed bytes create revision 2.
+- `REQUIRED_READ_INCOMPLETE` details carry `source_id`, `missing`, and an `incomplete` list for all sources.
+- `ar run --fake` should call `agents.configure(FakeAgent())`; live is `agents.configure(LiveAgent(AnthropicClient(model=..., effort=...)))`
+  from `ar.adapter` (credentials via `ANTHROPIC_API_KEY` or `ant auth login`).
+- Done when `ar run fixtures/baselines --fake` writes `output/report.md` with two citations and a second run
+  does not duplicate accepted artifacts. `tests/test_fake_chain.py` shows the packet shapes each role expects.
