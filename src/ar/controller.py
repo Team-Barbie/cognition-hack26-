@@ -74,7 +74,13 @@ class AgentRunner(Protocol):
 
 PacketBuilder = Callable[[Sequence[AgentResult], str, str], Packet]
 PacketPreparer = Callable[[Role, Packet], Packet]
-NON_BLOCKING_RESEARCH_ROLES = frozenset({"source_scout", "research_agent", "theorist", "analyst"})
+RESEARCH_ORDER = (
+    "source_scout", "evidence_reader", "research_agent", "theorist",
+    "experiment_runner", "reproducer", "analyst", "synthesis_agent", "adversarial_effect_agent",
+)
+NON_BLOCKING_RESEARCH_ROLES = frozenset(RESEARCH_ORDER) - {
+    "evidence_reader", "experiment_runner", "reproducer",
+}
 
 
 @dataclass(frozen=True)
@@ -105,19 +111,13 @@ def _validate_workflow(steps: Sequence[WorkflowStep]) -> None:
         raise ValueError("workflow must contain one planner, one writer, and one reviewer")
     writer_index = roles.index("writer")
     reviewer_index = roles.index("reviewer")
-    research_roles = {
-        "source_scout", "evidence_reader", "research_agent", "theorist",
-        "experiment_runner", "reproducer", "analyst",
-    }
+    research_roles = set(RESEARCH_ORDER)
     if any(role not in research_roles for role in roles[1:writer_index]):
         raise ValueError("only bounded research specialists may run between planner and writer")
     for singleton in research_roles - {"evidence_reader"}:
         if roles.count(singleton) > 1:
             raise ValueError(f"workflow may contain at most one {singleton}")
-    order = {role: i for i, role in enumerate(
-        ("source_scout", "evidence_reader", "research_agent", "theorist",
-         "experiment_runner", "reproducer", "analyst")
-    )}
+    order = {role: i for i, role in enumerate(RESEARCH_ORDER)}
     middle = roles[1:writer_index]
     if [order[role] for role in middle] != sorted(order[role] for role in middle):
         raise ValueError("research specialists are not in dependency order")
@@ -382,7 +382,7 @@ def _planned_middle(
                 rejected.append({"task": task.model_dump(mode="json"), "reason": "duplicate reader source"})
                 continue
             readers.append((valid[0], task.objective))
-        elif task.role in {"source_scout", "research_agent", "theorist", "experiment_runner", "reproducer", "analyst"}:
+        elif task.role in set(RESEARCH_ORDER) - {"evidence_reader"}:
             if task.role in {"experiment_runner", "reproducer"}:
                 expected = [experiment_spec.id] if experiment_spec else []
                 if task.source_ids != expected:
@@ -396,6 +396,8 @@ def _planned_middle(
                 continue
             wants.add(task.role)
             objectives[task.role] = task.objective
+        elif task.role not in {"writer", "reviewer"}:
+            rejected.append({"task": task.model_dump(mode="json"), "reason": "role is not available in the research workflow"})
 
     # A writer cannot produce an evidence-backed report without at least one reader. Older planners that
     # know only the MVP roles therefore remain a safe fallback rather than yielding an empty graph.
@@ -432,6 +434,9 @@ def _planned_middle(
         optional.append(("reproducer", experiment_spec.id if experiment_spec else None, objectives["reproducer"]))
     if "analyst" in wants:
         optional.append(("analyst", None, objectives["analyst"]))
+    for role in ("synthesis_agent", "adversarial_effect_agent"):
+        if role in wants:
+            optional.append((role, None, objectives[role]))
 
     # Reserve one evidence reader first, then requested specialists, then additional sources.
     capacity = max(1, capacity)
@@ -642,7 +647,7 @@ def run_project(
             kind="artifact", id=f"literature:{review.key}", content=review.model_dump_json(indent=2)
         ) for review in literature_results]
         for result in previous:
-            if result.role in {"research_agent", "theorist", "analyst"}:
+            if result.role in {"research_agent", "theorist", "analyst", "synthesis_agent", "adversarial_effect_agent"}:
                 dependencies.append(DependencyItem(
                     kind="artifact", id=result.task_id,
                     content=result.model_dump_json(indent=2),
@@ -696,6 +701,31 @@ def run_project(
             ], skills=["result_analysis"],
         )
 
+    def synthesis_packet(previous, task_id, attempt_id):
+        return Packet(
+            packet_id=packet_id(task_id, attempt_id), task_id=task_id, attempt_id=attempt_id,
+            role="synthesis_agent", objective=question, requirements=requirements,
+            dependencies=[*claim_dependencies(previous), *research_dependencies(previous)],
+            skills=["synthesis"],
+        )
+
+    def adversarial_packet(previous, task_id, attempt_id):
+        claims = claim_dependencies(previous)
+        research = research_dependencies(previous)
+        # Review the most recent accepted synthesis/assessment rather than unrelated metadata.
+        candidate = next((dep for dep in reversed(research)), None)
+        if candidate is None:
+            candidate = DependencyItem(
+                kind="artifact", id="accepted-evidence",
+                content="\n".join(f"{dep.claim.statement} [claim:{dep.id}]" for dep in claims if dep.claim),
+            )
+        return Packet(
+            packet_id=packet_id(task_id, attempt_id), task_id=task_id, attempt_id=attempt_id,
+            role="adversarial_effect_agent", objective=question, requirements=requirements,
+            dependencies=[candidate, *claims, *(dep for dep in research if dep is not candidate)],
+            skills=["source_screening", "result_analysis"],
+        )
+
     def writer_packet(previous, task_id, attempt_id, feedback=None):
         return Packet(
             packet_id=packet_id(task_id, attempt_id),
@@ -746,6 +776,7 @@ def run_project(
                     content=content,
                 ),
                 *claims,
+                *research_dependencies(previous),
             ],
         )
 
@@ -766,6 +797,8 @@ def run_project(
             ),
         ),
         "analyst": WorkflowStep(role="analyst", build_packet=analyst_packet),
+        "synthesis_agent": WorkflowStep(role="synthesis_agent", build_packet=synthesis_packet),
+        "adversarial_effect_agent": WorkflowStep(role="adversarial_effect_agent", build_packet=adversarial_packet),
     }
 
     def checked_agent(role, packet):
@@ -1097,6 +1130,7 @@ def run_project(
                             content=content,
                         ),
                         *claims,
+                        *research_dependencies(results),
                     ],
                 )
 

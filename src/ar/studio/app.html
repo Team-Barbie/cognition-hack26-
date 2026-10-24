@@ -95,7 +95,8 @@ canvas.px { image-rendering: pixelated; max-width: 100%; filter: drop-shadow(0 0
 .shelfrow { position: relative; display: flex; justify-content: safe center; align-items: flex-end; gap: 10px; min-height: 232px; padding: 40px 14px 0; border-bottom: 3px solid var(--ph-2); overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; transition: background .25s; }
 .shelfrow::before { content: attr(data-label); position: absolute; left: 14px; top: 12px; font: 700 11px var(--mono); letter-spacing: .18em; text-transform: uppercase; color: var(--ph-3); }
 #stage.drop .shelfrow.src { background: repeating-linear-gradient(135deg, rgba(185,240,74,.1) 0 10px, transparent 10px 20px); }
-.shelfrow.team { min-height: 168px; align-items: flex-end; gap: 12px; }
+.shelfrow.team { min-height: 168px; align-items: flex-end; justify-content: center; flex-wrap: wrap; gap: 12px; padding-bottom: 12px; }
+.team-note { margin: 12px 0; font: 12px/1.6 var(--mono); color: var(--ph-2); }
 .beams { position: absolute; inset: 0; pointer-events: none; z-index: 4; }
 .now { margin: 12px 0 0; min-height: 1.5em; font: 13px/1.5 var(--mono); color: var(--ph-2); overflow-wrap: anywhere; }
 .now b { color: var(--ph-hi); }
@@ -411,6 +412,7 @@ mark { background: rgba(185,240,74,.16); color: var(--ph-hi); border-bottom: 1px
         <div class="wbody" id="stage-body">
           <div class="shelfrow src" id="row-src" data-label="Source papers" role="list"></div>
           <div class="shelfrow team" id="row-team" data-label="Research team"></div>
+          <p class="team-note">The planner selects specialists for your question. Select an agent to see its role and live inputs.</p>
           <canvas class="beams" id="beams" aria-hidden="true"></canvas>
           <p class="now" id="now" aria-live="polite"></p>
           <div class="foot">
@@ -592,7 +594,7 @@ mark { background: rgba(185,240,74,.16); color: var(--ph-hi); border-bottom: 1px
       while ((nl = buffer.indexOf("\n")) >= 0) { line(buffer.slice(0, nl)); buffer = buffer.slice(nl + 1); }
     }
     line(buffer);
-    return { ok: true, status: final.status };
+    return { ok: true, status: final.status, streamEnded: true };
   }
   // Start a fresh session on the server and refill it from the page. Quiet when it works.
   function recover() {
@@ -735,6 +737,24 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
   };
   const ROLE_SPR = { orchestrator: "crab", scout: "ufo", literature_review: "ufo", planner: "squid", source_scout: "ufo", evidence_reader: "octo", research_agent: "crab", synthesis_agent: "crab", theorist: "squid", experiment_runner: "cannon", reproducer: "cannon", analyst: "crab", writer: "ant", reviewer: "skull", adversarial_effect_agent: "skull", quality: "cannon" };
   const ROLE_NAME = { orchestrator: "Orchestrator", scout: "Scout", literature_review: "Literature review", planner: "Planner", source_scout: "Source scout", evidence_reader: "Reader", research_agent: "Research agent", synthesis_agent: "Synthesis", theorist: "Theorist", experiment_runner: "Experiment", reproducer: "Reproducer", analyst: "Analyst", writer: "Writer", reviewer: "Reviewer", adversarial_effect_agent: "Adverse effects", quality: "Quality gate" };
+  const SPECIALISTS = ["source_scout", "research_agent", "theorist", "experiment_runner", "reproducer", "analyst", "synthesis_agent", "adversarial_effect_agent"];
+  const ROLE_DESCRIPTION = {
+    orchestrator: "Coordinates the research team and its handoffs.",
+    literature_review: "Searches scholarly databases, acquires sources and extracts evidence for a review question.",
+    planner: "Chooses the research tasks and specialists needed to answer your question.",
+    source_scout: "Screens candidate papers for relevance to the research question.",
+    evidence_reader: "Reads source passages and extracts claims with verifiable citations.",
+    research_agent: "Assesses the evidence, research gaps, hypotheses and next steps.",
+    theorist: "Develops competing explanations and tests that could falsify them.",
+    experiment_runner: "Runs an experiment configured in the research project. Requires input/experiment.yaml.",
+    reproducer: "Repeats a configured experiment independently to check its results.",
+    analyst: "Interprets recorded experiment outputs and their limitations.",
+    synthesis_agent: "Combines accepted evidence and specialist findings into a synthesis for the writer.",
+    adversarial_effect_agent: "Challenges the synthesis for overreach, counterarguments, adverse effects and missing tests.",
+    writer: "Drafts the report from accepted evidence and specialist findings.",
+    reviewer: "Checks the report against its evidence and requests corrections.",
+    quality: "Verifies citations, provenance and requirement coverage."
+  };
   function drawSprite(ctx, rows, x, y, s) { for (let r = 0; r < rows.length; r++) for (let c = 0; c < rows[r].length; c++) if (rows[r][c] === "X") ctx.fillRect(x + c * s, y + r * s, s, s); }
 
   // ================= boot, clock, hud =================
@@ -746,7 +766,7 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
     $("h-calls").textContent = ks.reduce((n, k) => n + (cards[k].calls || 0), 0); $("h-claims").textContent = accepted; $("h-rej").textContent = rejected;
   }
   function boot() {
-    const lines = ["RES LOOP BIOS 1.0", "", "MEMORY ---- 640K OK", "SHELF  ---- MOUNTED", "TEAM   ---- 7 UNITS OK", "GATE   ---- ARMED", "LINK   ---- UP", "", "READY"];
+    const lines = ["RES LOOP BIOS 1.0", "", "MEMORY ---- 640K OK", "SHELF  ---- MOUNTED", "TEAM   ---- SPECIALISTS READY", "GATE   ---- ARMED", "LINK   ---- UP", "", "READY"];
     const pre = $("boot-text"); let i = 0, shown = "";
     const done = () => { $("boot").classList.add("out"); $("screen").classList.add("poweron"); setTimeout(() => $("boot").remove(), 500); };
     $("boot").addEventListener("click", done, { once: true });
@@ -933,7 +953,7 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
   const hash = s => { let x = 7; for (const c of s) x = (x * 31 + c.charCodeAt(0)) >>> 0; return x; };
   const roleOf = key => key.startsWith("reader:") ? "evidence_reader" : key.startsWith("writer:") ? "writer" : key.startsWith("literature:") ? "literature_review" : key;
   const cards = {}, spines = {}, srcSpines = {}, runtimeTasks = {};
-  let accepted = 0, rejected = 0, reviews = 0, writerPasses = 0, runFinished = false;
+  let accepted = 0, rejected = 0, reviews = 0, writerPasses = 0, runFinished = false, plannedReaders = null;
   function syncRow(parent, sel, keys, map, make) {
     keys.forEach((key, i) => {
       let el = map[key]; if (!el) { el = map[key] = make(key, i); el.style.setProperty("--i", i); }
@@ -955,10 +975,10 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
     });
     renderTeam(); updateHint(); updateStart(); hudStats();
   }
-  const ROLE_RANK = { source_scout: 3, research_agent: 5, theorist: 6, experiment_runner: 7, reproducer: 8, analyst: 9 };
-  const rankOf = (key, src) => key === "orchestrator" ? [0, 0] : (key === "scout" || key.startsWith("literature:")) ? [1, 0] : key === "planner" ? [2, 0] : key.startsWith("reader:") ? [4, Math.max(0, src.indexOf(key.slice(7)))] : ROLE_RANK[key] ? [ROLE_RANK[key], 0] : key.startsWith("writer:") ? [10, +key.split(":")[1] || 1] : key === "reviewer" ? [11, 0] : [12, 0];
+  const ROLE_RANK = { source_scout: 3, research_agent: 5, theorist: 6, experiment_runner: 7, reproducer: 8, analyst: 9, synthesis_agent: 10, adversarial_effect_agent: 11 };
+  const rankOf = (key, src) => key === "orchestrator" ? [0, 0] : (key === "scout" || key.startsWith("literature:")) ? [1, 0] : key === "planner" ? [2, 0] : key.startsWith("reader:") ? [4, Math.max(0, src.indexOf(key.slice(7)))] : ROLE_RANK[key] ? [ROLE_RANK[key], 0] : key.startsWith("writer:") ? [12, +key.split(":")[1] || 1] : key === "reviewer" ? [13, 0] : [14, 0];
   function teamKeys() {
-    const src = state.sourceList.map(s => s.id), set = new Set(["orchestrator", "planner", "writer:1", "reviewer", "quality"]);
+    const src = state.sourceList.map(s => s.id), set = new Set(["orchestrator", "planner", ...SPECIALISTS, "writer:1", "reviewer", "quality"]);
     snap.literature_reviews.forEach(r => set.add(`literature:${r.id}`));
     {
       if (!src.length && !snap.literature_reviews.length) set.add("literature:literature");
@@ -973,9 +993,9 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
       const card = cards[key], st = card ? (card.status || "waiting") : "ghost", role = roleOf(key);
       const calm = st === "running" && (role === "orchestrator" || role === "quality"); el.className = "agent " + (calm ? "live" : st); el.querySelector(".lbl").textContent = ROLE_NAME[role] + (key.startsWith("writer:") && key !== "writer:1" ? " " + key.split(":")[1] : "");
       el.querySelector(".sub").textContent = key.startsWith("reader:") && key !== "reader:*" ? key.slice(7) : key.startsWith("literature:") ? key.slice(11) : "";
-      el.querySelector(".tag").textContent = calm ? "[ON]" : st === "running" ? "[RUN]" : st === "done" ? "[OK]" : st === "failed" ? "[ERR]" : "";
+      el.querySelector(".tag").textContent = calm ? "[ON]" : st === "running" ? "[RUN]" : st === "done" ? "[OK]" : st === "failed" ? "[ERR]" : st === "waiting" ? "[QUEUED]" : "[AVAILABLE]";
       el.title = (card ? card.title : ROLE_NAME[role]) + (card && card.detail ? `: ${card.detail}` : ""); el.setAttribute("aria-label", el.title);
-      el.disabled = !(card && card.packet); el.onclick = card && card.packet ? () => openPacket(card.packet, el) : null; paintAgent(key, frameN);
+      el.disabled = false; el.onclick = () => card && card.packet ? openPacket(card.packet, el) : openAgent(key, el); paintAgent(key, frameN);
     }
   }
 
@@ -1005,7 +1025,7 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
   }
   const BLOCKS = 24; $("blocks").append(...Array.from({ length: BLOCKS }, () => h("i")));
   function progress(final) {
-    const ks = Object.keys(cards), readers = ks.filter(k => k.startsWith("reader:")).length || state.sources, total = 3 + readers + (cards.scout ? 1 : 0);
+    const ks = Object.keys(cards), readers = plannedReaders || state.sourceList.map(s => `reader:${s.id}`), scheduled = new Set(["planner", "writer:1", "reviewer", ...readers, ...snap.literature_reviews.map(r => `literature:${r.id}`), ...ks.filter(k => k !== "orchestrator" && k !== "quality")]), total = scheduled.size;
     const done = ks.filter(k => k !== "orchestrator" && k !== "quality" && ["done", "failed"].includes(cards[k].status)).length;
     const pct = final ? 100 : state.running || done ? Math.min(96, Math.round(100 * done / Math.max(1, total))) : 0, on = Math.round(pct / 100 * BLOCKS);
     [...$("blocks").children].forEach((el, i) => { el.className = i < on ? "on" : (i === on && state.running ? "on lead" : ""); }); $("pct").textContent = pct + "%";
@@ -1018,7 +1038,7 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
   function resetTeam() {
     for (const k of Object.keys(cards)) delete cards[k]; for (const k of Object.keys(seenStatus)) delete seenStatus[k]; for (const [k, el] of Object.entries(spines)) { el.remove(); delete spines[k]; }
     for (const k of Object.keys(runtimeTasks)) delete runtimeTasks[k];
-    accepted = rejected = reviews = writerPasses = 0; runFinished = false; setCount($("stat-claims"), 0, 6); setCount($("stat-rejected"), 0, 6); setCode([]); $("now").textContent = ""; progress(false);
+    accepted = rejected = reviews = writerPasses = 0; runFinished = false; plannedReaders = null; setCount($("stat-claims"), 0, 6); setCount($("stat-rejected"), 0, 6); setCode([]); $("now").textContent = ""; progress(false);
     $("web-search").hidden = true; $("web-results").replaceChildren(); $("search-toggle").textContent = "Find papers";
     $("report").classList.add("hidden"); state.reportShown = false; state.t0 = Date.now(); state.tEnd = 0; renderTeam(); hudStats();
   }
@@ -1059,6 +1079,14 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
     return [box, !!m];
   }
   const sheetBar = title => h("div", { class: "wbar" }, h("span", {}, title), h("button", { class: "act", type: "button", style: "color:var(--ink);border-bottom-color:var(--ink)", onclick: closeProof }, "Close"));
+  function openAgent(key, trigger) {
+    const role = roleOf(key), card = cards[key]; returnFocus = trigger || document.activeElement;
+    const sheet = $("sheet"), inner = h("div", { class: "inner" });
+    sheet.replaceChildren(sheetBar(ROLE_NAME[role] || "Agent"), inner); sheet.setAttribute("aria-label", `${ROLE_NAME[role] || "Agent"} details`);
+    inner.append(h("p", { class: "packet-objective" }, ROLE_DESCRIPTION[role] || "Finds related scholarly sources."));
+    inner.append(h("p", { class: "packet-note" }, card?.detail || "Available to the planner. This agent has not been assigned a task in this run."));
+    $("drawer").hidden = false; sheet.querySelector("button").focus();
+  }
   function openProof(id) {
     const c = report.claimMap[id]; if (!c) return; returnFocus = document.activeElement;
     const sheet = $("sheet"), inner = h("div", { class: "inner" }); sheet.replaceChildren(sheetBar(`Evidence for ${id}`), inner); sheet.setAttribute("aria-label", `Evidence for ${id}`);
@@ -1180,6 +1208,9 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
     if (result.role === "theorist") return `Proposed ${(p.hypotheses || []).length} testable hypothes${(p.hypotheses || []).length === 1 ? "is" : "es"}`;
     if (["experiment_runner", "reproducer"].includes(result.role)) return `${p.analysis_record?.run_id || "Research run"}: ${p.analysis_record?.status || "recorded"}`;
     if (result.role === "analyst") return `Interpreted ${(p.observations || []).length} observation${(p.observations || []).length === 1 ? "" : "s"}`;
+    if (result.role === "research_agent") return `Completed ${(p.checks || []).length} research checks`;
+    if (result.role === "synthesis_agent") return `Synthesized ${(p.themes || []).length} themes, ${(p.gaps || []).length} gaps`;
+    if (result.role === "adversarial_effect_agent") return `Risk: ${p.decision_risk || "unknown"}; ${(p.adverse_effects || []).length} adverse effects`;
     if (result.role === "writer") return `Drafted the report with ${new Set(Array.from(String(p.content_markdown || "").matchAll(/\[claim:([^\]\s]+)\]/g), m => m[1])).size} cited claims`;
     if (result.role === "reviewer") return p.disposition === "accept" ? "Accepted the report" : p.disposition === "revise" ? "Requested changes" : "Review recorded";
     return "Done";
@@ -1203,9 +1234,10 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
       upsertAgent({ id: "orchestrator", role: "orchestrator", title: "Orchestrator", status: "running", detail: "Research started" });
       upsertAgent({ id: "quality", role: "quality", title: "Quality gate", status: "waiting", detail: "Waiting for evidence" });
     } else if (e.event === "planner_proposals") {
+      plannedReaders = (p.selected || []).filter(t => t.role === "evidence_reader").map(t => `reader:${t.source_id}`);
       for (const chosen of (p.selected || [])) {
         const role = chosen.role, id = role === "evidence_reader" ? `reader:${chosen.source_id}` : role;
-        if (!id || role === "evidence_reader") continue;
+        if (!id) continue;
         upsertAgent({ id, role, title: runtimeTitle(role, id), status: "waiting", detail: "Selected by planner" });
       }
     } else if (e.event === "task.created") updateRuntimeTask(e.task, { role: p.role, status: "waiting", detail: "Task ready" });
@@ -1303,14 +1335,14 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
     } catch (err) { toast(err.message); } finally { button.disabled = false; button.textContent = "Find papers"; }
   });
   const useDemo = async (showcase = false) => { try { await api("/api/demo", { showcase }); snap.demo = true; return true; } catch (err) { toast(err.message); return false; } };
-  $("demo").addEventListener("click", useDemo); $("chip-demo").addEventListener("click", useDemo); $("chip-start").addEventListener("click", () => $("start").click());
+  $("demo").addEventListener("click", () => useDemo()); $("chip-demo").addEventListener("click", () => useDemo()); $("chip-start").addEventListener("click", () => $("start").click());
   $("chat-fab").addEventListener("click", () => openChat(true)); $("chat-close").addEventListener("click", () => openChat(false));
   $("start").addEventListener("click", async () => {
     const why = missing(); if (why) { addTurn({ role: "assistant", who: "Res Loop", text: why }); openChat(true); toast(why); return; }
     state.running = true; updateStart(); runPending = true;
     try {
       const d = await api("/api/run", {});  // hosted: the answer carries the run's events
-      if (d.status === "running") { state.running = false; updateStart(); toast("This run is taking longer than the host allows. Try fewer or shorter sources."); }
+      if (d.status === "running" && d.streamEnded) { state.running = false; updateStart(); toast("This run is taking longer than the host allows. Try fewer or shorter sources."); }
     } catch (err) { state.running = false; updateStart(); toast(err.message); } finally { runPending = false; }
   });
   $("showcase").addEventListener("click", async () => {

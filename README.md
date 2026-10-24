@@ -195,8 +195,10 @@ Vercel Firewall/WAF rules as the outer layer for distributed traffic and DDoS pr
 ## Planner-driven research
 
 The controller commits the planner first, validates its proposed graph, and then dispatches the bounded
-specialists it selected. A run may include local source screening, evidence readers, a theorist, a
-configured experiment, one independent repeat, and an analyst before the mandatory writer and reviewer.
+specialists it selected. A run may include local source screening, evidence readers, a research assessment,
+a theorist, a configured experiment, one independent repeat, an analyst, synthesis, and adversarial review
+before the mandatory writer and reviewer. Synthesis receives accepted evidence and upstream research;
+adversarial review challenges that synthesis, and both outputs reach the writer and reviewer.
 Unknown sources, unconfigured execution, duplicate specialist roles, and tasks beyond the run budget are
 rejected or clamped and recorded in the `planner_proposals` event. The original literature-only sequence
 remains the fallback for old planners and simple briefs.

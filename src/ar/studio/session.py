@@ -45,6 +45,8 @@ ROLE_TITLES = {
     "experiment_runner": "Experiment runner",
     "reproducer": "Reproducer",
     "analyst": "Analyst",
+    "synthesis_agent": "Synthesis",
+    "adversarial_effect_agent": "Adversarial review",
     "writer": "Writer",
     "reviewer": "Reviewer",
 }
@@ -118,6 +120,10 @@ class StageAgent:
             return "Running the configured experiment" if role == "experiment_runner" else "Repeating the configured experiment"
         if role == "analyst":
             return "Interpreting recorded experiment outputs"
+        if role == "synthesis_agent":
+            return f"Synthesizing {len(packet.claim_items())} accepted claims and upstream research"
+        if role == "adversarial_effect_agent":
+            return "Challenging the research for overreach, counterarguments and missing tests"
         if role == "reviewer":
             return "Checking the draft"
         return "Working"
@@ -157,6 +163,10 @@ class StageAgent:
         if role == "analyst":
             observations = p.get("observations", [])
             return f"Interpreted {len(observations)} observation{'s' if len(observations) != 1 else ''}"
+        if role == "synthesis_agent":
+            return f"Synthesized {len(p.get('themes', []))} themes, {len(p.get('gaps', []))} gaps"
+        if role == "adversarial_effect_agent":
+            return f"Risk: {p.get('decision_risk', 'unknown')}; {len(p.get('adverse_effects', []))} adverse effects"
         if role == "writer":
             cited = len(set(CITATION.findall(p.get("content_markdown", ""))))
             return f"Draft ready, {cited} claims cited"
@@ -231,6 +241,8 @@ class Session:
         self.runs = 0
         self.showcase_mode = False
         self._lock = threading.Lock()
+        self._poll_lock = threading.Lock()
+        self._seen = (0, 0, 0, 0)
         self._events_ready = threading.Condition(self._lock)
         self._thread: threading.Thread | None = None
         self._init_event_journal()
@@ -502,9 +514,13 @@ class Session:
 
     # quality feed
 
-    _seen = (0, 0, 0, 0)
-
     def _poll(self, project: Path) -> None:
+        # The watcher and final flush can overlap when a database read outlasts join().
+        # Advance the shared cursor and publish its batch under one lock.
+        with self._poll_lock:
+            self._poll_locked(project)
+
+    def _poll_locked(self, project: Path) -> None:
         database = project / ".research" / "state.sqlite"
         if not database.is_file():
             return

@@ -30,6 +30,8 @@ Use only roles justified by the objective:
 - reproducer independently repeats that configured experiment when replication is requested;
 - analyst interprets recorded experiment runs;
 - synthesis_agent consolidates accepted claims, analyses, literature outputs, and gaps before final drafting;
+- adversarial_effect_agent challenges the synthesis or research assessment for overreach, adverse effects,
+  counterarguments, and missing tests before the writer drafts the report;
 - writer and reviewer finish every plan.
 Propose at most one task for each non-reader specialist and one evidence_reader per source. Never invent an
 experiment command or source id. Put the configured experiment id in source_ids for experiment_runner or reproducer.
@@ -40,7 +42,7 @@ Reply with ONE JSON object and nothing else, matching this schema:
   "outcome": "produced" | "needs_dependency" | "unable_to_complete",
   "payload": {"rationale": str, "coverage": {requirement_id: [planned task role or objective, ...]}},
   "proposed_tasks": [{"role": "source_scout" | "evidence_reader" | "research_agent" | "synthesis_agent" | "theorist" | "experiment_runner" |
-                                "reproducer" | "analyst" | "writer" | "reviewer",
+                                "reproducer" | "analyst" | "adversarial_effect_agent" | "writer" | "reviewer",
                        "objective": str, "source_ids": [str]}],
   "limitations": [str],
   "unresolved": [str]
