@@ -8,12 +8,12 @@ import shutil
 import sqlite3
 import subprocess
 import sys
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
 
 from pydantic import Field
 
+from ar.clock import utc_now as _now
 from ar.models import Record
 from ar.snapshots import BlobStore, BrokerError, resolve_inside
 
@@ -76,10 +76,6 @@ class ExperimentRun(Record):
 def ensure_schema(conn: sqlite3.Connection) -> None:
     with conn:
         conn.executescript(SCHEMA)
-
-
-def _now() -> str:
-    return datetime.now(UTC).isoformat()
 
 
 def _relative(rel: str, what: str) -> Path:

@@ -12,10 +12,10 @@ import sqlite3
 from collections.abc import Iterable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
 
+from ar.clock import utc_now as _now
 from ar.models import (
     ArtifactVersion,
     EvidenceLink,
@@ -114,10 +114,6 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
 def normalize_quote(text: str) -> str:
     """`ws-collapse-v1`: join `splitlines()` with newlines, collapse whitespace runs, trim."""
     return re.sub(r"\s+", " ", "\n".join(text.splitlines())).strip()
-
-
-def _now() -> str:
-    return datetime.now(UTC).isoformat()
 
 
 def _lines(text: str) -> list[str]:

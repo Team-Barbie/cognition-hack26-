@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 
 from ar import agents, broker as broker_mod, evidence, review
-from ar.agents.fake import FakeAgent
+from ar.agents.fake import FakeAgent, load_answer_key
 from ar.answer_check import check_answer_key
 from ar.broker import Broker
 from ar.completion import assess
@@ -23,7 +23,7 @@ from ar.packet import DependencyItem, Packet
 from ar.review import GateDecision
 
 FIXTURE = Path(__file__).parent.parent / "fixtures" / "baselines"
-KEY = json.loads((FIXTURE / "answer_key.json").read_text())
+KEY = load_answer_key()
 PAPERS = ["paper-a", "paper-b", "paper-c"]
 B_QUOTE = KEY["sources"]["paper-b"]["quote"]
 REQS = [

@@ -1,13 +1,12 @@
 """Claim acceptance without a model: a stub verifier stands in for the broker."""
 
-import json
 import sqlite3
-from pathlib import Path
 
 from ar import evidence
+from ar.agents.fake import load_answer_key
 from ar.models import ClaimDraft, EvidenceLink, LineSelector, SourceRef
 
-KEY = json.loads((Path(__file__).parent.parent / "fixtures" / "baselines" / "answer_key.json").read_text())
+KEY = load_answer_key()
 
 
 class StubVerifier:

@@ -1,10 +1,9 @@
 """Whole fake loop through agents.run on the real fixture, no model in the loop."""
 
-import json
 from pathlib import Path
 
 from ar import agents
-from ar.agents.fake import FakeAgent
+from ar.agents.fake import FakeAgent, load_answer_key
 from ar.models import ClaimDraft, LineSelector, Requirement, SourceRef
 from ar.packet import DeliveredRead, DependencyItem, Packet, SourceInfo
 
@@ -28,7 +27,7 @@ def _packet(role, task, **kw) -> Packet:
 
 def test_fake_loop_matches_answer_key():
     agents.configure(FakeAgent())
-    key = json.loads((FIXTURE / "answer_key.json").read_text())
+    key = load_answer_key()
     reqs = [Requirement(id="req-1", source_passage="1-3", interpretation="baseline")]
     brief = _read("brief", FIXTURE / "input" / "brief.md")
 

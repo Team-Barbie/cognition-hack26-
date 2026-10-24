@@ -15,9 +15,8 @@ from ar.evidence import CITATION, contradicting_claims, get_claim
 from ar.models import ArtifactVersion, Requirement
 from ar.review import GateDecision, latest_review, list_findings
 
-__all__ = ["CITATION", "HEADING", "CompletionAssessment", "RequirementRow", "assess", "sections"]
+__all__ = ["CompletionAssessment", "RequirementRow", "assess", "sections"]
 
-HEADING = re.compile(r"^\s{0,3}#{1,6}\s+(.*?)\s*#*\s*$", re.M)
 _LEVELED = re.compile(r"^\s{0,3}(#{1,6})\s+(.*?)\s*#*\s*$", re.M)
 
 

@@ -2,13 +2,11 @@
 
 from __future__ import annotations
 
-import re
 from typing import Any
 
+from ar.evidence import CITATION
 from ar.models import AgentResult, Record
 from ar.packet import DependencyItem, Packet
-
-CITATION = re.compile(r"\[claim:([^\]\s]+)\]")
 
 SYSTEM = """You are the writer in a research pipeline. You receive a context packet and draft a markdown report.
 
