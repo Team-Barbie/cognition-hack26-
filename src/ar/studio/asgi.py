@@ -32,7 +32,8 @@ async def _finish_run(body: bytes) -> None:
 @app.api_route("/{full_path:path}", methods=["GET", "POST"])
 async def studio(request: Request) -> Response:
     body = await request.body()
-    status, kind, payload = handle(vercel_studio(), request.method, request.url.path, request.url.query, body)
+    status, kind, payload = handle(vercel_studio(), request.method, request.url.path, request.url.query, body,
+                                      request.headers.get("authorization", ""))
     if os.environ.get("VERCEL") == "1" and request.method == "POST" and request.url.path == "/api/run" and status == 200:
         await _finish_run(body)
     return Response(
