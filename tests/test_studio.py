@@ -44,6 +44,35 @@ def test_sliding_window_limiter_blocks_then_recovers():
     assert limiter.check(rules) is None
 
 
+def test_studio_port_cannot_be_shared_by_two_live_servers(tmp_path):
+    first = serve(0, fake=True, workdir=tmp_path / "first")
+    try:
+        port = first.server_address[1]
+        with pytest.raises(OSError):
+            serve(port, fake=True, workdir=tmp_path / "second")
+    finally:
+        first.server_close()
+
+
+def test_serve_creates_its_session_directory(tmp_path):
+    workdir = tmp_path / "nested" / "sessions"
+    server = serve(0, fake=True, workdir=workdir)
+    try:
+        assert workdir.is_dir()
+    finally:
+        server.server_close()
+
+
+def test_session_storage_failure_is_a_json_error(tmp_path, monkeypatch):
+    studio = Studio(tmp_path, fake=True)
+    monkeypatch.setattr(studio, "new_session", lambda: (_ for _ in ()).throw(OSError("disk offline")))
+
+    status, kind, payload = handle(studio, "POST", "/api/session", "", b"{}")
+
+    assert (status, kind) == (500, "application/json")
+    assert json.loads(payload) == {"error": "studio storage is unavailable: disk offline"}
+
+
 def test_sliding_window_limiter_bounds_identity_buckets_without_weakening_active_rules():
     limiter = SlidingWindowLimiter(max_buckets=2)
     assert limiter.check([("old", "api", 1, 60.0)]) is None
@@ -209,7 +238,7 @@ def test_demo_run_shows_every_agent_and_a_verified_report(tmp_path):
     assert any(row["n"] == 7 and "Excluding short series" in row["text"] for row in proof["window"])
     assert proof["receipt"]["id"].startswith("read-") and proof["receipt"]["start"] == 1
     assert {x["id"]: x["cited"] for x in r["sources"]} == {"paper-a": True, "paper-b": True, "paper-c": False}
-    assert s.events[-1]["type"] == "chat" and s.events[-1]["text"].startswith("Done. 2 claims in the report")
+    assert s.events[-1]["type"] == "chat" and s.events[-1]["text"] == "Done. The report uses 2 verified claims."
 
 
 def test_http_api_runs_a_demo_end_to_end(tmp_path):

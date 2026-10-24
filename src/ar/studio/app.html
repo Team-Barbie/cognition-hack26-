@@ -11,7 +11,7 @@
    System fonts only. Run data is inserted as text nodes and never parsed as markup. */
 :root {
   --bz: 14px; --rad: 30px;
-  --ph: #b9f04a; --ph-hi: #e4ffa0; --ph-2: #8cc03a; --ph-3: #5b7e29; --ph-4: #34481a; --ph-5: #1d2a0f; --ink: #0c1207;
+  --ph: #b9f04a; --ph-hi: #e4ffa0; --ph-2: #8cc03a; --ph-3: #5b7e29; --ph-4: #34481a; --ph-5: #1d2a0f; --sep: #62852d; --ink: #0c1207;
   --glow: rgba(185,240,74,.55); --glow-s: rgba(185,240,74,.26);
   --acc: #ff4fa3; --acc-hi: #ffb3d8;  /* the one accent colour: change this and ACC in the script */
   --mono: "SF Mono", "JetBrains Mono", Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
@@ -59,15 +59,15 @@ a { color: inherit; }
 .hud nav a { text-decoration: none; padding-bottom: 2px; border-bottom: 1px solid transparent; transition: color .15s, border-color .15s; }
 .hud nav a:hover { color: var(--ph-hi); border-bottom-color: var(--ph); }
 
-.layout { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 22px; max-width: 1600px; margin: 0 auto; padding: 16px 22px 28px; align-items: start; }
+.layout { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 30px; max-width: 1600px; margin: 0 auto; padding: 24px 28px 40px; align-items: start; }
 @media (max-width: 1260px) { .layout { grid-template-columns: minmax(0, 1fr); } }
-main { display: grid; grid-template-columns: minmax(0, 1fr); gap: 22px; min-width: 0; }
+main { display: grid; grid-template-columns: minmax(0, 1fr); gap: 30px; min-width: 0; }
 
 /* windows */
 .win { position: relative; border: 2px solid var(--wc, var(--ph-2)); border-radius: 16px; background: rgba(6,10,4,.62); overflow: hidden;
   box-shadow: 0 0 0 1px rgba(185,240,74,.1), 0 0 26px rgba(185,240,74,.1), inset 0 0 44px rgba(0,0,0,.5); animation: winon .65s cubic-bezier(.2,.8,.2,1) backwards; animation-delay: var(--d, 0s); }
-.wbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 7px 16px; background: var(--wc, var(--ph-2)); color: var(--ink); font: 800 12px var(--mono); letter-spacing: .16em; text-transform: uppercase; text-shadow: none; }
-.wbody { position: relative; padding: 18px 22px 20px; }
+.wbar { display: flex; justify-content: space-between; align-items: center; gap: 14px; padding: 9px 18px; background: var(--wc, var(--ph-2)); color: var(--ink); font: 800 12px var(--mono); letter-spacing: .16em; text-transform: uppercase; text-shadow: none; }
+.wbody { position: relative; padding: 24px 28px 28px; }
 
 /* hero */
 .hero { position: relative; min-height: clamp(380px, 58vh, 560px); display: grid; place-items: center; text-align: center; padding: 48px 20px 76px; overflow: hidden; border-radius: 18px; }
@@ -105,9 +105,9 @@ canvas.px { image-rendering: pixelated; max-width: 100%; filter: drop-shadow(0 0
 .spine .rm:disabled { display: none; }
 .spine.ghost { border-style: dashed; border-color: var(--ph-4); color: var(--ph-3); background: transparent; }
 
-.agent { all: unset; box-sizing: border-box; position: relative; display: grid; justify-items: center; gap: 5px; padding: 8px 10px 9px; min-width: 76px; border-radius: 12px; color: var(--ac); cursor: pointer; transition: background .15s, color .15s, transform .35s cubic-bezier(.2,1.4,.4,1); }
+.agent { all: unset; box-sizing: border-box; position: relative; display: grid; justify-items: center; gap: 5px; padding: 8px 10px 9px; min-width: 76px; border: 1px solid transparent; border-radius: 12px; color: var(--ac); cursor: pointer; transition: background .15s, border-color .15s, box-shadow .15s, color .15s, transform .35s cubic-bezier(.2,1.4,.4,1); }
 .agent:disabled { cursor: default; }
-.agent:not(:disabled):hover { background: var(--ac); color: var(--ink); text-shadow: none; transform: translateY(-4px); }
+.agent:not(:disabled):hover { background: color-mix(in srgb, var(--ac) 11%, transparent); border-color: color-mix(in srgb, var(--ac) 68%, transparent); box-shadow: 0 0 14px color-mix(in srgb, var(--ac) 18%, transparent); color: var(--ac); transform: translateY(-4px); }
 .agent canvas { image-rendering: pixelated; display: block; }
 .agent .lbl { font: 800 10.5px var(--mono); letter-spacing: .12em; text-transform: uppercase; }
 .agent .sub { font: 10px var(--mono); letter-spacing: .06em; max-width: 92px; overflow: hidden; white-space: nowrap; text-overflow: clip; opacity: .8; min-height: 1.2em; }
@@ -127,7 +127,10 @@ canvas.px { image-rendering: pixelated; max-width: 100%; filter: drop-shadow(0 0
 .agent.failed { background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--acc) 14%, transparent) 0 6px, transparent 6px 12px); }
 .agent.failed .tag { color: var(--acc); }
 
-.foot { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 22px; margin-top: 16px; padding-top: 16px; border-top: 1px dashed var(--ph-4); }
+.foot { display: flex; flex-wrap: wrap; align-items: center; gap: 16px 26px; margin-top: 22px; padding-top: 20px; border-top: 1px dashed var(--sep); }
+.subhead { margin: 0; color: var(--ph-2); font: 800 11px var(--mono); letter-spacing: .18em; text-transform: uppercase; }
+.foot .subhead { flex: 0 0 100%; margin-bottom: -4px; }
+.sig-l .subhead, .sig-r .subhead { margin-bottom: 10px; }
 .act { background: none; border: 0; padding: 3px 2px; cursor: pointer; font: 700 12px var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--ph); border-bottom: 1px solid var(--ph-4); transition: background .15s, color .15s, border-color .15s; }
 .act:hover { background: var(--ph); color: var(--ink); border-bottom-color: var(--ph); text-shadow: none; }
 .go { border: 2px solid var(--acc); background: transparent; color: var(--acc); padding: 11px 30px; border-radius: 12px; cursor: pointer; font: 800 13px var(--mono); letter-spacing: .22em; text-transform: uppercase; box-shadow: 0 0 16px color-mix(in srgb, var(--acc) 28%, transparent); transition: background .15s, color .15s, box-shadow .15s, transform .2s; }
@@ -146,10 +149,10 @@ canvas.px { image-rendering: pixelated; max-width: 100%; filter: drop-shadow(0 0
 .web-note { margin: 0; color: var(--ph-3); font: 11px/1.45 var(--mono); }
 
 /* brief */
-.brief dl { margin: 0; display: grid; grid-template-columns: 130px minmax(0, 1fr); gap: 0 22px; }
-.brief dt { padding: 11px 0; border-top: 1px dashed var(--ph-4); color: var(--ph-3); font: 700 11px var(--mono); letter-spacing: .16em; text-transform: uppercase; }
-.brief dd { margin: 0; padding: 9px 0; border-top: 1px dashed var(--ph-4); }
-.brief dd ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 7px; }
+.brief dl { margin: 0; display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 0 30px; }
+.brief dt { padding: 18px 0; border-top: 1px dashed var(--sep); color: var(--ph-2); font: 800 11px var(--mono); letter-spacing: .16em; text-transform: uppercase; }
+.brief dd { margin: 0; padding: 16px 0 18px; border-top: 1px dashed var(--sep); line-height: 1.75; }
+.brief dd ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 12px; }
 .brief dd li { padding-left: 18px; position: relative; }
 .brief dd li::before { content: ">"; position: absolute; left: 0; color: var(--ph-3); }
 .brief details summary { cursor: pointer; margin-top: 8px; color: var(--ph-2); font-size: 13px; list-style: none; text-decoration: underline; }
@@ -161,7 +164,7 @@ canvas.px { image-rendering: pixelated; max-width: 100%; filter: drop-shadow(0 0
 /* signal */
 .signal .wbody { padding: 0; min-height: 300px; overflow: hidden; }
 .signal canvas#dither { position: absolute; inset: 0; width: 100%; height: 100%; image-rendering: pixelated; }
-.sig-in { position: relative; display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr) 24px; gap: 26px; padding: 26px; min-height: 300px; }
+.sig-in { position: relative; display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr) 24px; gap: 32px; padding: 32px; min-height: 300px; }
 @media (max-width: 760px) { .sig-in { grid-template-columns: minmax(0, 1fr); } .sig-side { display: none; } }
 .sig-l { align-self: end; }
 .code { font: 13.5px/1.75 var(--mono); max-width: 60ch; }
@@ -178,26 +181,25 @@ canvas.px { image-rendering: pixelated; max-width: 100%; filter: drop-shadow(0 0
 .sig-side { writing-mode: vertical-rl; transform: rotate(180deg); align-self: center; font: 700 12px var(--mono); letter-spacing: .16em; color: var(--ph-2); }
 
 /* report */
-.rbody { padding: 22px 24px 26px; }
+.rbody { padding: 28px 30px 34px; }
 .rtitle { margin: 0 0 4px; font: 800 clamp(20px, 2.4vw, 28px)/1.2 var(--mono); letter-spacing: .08em; text-transform: uppercase; text-shadow: 0 0 12px var(--glow); }
 #report.focus .rtitle { animation: focus 1s cubic-bezier(.2,.8,.2,1) backwards; }
-.rlede { max-width: 78ch; margin: 10px 0 0; color: var(--ph-2); font: 14px/1.65 var(--mono); }
 .report-overview { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 18px; }
 .report-stat { min-height: 86px; padding: 12px 14px; border: 1px solid var(--ph-4); border-radius: 10px; background: rgba(0,0,0,.18); display: grid; align-content: start; gap: 4px; }
 .report-stat .label { color: var(--ph-3); font: 800 10px var(--mono); letter-spacing: .16em; text-transform: uppercase; }
 .report-stat strong { color: var(--ph-hi); font: 800 17px/1.3 var(--mono); overflow-wrap: anywhere; }
 .report-stat small { color: var(--ph-2); font: 11.5px/1.45 var(--mono); }
 @media (max-width: 680px) { .report-overview { grid-template-columns: minmax(0, 1fr); } .report-stat { min-height: 0; } }
-.tabs { display: flex; gap: 8px; margin: 18px 0 0; padding-bottom: 14px; border-bottom: 1px dashed var(--ph-4); overflow-x: auto; }
+.tabs { display: flex; gap: 10px; margin: 22px 0 0; padding-bottom: 18px; border-bottom: 1px dashed var(--sep); overflow-x: auto; }
 .tab { background: none; border: 1px solid var(--ph-3); border-radius: 10px; padding: 8px 16px; cursor: pointer; font: 700 12px var(--mono); letter-spacing: .08em; color: var(--ph-2); white-space: nowrap; transition: background .15s, color .15s; }
 .tab:hover { color: var(--ph-hi); border-color: var(--ph); }
 .tab[aria-selected="true"] { background: var(--ph); color: var(--ink); border-color: var(--ph); text-shadow: none; }
-.pane { padding-top: 22px; } .pane[hidden] { display: none; }
-.rep-grid { display: grid; grid-template-columns: minmax(0, 1fr) 260px; gap: 40px; }
+.pane { padding-top: 28px; } .pane[hidden] { display: none; }
+.rep-grid { display: grid; grid-template-columns: minmax(0, 1fr) 260px; gap: 48px; }
 @media (max-width: 960px) { .rep-grid { grid-template-columns: minmax(0, 1fr); } }
 .article { font: 16px/1.85 var(--mono); min-width: 0; }
 .article h1 { display: none; }
-.article h2 { font: 800 15px/1.3 var(--mono); letter-spacing: .16em; text-transform: uppercase; margin: 34px 0 10px; padding-bottom: 6px; border-bottom: 1px dashed var(--ph-4); color: var(--ph-hi); }
+.article h2 { font: 800 15px/1.3 var(--mono); letter-spacing: .16em; text-transform: uppercase; margin: 38px 0 14px; padding-bottom: 9px; border-bottom: 1px dashed var(--sep); color: var(--ph-hi); }
 .article h2:first-child { margin-top: 0; }
 .article h3 { font: 800 15px var(--mono); margin: 22px 0 6px; color: var(--ph-hi); }
 .article p { margin: 0 0 14px; max-width: 70ch; }
@@ -213,17 +215,13 @@ canvas.px { image-rendering: pixelated; max-width: 100%; filter: drop-shadow(0 0
 .cite.unknown { color: var(--ph-3); cursor: default; text-decoration: none; }
 .rail { display: grid; gap: 24px; align-content: start; padding: 18px; border: 1px dashed var(--ph-3); border-radius: 14px; }
 .rail-section { display: grid; gap: 7px; }
-.rail-copy { margin: 0; color: var(--ph-2); font: 11.5px/1.55 var(--mono); }
-.read-guide { margin: 0; padding-left: 1.5em; color: var(--ph-2); font: 11.5px/1.55 var(--mono); }
-.read-guide li { margin-top: 6px; padding-left: 3px; }
-.read-guide b { color: var(--ph-hi); }
 .layer { display: grid; grid-template-columns: minmax(0, 1fr) 46px; gap: 4px 10px; align-items: center; margin-top: 12px; }
 .layer .lbl { grid-column: 1 / -1; font: 12px var(--mono); overflow-wrap: anywhere; }
 .layer .bar { height: 14px; position: relative; overflow: hidden; background: repeating-linear-gradient(90deg, var(--ph-5) 0 8px, transparent 8px 11px); }
 .layer .bar i { position: absolute; inset: 0 auto 0 0; width: 0; background: repeating-linear-gradient(90deg, var(--ph) 0 8px, transparent 8px 11px); transition: width 1s cubic-bezier(.2,.8,.2,1); }
 .layer .pc { font: 12px var(--mono); text-align: right; }
-.list { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
-.list li { padding: 14px 16px; border: 1px solid var(--ph-4); border-radius: 12px; display: grid; gap: 7px; }
+.list { list-style: none; margin: 0; padding: 0; display: grid; gap: 16px; }
+.list li { padding: 18px 20px; border: 1px solid var(--ph-4); border-radius: 12px; display: grid; gap: 10px; }
 .list .top2 { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px; }
 .list .id { font: 800 18px var(--mono); color: var(--ph-hi); }
 .list .src { font: 12px var(--mono); color: var(--ph-2); }
@@ -233,29 +231,30 @@ canvas.px { image-rendering: pixelated; max-width: 100%; filter: drop-shadow(0 0
 .rel { font: 800 11px var(--mono); letter-spacing: .12em; text-transform: uppercase; padding: 1px 8px; border: 1px solid var(--ph-3); border-radius: 6px; }
 .rel.supports { color: var(--ph-hi); border-color: var(--ph-2); } .rel.qualifies { color: var(--acc); border-color: var(--acc); }
 .rel.contradicts { background: var(--acc); color: var(--ink); text-shadow: none; border-color: var(--acc); }
-.notes { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; align-content: start; }
-.notes li { padding: 12px 16px; border: 1px solid var(--ph-4); border-radius: 12px; display: grid; gap: 4px; }
+.notes { list-style: none; margin: 0; padding: 0; display: grid; gap: 14px; align-content: start; }
+.notes li { padding: 16px 18px; border: 1px solid var(--ph-4); border-radius: 12px; display: grid; gap: 7px; }
 .notes b { font: 800 11px var(--mono); letter-spacing: .16em; text-transform: uppercase; color: var(--ph-hi); }
 .notes span { font: 14.5px/1.6 var(--mono); overflow-wrap: anywhere; }
 blockquote { margin: 0; padding: 4px 0 4px 14px; border-left: 3px solid var(--ph-2); font: italic 14.5px/1.6 var(--mono); color: var(--ph-hi); }
-.hd { margin: 0 0 2px; font: 800 11px var(--mono); letter-spacing: .16em; text-transform: uppercase; color: var(--ph-3); }
+.hd { margin: 0 0 2px; font: 800 11px var(--mono); letter-spacing: .16em; text-transform: uppercase; color: var(--ph-2); }
 
 /* chat */
 .chat { position: sticky; top: 56px; align-self: start; height: calc(100vh - 2 * var(--bz) - 56px - 52px - 16px); min-height: 440px; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; }
-.chat-msgs { overflow-y: auto; padding: 16px 16px 8px; display: flex; flex-direction: column; gap: 14px; scrollbar-width: thin; scrollbar-color: var(--ph-3) transparent; }
-.msg { display: grid; gap: 4px; animation: lineup .35s cubic-bezier(.2,.8,.2,1) backwards; }
-.msg .who { display: flex; align-items: center; gap: 10px; font: 800 10.5px var(--mono); letter-spacing: .18em; text-transform: uppercase; color: var(--ph-3); }
-.msg .who::after { content: ""; flex: 1; height: 1px; background: var(--ph-4); }
-.msg p { margin: 0; font: 14px/1.6 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; color: var(--ph-2); }
+.chat-msgs { min-height: 0; overflow-y: auto; overscroll-behavior: contain; scroll-padding-block: 24px; padding: 28px 24px 22px; display: flex; flex-direction: column; gap: 0; scrollbar-width: thin; scrollbar-color: var(--ph-3) transparent; }
+.msg { display: grid; gap: 10px; padding: 0 2px 24px; margin-bottom: 24px; border-bottom: 1px dashed var(--sep); animation: lineup .35s cubic-bezier(.2,.8,.2,1) backwards; }
+.msg:last-child { margin-bottom: 0; padding-bottom: 0; border-bottom: 0; }
+.msg .who { display: flex; align-items: center; gap: 12px; font: 800 11px var(--mono); letter-spacing: .18em; text-transform: uppercase; color: var(--ph-2); }
+.msg .who::after { content: ""; flex: 1; height: 1px; background: var(--sep); }
+.msg p { margin: 0; font: 14px/1.72 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; color: var(--ph); }
 .msg.you p { color: var(--acc-hi); } .msg.you p::before { content: "> "; color: var(--acc); }
-.msg.team p { border-left: 2px solid var(--ph-3); padding-left: 10px; }
+.msg.team p { border-left: 2px solid var(--ph-2); padding: 3px 0 3px 16px; }
 .msg.typing p { color: var(--ph); }
-.chat-foot { border-top: 1px dashed var(--ph-4); padding: 12px 14px 14px; display: grid; gap: 12px; }
+.chat-foot { position: relative; z-index: 2; border-top: 1px dashed var(--sep); padding: 20px 20px 22px; display: grid; gap: 16px; background: #080c05; box-shadow: 0 -12px 20px rgba(0,0,0,.22); }
 .chips { display: flex; flex-wrap: wrap; gap: 8px; }
 .chip { padding: 7px 13px; border: 1px solid var(--ph-3); border-radius: 10px; background: none; cursor: pointer; font: 800 11px var(--mono); letter-spacing: .14em; text-transform: uppercase; white-space: nowrap; color: var(--ph); transition: background .15s, color .15s; }
-.chip:hover { background: var(--ph); color: var(--ink); text-shadow: none; }
+.chip:hover { background: rgba(185,240,74,.1); border-color: var(--ph); color: var(--ph-hi); box-shadow: 0 0 10px var(--glow-s); }
 .chip.go-chip { border-color: var(--acc); color: var(--acc); box-shadow: 0 0 12px color-mix(in srgb, var(--acc) 25%, transparent); }
-.chip.go-chip:hover { background: var(--acc); }
+.chip.go-chip:hover { background: color-mix(in srgb, var(--acc) 12%, transparent); color: var(--acc-hi); box-shadow: 0 0 14px color-mix(in srgb, var(--acc) 30%, transparent); }
 .chip:disabled { opacity: .45; cursor: default; background: none; color: var(--ph); }
 .chat-form { display: grid; grid-template-columns: 22px minmax(0, 1fr) 56px; align-items: start; gap: 6px; border: 1px solid var(--ph-3); border-radius: 12px; padding: 8px 8px 8px 12px; transition: border-color .2s, box-shadow .2s; }
 .chat-form:focus-within { border-color: var(--ph-hi); box-shadow: 0 0 16px var(--glow-s); }
@@ -263,13 +262,13 @@ blockquote { margin: 0; padding: 4px 0 4px 14px; border-left: 3px solid var(--ph
 .chat-form textarea { resize: none; min-height: 32px; max-height: 140px; padding: 4px 0; border: 0; background: transparent; color: var(--ph-hi); font: 14px/1.5 var(--mono); caret-color: var(--ph); }
 .chat-form textarea:focus { outline: none; }
 .send { height: 32px; border: 1px solid var(--ph); border-radius: 8px; background: transparent; color: var(--ph); font: 800 11px var(--mono); letter-spacing: .1em; cursor: pointer; transition: background .15s, color .15s; }
-.send:hover { background: var(--ph); color: var(--ink); text-shadow: none; }
+.send:hover { background: rgba(185,240,74,.1); color: var(--ph-hi); box-shadow: 0 0 10px var(--glow-s); }
 .chat-fab { position: fixed; right: calc(var(--bz) + 14px); bottom: calc(var(--bz) + 56px); z-index: 600; display: none; align-items: center; gap: 10px; padding: 12px 20px; border: 2px solid var(--ph); border-radius: 12px; background: #0b1007; color: var(--ph); cursor: pointer; font: 800 13px var(--mono); letter-spacing: .2em; text-transform: uppercase; box-shadow: 0 0 22px var(--glow-s); }
 .chat-fab b { background: var(--ph); color: var(--ink); padding: 0 7px; border-radius: 4px; text-shadow: none; }
 .chat-fab b[hidden] { display: none; }
 #chat-close { display: none; background: none; border: 0; color: var(--ink); font: 800 14px var(--mono); cursor: pointer; padding: 0 2px; }
 @media (max-width: 1260px) {
-  .chat { position: fixed; right: calc(var(--bz) + 12px); bottom: calc(var(--bz) + 52px); top: auto; z-index: 610; width: min(430px, calc(100vw - 2 * var(--bz) - 24px)); height: min(640px, calc(100vh - 140px)); min-height: 0; background: #080c05; transform: translateY(calc(100% + 80px)); transition: transform .35s cubic-bezier(.2,.8,.2,1); }
+  .chat { position: fixed; right: calc(var(--bz) + 12px); bottom: calc(var(--bz) + 64px); top: auto; z-index: 610; width: min(430px, calc(100vw - 2 * var(--bz) - 24px)); height: min(620px, calc(100dvh - 168px)); max-height: calc(100dvh - 168px); min-height: 0; background: #080c05; transform: translateY(calc(100% + 92px)); transition: transform .35s cubic-bezier(.2,.8,.2,1); }
   body.chat-open .chat { transform: none; }
   #chat-close { display: block; }
   .chat-fab { display: inline-flex; }
@@ -286,24 +285,37 @@ blockquote { margin: 0; padding: 4px 0 4px 14px; border-left: 3px solid var(--ph
 .lock-error { min-height: 1.4em; font: 700 13px var(--mono); color: var(--ph-hi); }
 .drawer { position: fixed; inset: var(--bz); border-radius: var(--rad); z-index: 650; display: grid; justify-items: end; background: rgba(2,4,1,.7); overflow: hidden; }
 .drawer[hidden] { display: none; }
-.sheet { width: min(640px, 100%); height: 100%; overflow-y: auto; background: #0a1006; border-left: 2px solid var(--ph-2); padding: 0 0 40px; animation: slidein .35s cubic-bezier(.2,.8,.2,1) backwards; }
+.sheet { width: min(760px, 100%); height: 100%; overflow-y: auto; background: #0a1006; border-left: 2px solid var(--ph-2); padding: 0 0 48px; animation: slidein .35s cubic-bezier(.2,.8,.2,1) backwards; }
 .sheet .wbar { position: sticky; top: 0; z-index: 2; }
-.sheet .inner { padding: 20px 24px; display: grid; gap: 14px; align-content: start; }
+.sheet .inner { padding: 32px 36px 48px; display: grid; gap: 36px; align-content: start; }
 .sheet .no { font: 800 54px/1 var(--mono); color: var(--ph-hi); text-shadow: 0 0 16px var(--glow); }
-.sheet .stmt { font: 16px/1.6 var(--mono); margin: 0; color: var(--ph-hi); }
-.sheet hr { border: 0; border-top: 1px dashed var(--ph-4); margin: 2px 0; width: 100%; }
+.sheet .stmt { font: 16px/1.75 var(--mono); margin: 0; color: var(--ph-hi); }
+.sheet hr { border: 0; border-top: 1px dashed var(--sep); margin: 6px 0; width: 100%; }
 .sheet .kick { margin: 0; font: 800 11px var(--mono); letter-spacing: .16em; text-transform: uppercase; color: var(--ph-3); }
+.evidence-section { display: grid; gap: 24px; padding-bottom: 38px; border-bottom: 1px dashed var(--sep); }
+.evidence-section:last-child { padding-bottom: 0; border-bottom: 0; }
+.evidence-section > .subhead { color: var(--ph-2); }
+.evidence-ref { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; font-size: 14px; }
+.evidence-ref b { color: var(--ph-hi); }
+.evidence-section blockquote { margin: 2px 0; padding: 16px 0 16px 22px; line-height: 1.8; }
+.evidence-section .lines { margin: 6px 0; padding: 16px 0; }
+.evidence-section .ln { padding-top: 4px; padding-bottom: 4px; }
+.evidence-verdict { padding: 14px 18px; border: 1px solid var(--ph-3); border-radius: 9px; color: var(--ph-hi); font: 800 11px/1.6 var(--mono); letter-spacing: .12em; text-transform: uppercase; }
+.evidence-verdict.bad { border-color: var(--acc); color: var(--acc-hi); }
+.evidence-trace { display: grid; gap: 16px; margin-top: 8px; padding: 22px 24px; border: 1px solid var(--ph-4); border-radius: 10px; background: rgba(0,0,0,.2); }
+.evidence-section .facts { gap: 10px 28px; }
+.evidence-limitations { display: grid; gap: 14px; }
 .lines { border: 1px solid var(--ph-4); border-radius: 10px; padding: 8px 0; font: 12.5px/1.8 var(--mono); overflow-x: auto; background: rgba(0,0,0,.35); }
 .ln { display: grid; grid-template-columns: 3em minmax(0, 1fr); padding-right: 12px; }
 .ln .n { text-align: right; padding-right: 12px; color: var(--ph-3); user-select: none; }
 .ln .t { white-space: pre-wrap; overflow-wrap: anywhere; color: var(--ph-2); }
 .ln.in { background: rgba(185,240,74,.1); } .ln.in .t { color: var(--ph); } .ln.in .n { color: var(--ph-hi); }
-mark { background: var(--acc); color: var(--ink); text-shadow: none; padding: 0 2px; }
+mark { background: rgba(185,240,74,.16); color: var(--ph-hi); border-bottom: 1px solid var(--ph-2); text-shadow: 0 0 6px var(--glow-s); padding: 1px 3px; }
 .facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 3px 16px; margin: 0; }
 .facts dt { font: 800 10.5px/2 var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--ph-3); }
 .facts dd { margin: 0; font: 13px/2 var(--mono); overflow-wrap: anywhere; }
 .packet-note { padding: 10px 14px; border: 1px dashed var(--ph-3); border-radius: 10px; font: 13.5px/1.6 var(--mono); color: var(--ph-2); }
-.packet-section { display: grid; gap: 8px; padding-top: 12px; border-top: 1px dashed var(--ph-4); }
+.packet-section { display: grid; gap: 12px; padding-top: 16px; border-top: 1px dashed var(--sep); }
 .packet-section h4 { margin: 0; font: 800 11px var(--mono); letter-spacing: .16em; text-transform: uppercase; color: var(--ph-hi); }
 .packet-objective { margin: 0; padding: 10px 12px; border: 1px solid var(--ph-4); border-radius: 10px; white-space: pre-wrap; overflow-wrap: anywhere; font: 13.5px/1.6 var(--mono); }
 .packet-dep { display: grid; gap: 6px; padding: 10px 12px; border: 1px solid var(--ph-4); border-radius: 10px; }
@@ -332,6 +344,7 @@ mark { background: var(--acc); color: var(--ink); text-shadow: none; padding: 0 
   :root { --bz: 6px; --rad: 20px; }
   .hud { padding: 9px 14px; gap: 14px; } .hud nav, .hud .hide-s { display: none; }
   .layout { padding: 12px 10px 20px; } .wbody { padding: 14px 14px 16px; } .rbody { padding: 16px 14px 20px; }
+  .sheet .inner { padding: 24px 18px 38px; gap: 28px; } .evidence-section { gap: 20px; padding-bottom: 30px; }
   .hero { padding: 28px 10px 64px; }
   .shelfrow { padding-left: 8px; padding-right: 8px; } .sig-in { padding: 18px; }
 }
@@ -342,16 +355,16 @@ mark { background: var(--acc); color: var(--ink); text-shadow: none; padding: 0 
 <div id="screen">
   <header class="hud top">
     <span class="brand">Res Loop</span>
-    <nav aria-label="Sections"><a href="#hero">Shelf</a><a href="#brief">Brief</a><a href="#signal">Signal</a><a href="#report">Report</a></nav>
+    <nav aria-label="Sections"><a href="#hero">1 Workspace</a><a href="#brief">2 Brief</a><a href="#report">3 Report</a><a href="#signal">4 Progress</a></nav>
     <span class="sp"></span>
     <span class="hide-s">Session<b id="hud-sess">----</b></span>
-    <span>Link<b id="hud-mode">--</b></span>
+    <span>Mode<b id="hud-mode">--</b></span>
     <span class="hide-s"><b id="hud-clock">00:00:00</b></span>
   </header>
 
   <div class="layout">
     <main>
-      <section class="hero" id="hero" aria-label="Shelf">
+      <section class="hero" id="hero" aria-label="Research workspace">
         <canvas id="scene" aria-hidden="true"></canvas>
         <div class="stack">
           <h1 class="sr" id="headline">Ask a question</h1>
@@ -362,82 +375,85 @@ mark { background: var(--acc); color: var(--ink); text-shadow: none; padding: 0 
         </div>
       </section>
 
-      <section class="win" id="stage" style="--d:1.45s" aria-label="Stage">
-        <div class="wbar"><span>Shelf</span><span id="stage-state">Ready</span></div>
+      <section class="win" id="stage" style="--d:1.45s" aria-label="Research workspace">
+        <div class="wbar"><span>1 · Workspace</span><span id="stage-state">Ready</span></div>
         <div class="wbody" id="stage-body">
-          <div class="shelfrow src" id="row-src" data-label="Sources" role="list"></div>
-          <div class="shelfrow team" id="row-team" data-label="Team"></div>
+          <div class="shelfrow src" id="row-src" data-label="Source papers" role="list"></div>
+          <div class="shelfrow team" id="row-team" data-label="Research team"></div>
           <canvas class="beams" id="beams" aria-hidden="true"></canvas>
           <p class="now" id="now" aria-live="polite"></p>
           <div class="foot">
-            <label class="act" for="file" tabindex="0" id="upload-label">Upload</label>
+            <p class="subhead">Source tools</p>
+            <label class="act" for="file" tabindex="0" id="upload-label">Upload papers</label>
             <input id="file" type="file" accept=".md,.txt,.markdown,text/plain,text/markdown" multiple hidden>
-            <button class="act" id="paste-toggle" type="button">Paste text</button>
-            <button class="act" id="search-toggle" type="button">Search web</button>
-            <button class="act" id="demo" type="button">Demo papers</button>
+            <button class="act" id="paste-toggle" type="button">Paste source</button>
+            <button class="act" id="search-toggle" type="button">Find papers</button>
+            <button class="act" id="demo" type="button">Load demo</button>
             <span class="sp"></span>
-            <button class="go" id="start" type="button">Start</button>
+            <button class="go" id="start" type="button">Run research</button>
           </div>
           <form class="paste" id="paste" hidden>
-            <input id="paste-name" placeholder="name, e.g. smith-2024" required aria-label="Source name">
-            <textarea id="paste-text" placeholder="paste the text here" required aria-label="Source text"></textarea>
+            <input id="paste-name" placeholder="source name, e.g. smith-2024" required aria-label="Source name">
+            <textarea id="paste-text" placeholder="paste the paper or source text" required aria-label="Source text"></textarea>
             <div><button class="act" type="submit">Add</button></div>
           </form>
           <form class="paste" id="web-search" hidden>
             <input id="web-query" placeholder="paper topic or title" required minlength="3" maxlength="500" aria-label="Web search query">
             <div><button class="act" id="web-submit" type="submit">Find papers</button></div>
-            <p class="web-note">Searches Crossref. Results are paper details only; upload the full text before running the research team.</p>
+            <p class="web-note">Crossref returns titles and DOI links. Upload a paper’s full text before using it as evidence.</p>
             <div class="web-results" id="web-results" aria-live="polite"></div>
           </form>
         </div>
       </section>
 
       <section class="win brief" id="brief" style="--d:1.55s" aria-label="Brief">
-        <div class="wbar"><span>Brief</span><span id="ready">Collecting</span></div>
+        <div class="wbar"><span>2 · Research brief</span><span id="ready">Needs input</span></div>
         <div class="wbody"><dl id="brief-items"></dl></div>
       </section>
 
-      <section class="win signal" id="signal" style="--d:1.65s" aria-label="Signal">
-        <div class="wbar"><span>Signal</span><span id="sig-state">Waiting</span></div>
-        <div class="wbody">
-          <canvas id="dither" aria-hidden="true"></canvas>
-          <div class="sig-in">
-            <div class="sig-l"><div class="code" id="code" aria-live="off"></div></div>
-            <div class="sig-r">
-              <div><canvas class="px" id="stat-claims" aria-label="claims checked"></canvas><div class="cap">claims checked</div></div>
-              <div><canvas class="px" id="stat-rejected" aria-label="quotes rejected"></canvas><div class="cap">quotes rejected</div></div>
-              <div class="loadbar"><span id="load-label">Idle</span><div class="blocks" id="blocks"></div><span id="pct">0%</span></div>
-            </div>
-            <div class="sig-side" id="sig-date"></div>
-          </div>
-        </div>
-      </section>
-
       <section class="win hidden" id="report" aria-label="Report">
-        <div class="wbar"><span>Report</span><span><span id="report-outcome"></span> / <span id="report-meta"></span></span></div>
+        <div class="wbar"><span>3 · Report</span><span><span id="report-outcome"></span> · <span id="report-meta"></span></span></div>
         <div class="rbody">
           <h2 class="rtitle" id="report-title">Report</h2>
-          <p class="rlede" id="report-lede">A checked answer built from source-linked claims. Select any numbered citation to inspect the exact supporting text.</p>
           <div class="report-overview" aria-label="Report at a glance">
             <div class="report-stat"><span class="label">Review status</span><strong id="overview-status">—</strong><small id="overview-status-note">Quality gate result</small></div>
             <div class="report-stat"><span class="label">Evidence used</span><strong id="overview-evidence">—</strong><small id="overview-evidence-note">Verified claims and cited sources</small></div>
             <div class="report-stat"><span class="label">Known caveats</span><strong id="overview-caveats">—</strong><small id="overview-caveats-note">Open questions, limitations, and quality problems</small></div>
           </div>
-          <div class="tabs" role="tablist">
+          <div class="tabs" role="tablist" aria-label="Report views">
             <button class="tab" role="tab" data-pane="report" aria-controls="pane-report" aria-selected="true">Answer</button>
             <button class="tab" role="tab" data-pane="evidence" aria-controls="pane-evidence" aria-selected="false">Verified evidence <span id="n-evidence"></span></button>
             <button class="tab" role="tab" data-pane="rejected" aria-controls="pane-rejected" aria-selected="false">Rejected evidence <span id="n-rejected"></span></button>
             <button class="tab" role="tab" data-pane="open" aria-controls="pane-open" aria-selected="false">Gaps &amp; limits <span id="n-open"></span></button>
           </div>
           <div class="pane" id="pane-report"><div class="rep-grid"><article class="article" id="article"></article>
-            <aside class="rail" aria-label="How to read this report">
-              <div class="rail-section"><canvas class="px" id="report-n" aria-label="verified claims used in the answer"></canvas><div class="cap" id="report-cap">verified claims used</div><p class="rail-copy">These are source-linked statements that passed the evidence checks and appear in the answer.</p></div>
-              <div class="rail-section"><p class="hd">Evidence mix</p><p class="rail-copy">Share of citation links by source. This shows reliance, not source quality.</p><div id="layers"></div></div>
-              <div class="rail-section"><p class="hd">How to read it</p><ol class="read-guide"><li><b>Read the answer</b> for the recommendation.</li><li><b>Open a citation</b> to see its exact source lines.</li><li><b>Check gaps &amp; limits</b> before acting on the result.</li></ol></div>
+            <aside class="rail" aria-label="Report evidence summary">
+              <div class="rail-section"><canvas class="px" id="report-n" aria-label="verified claims used in the answer"></canvas><div class="cap" id="report-cap">verified claims used</div></div>
+              <div class="rail-section"><p class="hd">Evidence mix</p><div id="layers"></div></div>
             </aside></div></div>
           <div class="pane" id="pane-evidence" hidden><ul class="list" id="claims"></ul></div>
           <div class="pane" id="pane-rejected" hidden><ul class="list" id="rejections"></ul></div>
-          <div class="pane" id="pane-open" hidden><div class="rep-grid"><ul class="notes" id="open"></ul><ul class="notes" id="limits"></ul></div></div>
+          <div class="pane" id="pane-open" hidden><div class="rep-grid">
+            <section><p class="hd">Open questions</p><ul class="notes" id="open"></ul></section>
+            <section><p class="hd">Limitations</p><ul class="notes" id="limits"></ul></section>
+          </div></div>
+        </div>
+      </section>
+
+      <section class="win signal" id="signal" style="--d:1.65s" aria-label="Live progress">
+        <div class="wbar"><span>4 · Live progress</span><span id="sig-state">Waiting</span></div>
+        <div class="wbody">
+          <canvas id="dither" aria-hidden="true"></canvas>
+          <div class="sig-in">
+            <div class="sig-l"><p class="subhead">Agent activity</p><div class="code" id="code" aria-live="off"></div></div>
+            <div class="sig-r">
+              <p class="subhead">Quality checks</p>
+              <div><canvas class="px" id="stat-claims" aria-label="verified claims"></canvas><div class="cap">verified claims</div></div>
+              <div><canvas class="px" id="stat-rejected" aria-label="rejected evidence"></canvas><div class="cap">rejected evidence</div></div>
+              <div class="loadbar"><span id="load-label">Idle</span><div class="blocks" id="blocks"></div><span id="pct">0%</span></div>
+            </div>
+            <div class="sig-side" id="sig-date"></div>
+          </div>
         </div>
       </section>
     </main>
@@ -447,13 +463,13 @@ mark { background: var(--acc); color: var(--ink); text-shadow: none; padding: 0 
       <div class="chat-msgs" id="msgs" aria-live="polite"></div>
       <div class="chat-foot">
         <div class="chips">
-          <button class="chip" id="chip-demo" type="button">Demo papers</button>
-          <label class="chip" for="file" tabindex="0" id="chip-upload">Upload</label>
-          <button class="chip go-chip" id="chip-start" type="button">Start</button>
+          <button class="chip" id="chip-demo" type="button">Load demo</button>
+          <label class="chip" for="file" tabindex="0" id="chip-upload">Upload papers</label>
+          <button class="chip go-chip" id="chip-start" type="button">Run research</button>
         </div>
         <form class="chat-form" id="composer">
           <span class="pr">&gt;</span>
-          <textarea id="input" rows="1" placeholder="type here" aria-label="Message Res Loop"></textarea>
+          <textarea id="input" rows="1" placeholder="ask a research question" aria-label="Message Res Loop"></textarea>
           <button class="send" type="submit" aria-label="Send">SEND</button>
         </form>
       </div>
@@ -461,8 +477,8 @@ mark { background: var(--acc); color: var(--ink); text-shadow: none; padding: 0 
   </div>
 
   <footer class="hud bot" aria-label="Stats">
-    <span>Sources<b id="h-src">0</b></span><span>Agents<b id="h-agents">0</b></span><span>Calls<b id="h-calls">0</b></span>
-    <span>Elapsed<b id="h-elapsed">00:00</b></span><span>Claims<b id="h-claims">0</b></span><span>Rejected<b id="h-rej">0</b></span>
+    <span>Sources<b id="h-src">0</b></span><span>Agents<b id="h-agents">0</b></span><span>Model calls<b id="h-calls">0</b></span>
+    <span>Elapsed<b id="h-elapsed">00:00</b></span><span>Verified<b id="h-claims">0</b></span><span>Rejected<b id="h-rej">0</b></span>
   </footer>
 </div>
 <button class="chat-fab" id="chat-fab" type="button" aria-label="Open chat">Chat <b id="unread" hidden>0</b></button>
@@ -555,6 +571,7 @@ mark { background: var(--acc); color: var(--ink); text-shadow: none; padding: 0 
   function renderWebResults(results, query, reveal = true) {
     const box = $("web-results"); box.replaceChildren(); if (query) $("web-query").value = query;
     if (reveal) $("web-search").hidden = false;
+    $("search-toggle").textContent = results.length ? `Related papers (${results.length})` : "Find papers";
     if (!results.length) { box.append(h("p", { class: "web-note" }, "No matching papers found. Try a broader search.")); return; }
     for (const item of results) box.append(h("article", { class: "web-result" },
       h("b", {}, item.title), h("small", {}, `${item.authors} · ${item.year || "year unknown"} · ${item.publisher}`),
@@ -840,24 +857,24 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
     const row = (label, body) => dl.append(h("dt", {}, label), h("dd", {}, body));
     if (b.question) row("Question", b.question); if (b.context) row("Context", b.context);
     if (b.constraints && b.constraints.length) { const first = b.constraints.slice(0, 4), rest = b.constraints.slice(4);
-      row("Limits", [h("ul", {}, first.map(c => h("li", {}, c))), rest.length ? h("details", {}, h("summary", {}, `${rest.length} more`), h("ul", { style: "margin-top:8px" }, rest.map(c => h("li", {}, c)))) : null]); }
-    if (b.open_questions && b.open_questions.length) row("Must answer", h("ul", {}, b.open_questions.map(q => h("li", {}, q))));
-    if (!dl.children.length) dl.append(h("dd", { class: "empty" }, "Empty until you answer a few questions."));
-    $("ready").textContent = ready ? "Ready" : "Collecting"; state.briefReady = ready || !!b.question; updateHint(); updateStart();
+      row("Constraints", [h("ul", {}, first.map(c => h("li", {}, c))), rest.length ? h("details", {}, h("summary", {}, `${rest.length} more`), h("ul", { style: "margin-top:8px" }, rest.map(c => h("li", {}, c)))) : null]); }
+    if (b.open_questions && b.open_questions.length) row("Questions to answer", h("ul", {}, b.open_questions.map(q => h("li", {}, q))));
+    if (!dl.children.length) dl.append(h("dd", { class: "empty" }, "Your question and requirements will appear here."));
+    $("ready").textContent = ready ? "Ready" : "Needs input"; state.briefReady = ready || !!b.question; updateHint(); updateStart();
   }
   function updateHint() {
     let t;
-    if (state.running) t = "Click an agent to see what it was given.";
-    else if (state.reportShown) t = "Done. Report below.";
-    else if (!state.question) t = narrow.matches ? "Tap Chat and type your question." : "Type your question in the chat.";
-    else if (!state.sources) t = "Put papers on the shelf, or start without them and a scout writes notes.";
-    else t = "Press Start.";
+    if (state.running) t = "The team is working. Select an agent to inspect its input.";
+    else if (state.reportShown) t = "Research complete. Read the report below.";
+    else if (!state.question) t = narrow.matches ? "Open Chat and ask a research question." : "Ask a research question in the chat.";
+    else if (!state.sources) t = "Upload papers, or run with labelled background notes.";
+    else t = "Ready to run the research team.";
     $("hint").textContent = t;
     $("stage-state").textContent = state.running ? "Running" : state.reportShown ? "Done" : "Ready";
     if (!state.running) { setSub(!state.question ? "TYPE IT IN THE CHAT" : `${state.sources || "NO"} SOURCE${state.sources === 1 ? "" : "S"} ON THE SHELF`); setStateLine(state.reportShown ? "REPORT READY" : "READY", false, state.reportShown ? "done" : "ready"); }
   }
-  function updateStart() { const label = state.running ? "Running" : (state.reportShown ? "Run again" : "Start"); for (const id of ["start", "chip-start"]) { $(id).disabled = state.running; $(id).textContent = label; } }
-  const missing = () => state.briefReady ? null : "First ask your question in the chat.";
+  function updateStart() { const label = state.running ? "Researching" : (state.reportShown ? "Run again" : "Run research"); for (const id of ["start", "chip-start"]) { $(id).disabled = state.running; $(id).textContent = label; } }
+  const missing = () => state.briefReady ? null : "Ask a research question in the chat first.";
 
   // ================= shelf: sources and the agent team =================
   const SPINE_COL = ["#b9f04a", "#8cc03a", "#a6d63e"];
@@ -909,7 +926,7 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
   // ================= signal: live log, counters, block loader =================
   const seenStatus = {};
   const FN = { orchestrator: "orchestrator.dispatch", scout: "scout.write", planner: "planner.plan", source_scout: "source_scout.screen", evidence_reader: "reader.read", research_agent: "research_agent.assess", theorist: "theorist.hypothesize", experiment_runner: "experiment.run", reproducer: "experiment.repeat", analyst: "analyst.interpret", writer: "writer.draft", reviewer: "reviewer.check", adversarial_reviewer: "adversary.check", quality: "gate.check" };
-  const IDLE = ["plan(question);", "read(each paper);", "write(claims);", "review(draft);", "gate.check(every quote);"];
+  const IDLE = ["1  Define the research question", "2  Read each source", "3  Build the evidence", "4  Write and review", "5  Verify every citation"];
   function setCode(lines) { $("code").replaceChildren(...lines.map(t => h("div", { class: "ln2" }, t))); }
   function pushLog(text, cls, full) {
     const code = $("code"); if (code.dataset.idle) { code.replaceChildren(); delete code.dataset.idle; }
@@ -917,16 +934,17 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
     while (code.children.length > 11) code.firstChild.remove(); [...code.children].forEach((el, i, all) => el.classList.toggle("old", i < all.length - 8));
   }
   function logAgent(e) {
-    const fn = FN[e.role] || "agent.run", arg = e.id.includes(":") ? `"${e.id.split(":")[1]}"` : "";
-    if (e.status === "running") pushLog(`${fn}(${arg});`, "", e.detail); else if (e.status === "done") pushLog(`// ${e.title}: ${e.detail || "done"}`, "c", e.detail); else if (e.status === "failed") pushLog(`// ${e.title} stopped: ${e.detail || ""}`, "bad", e.detail);
+    if (e.status === "running") pushLog(`${e.title}: ${e.detail || "Working"}`, "", e.detail);
+    else if (e.status === "done") pushLog(`[OK] ${e.title}: ${e.detail || "Done"}`, "c", e.detail);
+    else if (e.status === "failed") pushLog(`[STOPPED] ${e.title}: ${e.detail || "Could not finish"}`, "bad", e.detail);
   }
   function addTicker(e) {
     const id = (e.text.match(/^(\S+)/) || [])[1] || "";
-    if (e.kind === "accepted") { accepted++; setCount($("stat-claims"), accepted, 6); pushLog(`gate.accept("${id}");`, "", e.text); }
-    else if (e.kind === "rejected") { rejected++; setCount($("stat-rejected"), rejected, 6); pushLog(`gate.reject("${id}");  // ${(e.text.match(/\(([A-Z_]+)\)/) || [])[1] || "rejected"}`, "bad", e.text); }
-    else { reviews++; pushLog(`// ${e.text}`, "c", e.text); }
+    if (e.kind === "accepted") { accepted++; setCount($("stat-claims"), accepted, 6); pushLog(`[VERIFIED] ${id}`, "", e.text); }
+    else if (e.kind === "rejected") { rejected++; setCount($("stat-rejected"), rejected, 6); pushLog(`[REJECTED] ${id}`, "bad", e.text); }
+    else { reviews++; pushLog(e.text, "c", e.text); }
     const quality = cards.quality;
-    if (quality) upsertAgent({ ...quality, status: runFinished ? quality.status : "running", detail: `${accepted} accepted, ${rejected} rejected, ${reviews} reviews` });
+    if (quality) upsertAgent({ ...quality, status: runFinished ? quality.status : "running", detail: `${accepted} verified · ${rejected} rejected · ${reviews} review${reviews === 1 ? "" : "s"}` });
     hudStats();
   }
   const BLOCKS = 24; $("blocks").append(...Array.from({ length: BLOCKS }, () => h("i")));
@@ -945,11 +963,12 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
     for (const k of Object.keys(cards)) delete cards[k]; for (const k of Object.keys(seenStatus)) delete seenStatus[k]; for (const [k, el] of Object.entries(spines)) { el.remove(); delete spines[k]; }
     for (const k of Object.keys(runtimeTasks)) delete runtimeTasks[k];
     accepted = rejected = reviews = writerPasses = 0; runFinished = false; setCount($("stat-claims"), 0, 6); setCount($("stat-rejected"), 0, 6); setCode([]); $("now").textContent = ""; progress(false);
+    $("web-search").hidden = true; $("web-results").replaceChildren(); $("search-toggle").textContent = "Find papers";
     $("report").classList.add("hidden"); state.reportShown = false; state.t0 = Date.now(); state.tEnd = 0; renderTeam(); hudStats();
   }
   function setRun(status) {
     state.running = status === "started" || status === "running"; document.body.classList.toggle("working", state.running);
-    const words = { started: "Loading", completed: "Report ready", blocked: "Blocked", failed: "Stopped", budget_exhausted: "Out of budget", cancelled: "Cancelled" };
+    const words = { started: "Researching", completed: "Report ready", blocked: "Needs input", failed: "Stopped", budget_exhausted: "Limit reached", cancelled: "Cancelled" };
     if (words[status]) { $("sig-state").textContent = words[status]; $("load-label").textContent = words[status]; }
     if (state.running) { chatStatus("Team working"); setStateLine("RUNNING", true, "run"); $("signal").scrollIntoView({ block: "center", behavior: "smooth" }); }
     else if (words[status]) { state.tEnd = Date.now(); chatStatus(status === "completed" ? "Report ready" : words[status]); progress(status === "completed"); $("now").textContent = ""; }
@@ -986,30 +1005,43 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
   const sheetBar = title => h("div", { class: "wbar" }, h("span", {}, title), h("button", { class: "act", type: "button", style: "color:var(--ink);border-bottom-color:var(--ink)", onclick: closeProof }, "Close"));
   function openProof(id) {
     const c = report.claimMap[id]; if (!c) return; returnFocus = document.activeElement;
-    const sheet = $("sheet"), inner = h("div", { class: "inner" }); sheet.replaceChildren(sheetBar(`Proof ${id}`), inner); sheet.setAttribute("aria-label", `Proof for ${id}`);
-    inner.append(h("div", { class: "no" }, report.numbers[id] ? `[${report.numbers[id]}]` : id), h("p", { class: "stmt" }, c.statement));
-    inner.append(h("dl", { class: "facts" }, h("dt", {}, "Status"), h("dd", {}, c.status), h("dt", {}, "Made by"), h("dd", {}, c.task)));
-    for (const l of c.links) {
-      inner.append(h("hr")); inner.append(h("div", {}, h("span", { class: `rel ${l.relation}` }, l.relation), "  ", h("b", {}, l.source), ` lines ${l.start}-${l.end}`)); inner.append(h("blockquote", {}, l.quote));
-      if (l.window.length) { const [box, found] = highlight(l.window, l); inner.append(box, h("p", { class: "kick", style: "margin:0" }, found ? "[OK] quote found in the cited lines" : "[ERR] quote not found in the cited lines")); }
-      const r = l.receipt || {}; inner.append(h("dl", { class: "facts" }, h("dt", {}, "Receipt"), h("dd", {}, r.id || "?"), h("dt", {}, "Delivered to"), h("dd", {}, r.task || "?"), h("dt", {}, "Lines given"), h("dd", {}, r.start ? `${r.start}-${r.end}` : "?"), h("dt", {}, "At"), h("dd", {}, r.at || "?")));
+    const sheet = $("sheet"), inner = h("div", { class: "inner" }); sheet.replaceChildren(sheetBar(`Evidence for ${id}`), inner); sheet.setAttribute("aria-label", `Evidence for ${id}`);
+    inner.append(h("section", { class: "evidence-section" },
+      h("p", { class: "subhead" }, "Claim"),
+      h("div", { class: "no" }, report.numbers[id] ? `[${report.numbers[id]}]` : id),
+      h("p", { class: "stmt" }, c.statement),
+      h("dl", { class: "facts" }, h("dt", {}, "Status"), h("dd", {}, c.status), h("dt", {}, "Created by"), h("dd", {}, c.task))));
+    for (const [index, l] of c.links.entries()) {
+      const evidence = h("section", { class: "evidence-section" },
+        h("p", { class: "subhead" }, `Source evidence ${index + 1}`),
+        h("div", { class: "evidence-ref" }, h("span", { class: `rel ${l.relation}` }, l.relation), h("b", {}, l.source), h("span", {}, `lines ${l.start}-${l.end}`)),
+        h("blockquote", {}, l.quote));
+      if (l.window.length) {
+        const [box, found] = highlight(l.window, l);
+        evidence.append(box, h("p", { class: `evidence-verdict${found ? "" : " bad"}` }, found ? "[OK] Quote verified in the cited lines" : "[ERR] Quote not found in the cited lines"));
+      }
+      const r = l.receipt || {};
+      evidence.append(h("div", { class: "evidence-trace" },
+        h("p", { class: "subhead" }, "Traceability"),
+        h("dl", { class: "facts" }, h("dt", {}, "Read record"), h("dd", {}, r.id || "?"), h("dt", {}, "Reader task"), h("dd", {}, r.task || "?"), h("dt", {}, "Provided lines"), h("dd", {}, r.start ? `${r.start}-${r.end}` : "?"), h("dt", {}, "Time"), h("dd", {}, r.at || "?"))));
+      inner.append(evidence);
     }
-    if (c.limitations && c.limitations.length) inner.append(h("ul", { class: "notes" }, c.limitations.map(x => h("li", {}, h("b", {}, "Limitation"), h("span", {}, x)))));
+    if (c.limitations && c.limitations.length) inner.append(h("section", { class: "evidence-section evidence-limitations" }, h("p", { class: "subhead" }, "Limitations"), h("ul", { class: "notes" }, c.limitations.map(x => h("li", {}, h("span", {}, x))))));
     $("drawer").hidden = false; sheet.querySelector("button").focus();
   }
   const packetLines = read => h("div", { class: "lines packet-lines" }, read.lines.map(row => h("div", { class: "ln in" }, h("span", { class: "n" }, row.n), h("span", { class: "t" }, row.text || " "))));
   function openPacket(packet, trigger) {
-    returnFocus = trigger || document.activeElement; const sheet = $("sheet"), inner = h("div", { class: "inner" }); sheet.replaceChildren(sheetBar(`${packet.role.replace("_", " ")} input`), inner); sheet.setAttribute("aria-label", `Context packet ${packet.id}`);
-    inner.append(h("div", { class: "packet-note" }, "Everything this agent received. No chat history, no other sources."));
-    inner.append(h("dl", { class: "facts" }, h("dt", {}, "Packet"), h("dd", {}, packet.id), h("dt", {}, "Task"), h("dd", {}, packet.task), h("dt", {}, "Attempt"), h("dd", {}, packet.attempt)));
+    returnFocus = trigger || document.activeElement; const sheet = $("sheet"), inner = h("div", { class: "inner" }); sheet.replaceChildren(sheetBar(`${packet.role.replace("_", " ")} input`), inner); sheet.setAttribute("aria-label", `Agent input ${packet.id}`);
+    inner.append(h("div", { class: "packet-note" }, "This is everything the agent received. It did not receive the full chat or unrelated sources."));
+    inner.append(h("dl", { class: "facts" }, h("dt", {}, "Handoff ID"), h("dd", {}, packet.id), h("dt", {}, "Task ID"), h("dd", {}, packet.task), h("dt", {}, "Attempt"), h("dd", {}, packet.attempt)));
     inner.append(h("section", { class: "packet-section" }, h("h4", {}, "Objective"), h("p", { class: "packet-objective" }, packet.objective)));
-    if (packet.requirements.length) inner.append(h("section", { class: "packet-section" }, h("h4", {}, `Requirements ${packet.requirements.length}`), packet.requirements.map(r => h("div", { class: "packet-dep" }, h("b", {}, `${r.id} r${r.revision}`), h("div", {}, r.interpretation), r.acceptance_checks.length ? h("div", {}, `Checks: ${r.acceptance_checks.join("; ")}`) : null))));
-    if (packet.reads.length) inner.append(h("section", { class: "packet-section" }, h("h4", {}, `Delivered reads ${packet.reads.length}`), packet.reads.map(read => h("div", { class: "packet-dep" }, h("b", {}, `${read.label || read.source} / ${read.source} r${read.revision}`), h("dl", { class: "facts" }, h("dt", {}, "Selector"), h("dd", {}, `lines ${read.start}-${read.end}`), h("dt", {}, "Receipt"), h("dd", {}, read.receipt)), packetLines(read)))));
-    if (packet.dependencies.length) inner.append(h("section", { class: "packet-section" }, h("h4", {}, `Accepted dependencies ${packet.dependencies.length}`), packet.dependencies.map(dep => { const text = dep.kind === "claim" && dep.claim ? dep.claim.statement : dep.content; return h("div", { class: "packet-dep" }, h("b", {}, `${dep.id} / ${dep.kind} r${dep.revision}`), text ? h("pre", {}, text) : h("span", {}, "No inline content")); })));
-    if (packet.available_sources.length) inner.append(h("section", { class: "packet-section" }, h("h4", {}, "Source metadata"), h("ul", {}, packet.available_sources.map(src => h("li", {}, `${src.source_id}, ${src.path}`)))));
+    if (packet.requirements.length) inner.append(h("section", { class: "packet-section" }, h("h4", {}, `Instructions ${packet.requirements.length}`), packet.requirements.map(r => h("div", { class: "packet-dep" }, h("b", {}, `${r.id} r${r.revision}`), h("div", {}, r.interpretation), r.acceptance_checks.length ? h("div", {}, `Checks: ${r.acceptance_checks.join("; ")}`) : null))));
+    if (packet.reads.length) inner.append(h("section", { class: "packet-section" }, h("h4", {}, `Source extracts ${packet.reads.length}`), packet.reads.map(read => h("div", { class: "packet-dep" }, h("b", {}, `${read.label || read.source} / ${read.source} r${read.revision}`), h("dl", { class: "facts" }, h("dt", {}, "Lines"), h("dd", {}, `${read.start}-${read.end}`), h("dt", {}, "Read record"), h("dd", {}, read.receipt)), packetLines(read)))));
+    if (packet.dependencies.length) inner.append(h("section", { class: "packet-section" }, h("h4", {}, `Verified inputs ${packet.dependencies.length}`), packet.dependencies.map(dep => { const text = dep.kind === "claim" && dep.claim ? dep.claim.statement : dep.content; return h("div", { class: "packet-dep" }, h("b", {}, `${dep.id} / ${dep.kind} r${dep.revision}`), text ? h("pre", {}, text) : h("span", {}, "No text included")); })));
+    if (packet.available_sources.length) inner.append(h("section", { class: "packet-section" }, h("h4", {}, "Available sources"), h("ul", {}, packet.available_sources.map(src => h("li", {}, `${src.source_id}, ${src.path}`)))));
     if (packet.review_feedback.length) inner.append(h("section", { class: "packet-section" }, h("h4", {}, "Review feedback"), h("ul", {}, packet.review_feedback.map(item => h("li", {}, item)))));
-    if (packet.skills.length) inner.append(h("section", { class: "packet-section" }, h("h4", {}, "Method skills"), packet.skills.map(skill => h("pre", { class: "packet-dep" }, skill))));
-    inner.append(h("section", { class: "packet-section" }, h("h4", {}, "Not included"), h("div", { class: "packet-note" }, "Other agents' chat, unlisted sources, unaccepted outputs, the database.")));
+    if (packet.skills.length) inner.append(h("section", { class: "packet-section" }, h("h4", {}, "Methods"), packet.skills.map(skill => h("pre", { class: "packet-dep" }, skill))));
+    inner.append(h("section", { class: "packet-section" }, h("h4", {}, "Not included"), h("div", { class: "packet-note" }, "Other agents’ conversations, unrelated sources, rejected work, and internal database records.")));
     $("drawer").hidden = false; sheet.querySelector("button").focus();
   }
   function closeProof() { if ($("drawer").hidden) return; $("drawer").hidden = true; if (returnFocus && document.contains(returnFocus)) returnFocus.focus(); returnFocus = null; }
@@ -1038,7 +1070,6 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
     const citedSources = r.sources.filter(s => s.cited).length;
     const caveats = r.open_questions.length + r.limitations.length + r.problems.length;
     $("report-outcome").textContent = reportStatus(r.outcome); $("report-meta").textContent = `${r.sources.length} reviewed / ${r.rejections.length} rejected`;
-    $("report-lede").textContent = `${plural(r.cited.length, "verified claim")} ${r.cited.length === 1 ? "supports" : "support"} this answer, drawing on ${plural(citedSources, "cited source")}. Select any numbered citation to inspect the exact source text.`;
     $("overview-status").textContent = reportStatus(r.outcome);
     $("overview-status-note").textContent = r.outcome === "completed" ? "The final draft passed the research quality gate." : "The report may be unfinished; review the caveats before use.";
     $("overview-evidence").textContent = `${r.cited.length} claims / ${citedSources} sources`;
@@ -1048,7 +1079,7 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
     $("article").replaceChildren(r.markdown ? markdown(r.markdown) : h("p", {}, "No report. See Rejected and Open."));
     setCount($("report-n"), r.cited.length, 8); $("report-cap").textContent = `verified claim${r.cited.length === 1 ? "" : "s"} used`; layers(r);
     const claimItem = c => h("li", {}, h("div", { class: "top2" }, h("span", { class: "id" }, r.numbers[c.id] ? `[${r.numbers[c.id]}]` : "-"), c.links.map(l => h("span", { class: `rel ${l.relation}` }, REL[l.relation] || l.relation)),
-      h("span", { class: "src" }, c.links.map(l => `${l.source} lines ${l.start}-${l.end}`).join("   ")), h("span", { class: "sp" }), h("button", { class: "act", type: "button", onclick: () => openProof(c.id) }, "Proof")), h("span", { class: "stmt" }, c.statement));
+      h("span", { class: "src" }, c.links.map(l => `${l.source} lines ${l.start}-${l.end}`).join("   ")), h("span", { class: "sp" }), h("button", { class: "act", type: "button", onclick: () => openProof(c.id) }, "View evidence")), h("span", { class: "stmt" }, c.statement));
     $("claims").replaceChildren(...(r.claims.length ? r.claims.map(claimItem) : [h("li", {}, h("span", { class: "why" }, "No claims."))]));
     $("rejections").replaceChildren(...(r.rejections.length ? r.rejections.map(x => { const link = x.link_index != null ? x.draft.evidence_links[x.link_index] : null;
       return h("li", { class: "rejected" }, h("div", { class: "top2" }, h("span", { class: "id" }, x.id), h("span", { class: "rel contradicts" }, x.code), h("span", { class: "src" }, x.task_id)), h("span", { class: "stmt" }, x.draft.statement), link ? h("blockquote", {}, link.quote) : null, h("span", { class: "why" }, x.reason + (x.hint ? " " + x.hint : ""))); }) : [h("li", {}, h("span", { class: "why" }, "Nothing rejected."))]));
@@ -1078,14 +1109,14 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
   function resultDetail(result) {
     const p = result.payload || {};
     if (result.outcome !== "produced") return `Stopped: ${String(result.outcome || "unknown").replaceAll("_", " ")}`;
-    if (result.role === "planner") { const tasks = result.proposed_tasks || []; return `Proposed ${tasks.length} tasks (${tasks.filter(t => t.role === "evidence_reader").length} readers)`; }
-    if (result.role === "evidence_reader") return p.relevant === false ? "Not relevant, no claims" : `Produced ${(result.claims || []).length} claim${(result.claims || []).length === 1 ? "" : "s"}`;
+    if (result.role === "planner") { const tasks = result.proposed_tasks || []; return `Created ${tasks.length} tasks for ${tasks.filter(t => t.role === "evidence_reader").length} readers`; }
+    if (result.role === "evidence_reader") return p.relevant === false ? "No relevant evidence found" : `Found ${(result.claims || []).length} claim${(result.claims || []).length === 1 ? "" : "s"}`;
     if (result.role === "source_scout") return `Screened ${(p.screened || []).length} source${(p.screened || []).length === 1 ? "" : "s"}`;
     if (result.role === "theorist") return `Proposed ${(p.hypotheses || []).length} testable hypothes${(p.hypotheses || []).length === 1 ? "is" : "es"}`;
-    if (["experiment_runner", "reproducer"].includes(result.role)) return `${p.analysis_record?.run_id || "Run"}: ${p.analysis_record?.status || "recorded"}`;
+    if (["experiment_runner", "reproducer"].includes(result.role)) return `${p.analysis_record?.run_id || "Research run"}: ${p.analysis_record?.status || "recorded"}`;
     if (result.role === "analyst") return `Interpreted ${(p.observations || []).length} observation${(p.observations || []).length === 1 ? "" : "s"}`;
-    if (result.role === "writer") return `Draft ready, ${new Set(Array.from(String(p.content_markdown || "").matchAll(/\[claim:([^\]\s]+)\]/g), m => m[1])).size} claims cited`;
-    if (result.role === "reviewer") return `Verdict: ${p.disposition || "recorded"}`;
+    if (result.role === "writer") return `Drafted the report with ${new Set(Array.from(String(p.content_markdown || "").matchAll(/\[claim:([^\]\s]+)\]/g), m => m[1])).size} cited claims`;
+    if (result.role === "reviewer") return p.disposition === "accept" ? "Accepted the report" : p.disposition === "revise" ? "Requested changes" : "Review recorded";
     return "Done";
   }
   function updateRuntimeTask(task, patch) {
@@ -1097,33 +1128,33 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
   function applyRuntime(e) {
     const p = e.payload || {};
     if (e.event === "run.started") {
-      upsertAgent({ id: "orchestrator", role: "orchestrator", title: "Orchestrator", status: "running", detail: "Run committed to SQLite" });
-      upsertAgent({ id: "quality", role: "quality", title: "Quality gate", status: "waiting", detail: "Waiting for committed evidence" });
+      upsertAgent({ id: "orchestrator", role: "orchestrator", title: "Orchestrator", status: "running", detail: "Research started" });
+      upsertAgent({ id: "quality", role: "quality", title: "Quality gate", status: "waiting", detail: "Waiting for evidence" });
     } else if (e.event === "planner_proposals") {
       for (const chosen of (p.selected || [])) {
         const role = chosen.role, id = role === "evidence_reader" ? `reader:${chosen.source_id}` : role;
         if (!id || role === "evidence_reader") continue;
         upsertAgent({ id, role, title: runtimeTitle(role, id), status: "waiting", detail: "Selected by planner" });
       }
-    } else if (e.event === "task.created") updateRuntimeTask(e.task, { role: p.role, status: "waiting", detail: "Task committed" });
-    else if (e.event === "attempt.started") updateRuntimeTask(e.task, { status: "running", detail: `Attempt ${p.number} started` });
-    else if (e.event === "packet.dispatched") updateRuntimeTask(e.task, { role: p.packet?.role, status: "running", packet: p.packet, detail: "Exact context packet dispatched" });
+    } else if (e.event === "task.created") updateRuntimeTask(e.task, { role: p.role, status: "waiting", detail: "Task ready" });
+    else if (e.event === "attempt.started") updateRuntimeTask(e.task, { status: "running", detail: `Working on attempt ${p.number}` });
+    else if (e.event === "packet.dispatched") updateRuntimeTask(e.task, { role: p.packet?.role, status: "running", packet: p.packet, detail: "Received the required context" });
     else if (e.event === "attempt.accepted") {
       const result = p.result || p, skipped = p.role === "evidence_reader" && String(result.payload?.summary || "").startsWith("Skipped:");
       updateRuntimeTask(e.task, { role: p.role, status: p.outcome === "produced" && !skipped ? "done" : "failed",
-        detail: skipped ? "Skipped after two attempts" : resultDetail(result), calls: p.model_calls, questions: (result.unresolved || []).slice(0, 4) });
+        detail: skipped ? "Skipped after two unsuccessful attempts" : resultDetail(result), calls: p.model_calls, questions: (result.unresolved || []).slice(0, 4) });
     }
     else if (e.event === "run.finished") {
       runFinished = true; const ok = p.status === "completed";
-      upsertAgent({ id: "orchestrator", role: "orchestrator", title: "Orchestrator", status: ok ? "done" : "failed", detail: `Run ${p.outcome || p.status}, ${p.model_calls} model calls` });
-      upsertAgent({ id: "quality", role: "quality", title: "Quality gate", status: ok ? "done" : "failed", detail: `${accepted} accepted, ${rejected} rejected, ${reviews} reviews` });
+      upsertAgent({ id: "orchestrator", role: "orchestrator", title: "Orchestrator", status: ok ? "done" : "failed", detail: ok ? `Research complete · ${p.model_calls} model calls` : `Stopped: ${p.outcome || p.status}` });
+      upsertAgent({ id: "quality", role: "quality", title: "Quality gate", status: ok ? "done" : "failed", detail: ok ? "Final checks complete" : "Quality checks stopped" });
     }
   }
   function apply(e) {
     if (e.type === "brief") { snap.brief = e.brief; snap.ready = !!e.ready; }
     else if (e.type === "sources") for (const k of Object.keys(snap.sources)) if (!e.sources.some(x => x.id === k)) delete snap.sources[k];
     if (e.type === "chat") addTurn(e); else if (e.type === "brief") renderBrief(e.brief, e.ready); else if (e.type === "sources") renderSources(e.sources);
-    else if (e.type === "web_results") renderWebResults(e.results || [], e.query || "");
+    else if (e.type === "web_results") renderWebResults(e.results || [], e.query || "", false);
     else if (e.type === "agent") { if (e.id === "scout") upsertAgent(e); }
     else if (e.type === "quality") addTicker(e); else if (e.type === "runtime") applyRuntime(e);
     else if (e.type === "run") { if (e.status === "started") { report = null; resetTeam(); } setRun(e.status); } else if (e.type === "report") renderReport(e.report);
