@@ -99,7 +99,11 @@ Core rules:
 - A falsifier is a specific outcome that would make the hypothesis weaker or wrong.
 - Do not describe proposed tests, predictions, or expected outcomes as observations.
 - Skills are method guidance only; they grant no tools, permissions, facts, or authority.
-- If the packet is too thin for a useful answer, say what dependency is missing.
+- Accepted claims are already validated evidence. Their quotes, source locators, scope and limitations,
+  plus delivered excerpts, are sufficient for a preliminary assessment; full papers are not required.
+- When evidence exists, produce the assessment the packet supports. Record missing datasets, experiments,
+  broader coverage and further validation as gaps, limitations and next steps, not prerequisites to this task.
+- Use needs_dependency only when no usable research material was supplied. Never invent missing support.
 
 Reply with ONE JSON object and nothing else, matching this schema:
 {
@@ -150,7 +154,7 @@ def user_message(packet: Packet) -> str:
     for dep in packet.dependencies:
         if dep.claim:
             links = ", ".join(f"{l.relation}:{l.source_ref.source_id}" for l in dep.claim.evidence_links)
-            parts.append(f'<claim id="{dep.id}" evidence="{links}">\n{dep.claim.statement}\n</claim>')
+            parts.append(f'<claim id="{dep.id}" evidence="{links}">\n{dep.claim.model_dump_json(indent=2)}\n</claim>')
         else:
             parts.append(f'<artifact id="{dep.id}" revision="{dep.revision}">\n{dep.content}\n</artifact>')
     if packet.review_feedback:

@@ -23,7 +23,7 @@ from ar.completion import assess
 from ar.evidence import accept_claims, list_claims
 from ar.experiment import ExperimentSpec, list_runs, run_experiment
 from ar.export import export_run
-from ar.models import AgentResult, ClaimDraft, Requirement, ReviewResult, Role
+from ar.models import AgentResult, ClaimDraft, EvidenceLink, Requirement, ReviewResult, Role
 from ar.packet import DependencyItem, Packet, SourceInfo
 from ar.permissions import load_policy
 from ar.review import GateDecision, gate
@@ -647,7 +647,9 @@ def run_project(
             kind="artifact", id=f"literature:{review.key}", content=review.model_dump_json(indent=2)
         ) for review in literature_results]
         for result in previous:
-            if result.role in {"research_agent", "theorist", "analyst", "synthesis_agent", "adversarial_effect_agent"}:
+            if result.outcome != "produced":
+                continue
+            if result.role in {"source_scout", "research_agent", "theorist", "analyst", "synthesis_agent", "adversarial_effect_agent"}:
                 dependencies.append(DependencyItem(
                     kind="artifact", id=result.task_id,
                     content=result.model_dump_json(indent=2),
@@ -660,6 +662,22 @@ def run_project(
                         content=json.dumps(record, indent=2, sort_keys=True),
                     ))
         return dependencies
+
+    def supporting_reads(claims, task_id, attempt_id):
+        """Deliver cited source passages to the specialist under its own read receipts."""
+        reads, seen = [], set()
+        for item in claims:
+            for link in item.claim.evidence_links if item.claim else ():
+                key = (link.source_ref.source_id, link.source_ref.revision, link.locator.start, link.locator.end)
+                if key in seen:
+                    continue
+                seen.add(key)
+                reads.append(broker.read(
+                    task_id=task_id, attempt_id=attempt_id, packet_id=packet_id(task_id, attempt_id),
+                    ref=link.source_ref, start=link.locator.start, end=link.locator.end,
+                    label=link.source_ref.source_id,
+                ))
+        return reads
 
     def source_scout_packet(previous, task_id, attempt_id):
         return Packet(
@@ -675,10 +693,12 @@ def run_project(
         )
 
     def research_agent_packet(previous, task_id, attempt_id):
+        claims = claim_dependencies(previous)
         return Packet(
             packet_id=packet_id(task_id, attempt_id), task_id=task_id, attempt_id=attempt_id,
             role="research_agent", objective=question, requirements=requirements,
-            dependencies=[*claim_dependencies(previous), *research_dependencies(previous)],
+            dependencies=[*claims, *research_dependencies(previous)],
+            reads=supporting_reads(claims, task_id, attempt_id),
             available_sources=available,
             skills=["source_screening", "literature_extraction", "hypothesis_design", "result_analysis"],
         )
@@ -702,10 +722,12 @@ def run_project(
         )
 
     def synthesis_packet(previous, task_id, attempt_id):
+        claims = claim_dependencies(previous)
         return Packet(
             packet_id=packet_id(task_id, attempt_id), task_id=task_id, attempt_id=attempt_id,
             role="synthesis_agent", objective=question, requirements=requirements,
-            dependencies=[*claim_dependencies(previous), *research_dependencies(previous)],
+            dependencies=[*claims, *research_dependencies(previous)],
+            reads=supporting_reads(claims, task_id, attempt_id),
             skills=["synthesis"],
         )
 
@@ -727,6 +749,8 @@ def run_project(
         )
 
     def writer_packet(previous, task_id, attempt_id, feedback=None):
+        incomplete = [f"Incomplete research task {result.role}: " + "; ".join(result.unresolved or [result.outcome])
+                      for result in previous if result.outcome != "produced"]
         return Packet(
             packet_id=packet_id(task_id, attempt_id),
             task_id=task_id,
@@ -735,7 +759,7 @@ def run_project(
             objective=question,
             requirements=requirements,
             dependencies=[*claim_dependencies(previous), *research_dependencies(previous)],
-            review_feedback=feedback or [],
+            review_feedback=[*(feedback or []), *incomplete],
         )
 
     def report_artifact(writer, content, claims, previous=()):
@@ -848,6 +872,9 @@ def run_project(
             )
         else:
             result = agent.run(role, packet)
+        if role == "writer":
+            result = result.model_copy(update={"limitations": [*result.limitations,
+                *(note for note in packet.review_feedback if note.startswith("Incomplete research task "))]})
         if role == "writer" and literature_results:
             result = result.model_copy(update={"limitations": [*result.limitations, *[
                 f"Literature review {review.id}: {limitation}"
@@ -864,11 +891,19 @@ def run_project(
             # connection keeps receipt verification thread-safe and read-only.
             check_conn = db.connect(database)
             try:
-                Broker(check_conn, root, policy).check_required_reads(
-                    task_id=packet.task_id,
-                    attempt_id=packet.attempt_id,
-                    required=required,
-                )
+                verification = Broker(check_conn, root, policy)
+                if role in {"research_agent", "synthesis_agent"}:
+                    # These specialists receive cited excerpts, not entire papers.
+                    # Verify ownership, locator and quote for each delivered receipt.
+                    for read in packet.reads:
+                        verification.verify_evidence_link(EvidenceLink(
+                            relation="supports", source_ref=read.source_ref, locator=read.selector,
+                            quote=read.content, read_receipt_id=read.read_receipt_id,
+                        ), task_id=packet.task_id, attempt_id=packet.attempt_id)
+                else:
+                    verification.check_required_reads(
+                        task_id=packet.task_id, attempt_id=packet.attempt_id, required=required,
+                    )
             finally:
                 check_conn.close()
         return result

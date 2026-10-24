@@ -1,7 +1,7 @@
 """Run the evidence reader live on the baselines fixture and check it against the answer key.
 
-Providers: anthropic (default; ANTHROPIC_API_KEY or `ant auth login`) or openai (OPENAI_API_KEY,
-optional OPENAI_BASE_URL for a local server). Not part of pytest: it calls a real model.
+Defaults to OpenAI GPT-5 nano for inexpensive workflow checks. Anthropic is available with --provider.
+Not part of pytest: it calls a real model using the selected provider's credentials.
 """
 
 import argparse
@@ -15,6 +15,7 @@ from ar.adapter import PROVIDERS, LiveAgent, make_client  # noqa: E402
 from ar.agents.fake import load_answer_key  # noqa: E402
 from ar.models import LineSelector, SourceRef  # noqa: E402
 from ar.packet import DeliveredRead, Packet  # noqa: E402
+from ar.openai_client import DEFAULT_TEST_MODEL  # noqa: E402
 
 FIXTURE = ROOT / "fixtures" / "baselines"
 
@@ -22,12 +23,13 @@ FIXTURE = ROOT / "fixtures" / "baselines"
 def main() -> int:
     key = load_answer_key()
     parser = argparse.ArgumentParser()
-    parser.add_argument("--provider", default="anthropic", choices=PROVIDERS)
+    parser.add_argument("--provider", default="openai", choices=PROVIDERS)
     parser.add_argument("--model")
     parser.add_argument("--base-url")
     parser.add_argument("--effort", default="medium", choices=["low", "medium", "high", "xhigh", "max"])
     args = parser.parse_args()
-    client = make_client(args.provider, args.model, args.effort, args.base_url)
+    model = args.model or (DEFAULT_TEST_MODEL if args.provider == "openai" else None)
+    client = make_client(args.provider, model, args.effort, args.base_url)
     agent = LiveAgent(client)
     failures = 0
     for source_id, entry in key["sources"].items():

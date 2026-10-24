@@ -65,9 +65,26 @@ python -m venv .venv
   `ANTHROPIC_API_KEY` (or sign in once with `ant auth login`). Options: `--model <id>`,
   `--effort low|medium|high|xhigh|max`, `--max-model-calls N`.
 - `python scripts/live_smoke.py [--model M] [--effort E]` runs the evidence reader live on the fixture and
-  compares it to the answer key. It calls a real model and is not part of pytest.
+  compares it to the answer key. It defaults to OpenAI `gpt-5-nano`; another provider/model can be selected
+  explicitly. It calls a real model and is not part of pytest.
 
 Both paths share the same packet and the same `AgentResult` schema.
+
+Studio's **Load demo**, **Watch showcase**, and **Low-cost workflow test** use `gpt-5-nano` when an
+OpenAI API key is configured. Set `STUDIO_TEST_MODEL` to override only that test model. Normal research
+retains its configured provider/model; explicit `--fake` and offline demo mode still make no model calls.
+The active test model appears in the page's mode label. API clients can pass `test_run: true` to
+`POST /api/run`, or `false` to return to normal research.
+
+To verify the complete research/synthesis handoff with real low-cost model calls:
+
+```text
+python scripts/live_workflow_smoke.py --env-file .env
+```
+
+This uses the supplied demo papers and checks that the planner, readers, research agent, synthesis,
+writer and reviewer actually produce results. It retains the run journal under `.research/live-workflows/`
+and exits unsuccessfully if a specialist requests missing dependencies or the report cannot complete.
 
 ## Literature review agents
 

@@ -62,6 +62,10 @@ Core rules:
 - Preserve support IDs such as claim:<id>, document:<source>:<lines>, and artifact:<id>@<revision>.
 - Distinguish direct evidence, weak evidence, inference, contradiction, gaps, and artifacts.
 - Keep hypotheses/proposed tests separate from observed results.
+- Accepted claims and their cited excerpts are usable evidence for this bounded synthesis; do not require
+  full papers, fresh experiments or every optional upstream specialist before producing a writer brief.
+- Produce a preliminary synthesis from the supplied evidence and record missing work as gaps and handoffs.
+  Use needs_dependency only when the packet has no usable evidence or research outputs. Do not invent support.
 - Name tensions and gaps clearly so the writer does not hide uncertainty.
 - Propose follow-up tasks for source_scout, evidence_reader, research_agent, theorist, analyst,
   adversarial_effect_agent, writer, or reviewer when that would improve the project.
@@ -113,7 +117,7 @@ def user_message(packet: Packet) -> str:
     for dep in packet.dependencies:
         if dep.claim:
             links = ", ".join(f"{l.relation}:{l.source_ref.source_id}" for l in dep.claim.evidence_links)
-            parts.append(f'<claim id="{dep.id}" evidence="{links}">\n{dep.claim.statement}\n</claim>')
+            parts.append(f'<claim id="{dep.id}" evidence="{links}">\n{dep.claim.model_dump_json(indent=2)}\n</claim>')
         else:
             parts.append(f'<artifact id="{dep.id}" revision="{dep.revision}">\n{dep.content}\n</artifact>')
     if packet.review_feedback:

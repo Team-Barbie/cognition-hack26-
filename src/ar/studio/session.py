@@ -66,6 +66,12 @@ RETRY_NUDGE = (
     "Limitations and Next steps."
 )
 ROLES_WITH_SCOPE = {"planner", "writer", "reviewer"}
+EVIDENCE_SPECIALISTS = {"research_agent", "synthesis_agent"}
+BOUNDED_RESEARCH_NOTE = (
+    "Complete a preliminary assessment from the accepted claims and delivered source passages in this packet. "
+    "Missing experiments, datasets, full papers or optional specialist outputs are limitations and next steps; "
+    "they do not block this bounded task when usable evidence is present. Never invent evidence."
+)
 SCOPE_CONSTRAINT = (
     "Use only supplied or retrieved document snapshots as evidence. "
     "Answer what the sources support, and list any data work the request needs as concrete next steps."
@@ -128,12 +134,17 @@ class StageAgent:
             return "Checking the draft"
         return "Working"
 
-    @staticmethod
-    def prepare_packet(role: Role, packet: Packet) -> Packet:
+    def prepare_packet(self, role: Role, packet: Packet) -> Packet:
         """Apply Studio scope guidance before the controller journals the dispatch."""
+        notes = []
         if role in ROLES_WITH_SCOPE:
-            return packet.model_copy(update={"objective": f"{packet.objective}\n\n{SCOPE_NOTE}"})
-        return packet
+            notes.append(SCOPE_NOTE)
+        if role in EVIDENCE_SPECIALISTS:
+            notes.append(BOUNDED_RESEARCH_NOTE)
+        if role == "planner" and self.session.test_run:
+            notes.append("This is a workflow test. Include research_agent and synthesis_agent after evidence reading, "
+                         "then finish with writer and reviewer so their evidence handoffs are exercised.")
+        return packet.model_copy(update={"objective": "\n\n".join([packet.objective, *notes])}) if notes else packet
 
     @staticmethod
     def _done_detail(role: Role, result: AgentResult) -> str:
@@ -195,6 +206,9 @@ class StageAgent:
                 again = packet
                 if role == "writer":
                     again = packet.model_copy(update={"review_feedback": [*packet.review_feedback, RETRY_NUDGE]})
+                elif role in EVIDENCE_SPECIALISTS and (packet.claim_items() or packet.reads):
+                    again = packet.model_copy(update={"review_feedback": [*packet.review_feedback,
+                        "The previous response requested: " + "; ".join(result.unresolved), BOUNDED_RESEARCH_NOTE]})
                 if remaining is not None:
                     again = again.model_copy(update={"model_call_budget": remaining})
                 retry = self.inner.run(role, again)
@@ -221,12 +235,16 @@ MAX_RESTORED_SOURCES = 40
 
 
 class Session:
-    def __init__(self, workdir: Path, make_agent: Callable[[], Any] | None, client=None) -> None:
+    def __init__(self, workdir: Path, make_agent: Callable[[], Any] | None, client=None, *,
+                 make_test_agent: Callable[[], Any] | None = None, test_model: str | None = None) -> None:
         self.id = uuid.uuid4().hex[:12]
         self.root = workdir / self.id
         self.root.mkdir(parents=True, exist_ok=True)
         self.event_database = self.root / "studio-events.sqlite"
         self.make_agent = make_agent  # None means demo mode with the fake agent
+        self.make_test_agent = make_test_agent
+        self.test_model = test_model
+        self.test_run = False
         self.client = client  # live chat client for intake and the scout; None in demo mode
         self.intake = Intake(client=client)
         self.sources: dict[str, str] = {}
@@ -357,12 +375,19 @@ class Session:
                 self.add_source(str(name)[:120], str(text))
         if state.get("demo"):
             self.use_demo()
+        if isinstance(state.get("test_run"), bool):
+            self.test_run = state["test_run"]
+            self.emit("run_config", test_run=self.test_run, model=self.test_model)
         if "literature_reviews" in state:
             self.set_literature_reviews(state["literature_reviews"])
         self.intake.resume(bool(state.get("ready")))
 
     def use_demo(self, *, showcase: bool = False) -> None:
+        if self.running:
+            raise RuntimeError("wait for the run to finish before loading the demo")
         self.showcase_mode = showcase
+        self.test_run = True
+        self.emit("run_config", test_run=True, model=self.test_model)
         for path in sorted((FIXTURE / "input" / "papers").glob("*.md")):
             self.sources[path.stem] = path.read_text(encoding="utf-8")
         if not self.intake.brief.question or self.make_agent is None:
@@ -424,9 +449,14 @@ class Session:
 
     # run
 
-    def start(self, max_model_calls: int = 24) -> None:
+    def start(self, max_model_calls: int = 24, *, test_run: bool | None = None) -> None:
         if self._thread and self._thread.is_alive():
             raise RuntimeError("a run is already in progress")
+        if test_run is not None:
+            if not isinstance(test_run, bool):
+                raise ValueError("test_run must be a boolean")
+            self.test_run = test_run
+        self.emit("run_config", test_run=self.test_run, model=self.test_model if self.test_run else None)
         if not self.intake.brief.question:
             raise ValueError("ask your question in the chat first")
         if not self.sources and self.make_agent is None:
@@ -491,7 +521,8 @@ class Session:
         try:
             self._write_project(project)
             db.init_project(project).close()
-            agent = StageAgent(self.make_agent() if self.make_agent else FakeAgent(), self)
+            factory = (self.make_test_agent or self.make_agent) if self.test_run else self.make_agent
+            agent = StageAgent(factory() if factory else FakeAgent(), self)
             watcher.start()
             outcome = run_project(project, agent, max_model_calls=max_model_calls)
             stop.set()

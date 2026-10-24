@@ -69,6 +69,14 @@ def test_every_research_specialist_executes_and_hands_results_to_writer(tmp_path
         packet = team.packets[name][0]
         assert packet.claim_items()
         assert f"Do the {name} assignment." in packet.objective
+    with db.connect(tmp_path) as conn:
+        for role in ("research_agent", "synthesis_agent"):
+            packet = team.packets[role][0]
+            assert {read.source_ref.source_id for read in packet.reads} == {"paper-a", "paper-b"}
+            for read in packet.reads:
+                assert read.selector.start == read.selector.end == 7
+                receipt = conn.execute("SELECT task_id, attempt_id FROM read_receipts WHERE id=?", (read.read_receipt_id,)).fetchone()
+                assert tuple(receipt) == (packet.task_id, packet.attempt_id)
     upstream = [json.loads(dep.content)["role"] for dep in team.packets["writer"][0].dependencies
                 if dep.kind == "artifact" and '"role"' in dep.content]
     assert {"research_agent", "theorist", "analyst", "synthesis_agent", "adversarial_effect_agent"} <= set(upstream)

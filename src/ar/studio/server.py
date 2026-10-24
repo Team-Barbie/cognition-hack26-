@@ -18,6 +18,8 @@ from typing import Any
 from urllib.parse import parse_qs, urlparse
 
 from ar.adapter import LiveAgent, load_env, make_client
+from ar.agents.fake import FakeAgent
+from ar.openai_client import DEFAULT_TEST_MODEL
 from ar.studio.session import Session
 
 MAX_BODY = 1_000_000
@@ -134,6 +136,7 @@ class Studio:
             raise ValueError("Research provider must be openai or anthropic; use the coding worker for Codex")
         self.provider = provider
         self.model = model
+        self.test_model = os.environ.get("STUDIO_TEST_MODEL", DEFAULT_TEST_MODEL)
 
     @property
     def mode(self) -> str:
@@ -144,7 +147,16 @@ class Studio:
 
     def new_session(self) -> Session:
         make_agent = (lambda: LiveAgent(self._client())) if self.provider else None
-        session = Session(self.workdir, make_agent, client=self._client())
+        make_test_agent = None
+        test_model = None
+        if self.provider:
+            if os.environ.get("OPENAI_API_KEY"):
+                make_test_agent = lambda: LiveAgent(make_client("openai", self.test_model))
+                test_model = self.test_model
+            else:
+                make_test_agent = FakeAgent  # no GPT credentials: keep the demo free
+        session = Session(self.workdir, make_agent, client=self._client(),
+                          make_test_agent=make_test_agent, test_model=test_model)
         with self._lock:
             self.sessions[session.id] = session
         return session
@@ -285,7 +297,7 @@ def handle(studio: Studio, method: str, path: str, query: str, raw_body: bytes,
             session.set_literature_reviews(data.get("reviews", []))
             reply["reviews"] = [spec.model_dump(mode="json") for spec in session.literature_reviews]
         elif path == "/api/run":
-            session.start()
+            session.start(test_run=data.get("test_run"))
         else:
             return _json({"error": "not found"}, 404)
         if isinstance(data.get("after"), int):

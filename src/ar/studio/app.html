@@ -424,6 +424,7 @@ mark { background: rgba(185,240,74,.16); color: var(--ph-hi); border-bottom: 1px
             <button class="act" id="demo" type="button">Load demo</button>
             <button class="act" id="literature-toggle" type="button">Literature reviews</button>
             <span class="sp"></span>
+            <label class="web-note"><input id="test-run" type="checkbox" aria-label="Use low-cost model for workflow test"> Low-cost workflow test</label>
             <button class="go" id="start" type="button">Run research</button>
           </div>
           <form class="paste" id="paste" hidden>
@@ -568,7 +569,7 @@ mark { background: rgba(185,240,74,.16); color: var(--ph-hi); border-bottom: 1px
   try { password = sessionStorage.getItem("studioPassword") || ""; } catch (_) { /* storage can be blocked */ }
 
   // What the page remembers, so a session the server lost can be rebuilt (serverless hosts keep sessions per instance).
-  const snap = { brief: {}, ready: false, sources: {}, demo: false, literature_reviews: [] };
+  const snap = { brief: {}, ready: false, sources: {}, demo: false, literature_reviews: [], test_run: false };
   const attached = !!new URLSearchParams(location.search).get("session");
   let runPending = false, restoring = null;
   async function api(path, body, retried) {
@@ -942,6 +943,7 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
     if (!state.running) { setSub(!state.question ? "VERIFIED CLAIMS  EXACT QUOTES" : `${state.sources || "NO"} SOURCE${state.sources === 1 ? "" : "S"} ON THE SHELF`); setStateLine(state.reportShown ? "REPORT READY" : (!state.question ? "WATCH SHOWCASE" : "READY"), false, state.reportShown ? "done" : "ready"); }
   }
   function updateStart() {
+    $("test-run").disabled = state.running;
     const label = state.running ? "Researching" : (state.reportShown ? "Run again" : "Run research");
     for (const id of ["start", "chip-start"]) { $(id).disabled = state.running; $(id).textContent = label; }
     document.querySelectorAll("#literature-form input, #literature-form select, #literature-form button, #literature-list button").forEach(el => { el.disabled = state.running; });
@@ -1201,7 +1203,7 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
   }
   function resultDetail(result) {
     const p = result.payload || {};
-    if (result.outcome !== "produced") return `Stopped: ${String(result.outcome || "unknown").replaceAll("_", " ")}`;
+    if (result.outcome !== "produced") return `${result.outcome === "needs_dependency" ? "Needs input" : "Stopped"}: ${(result.unresolved || []).join("; ") || String(result.outcome || "unknown").replaceAll("_", " ")}`;
     if (result.role === "planner") { const tasks = result.proposed_tasks || []; return `Created ${tasks.length} tasks for ${tasks.filter(t => t.role === "evidence_reader").length} readers`; }
     if (result.role === "evidence_reader") return p.relevant === false ? "No relevant evidence found" : `Found ${(result.claims || []).length} claim${(result.claims || []).length === 1 ? "" : "s"}`;
     if (result.role === "source_scout") return `Screened ${(p.screened || []).length} source${(p.screened || []).length === 1 ? "" : "s"}`;
@@ -1256,6 +1258,12 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
     }
   }
   function apply(e) {
+    if (e.type === "run_config") {
+      snap.test_run = !!e.test_run;
+      $("test-run").checked = snap.test_run;
+      const label = e.test_run ? `test · ${e.model || "fixture"}` : (state.providerLabel || "research");
+      $("chat-mode").textContent = label; $("hud-mode").textContent = label.toUpperCase(); return;
+    }
     if (e.type === "literature_config") { renderLiterature(e.reviews); return; }
     if (e.type === "brief") { snap.brief = e.brief; snap.ready = !!e.ready; }
     else if (e.type === "sources") for (const k of Object.keys(snap.sources)) if (!e.sources.some(x => x.id === k)) delete snap.sources[k];
@@ -1341,7 +1349,7 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
     const why = missing(); if (why) { addTurn({ role: "assistant", who: "Res Loop", text: why }); openChat(true); toast(why); return; }
     state.running = true; updateStart(); runPending = true;
     try {
-      const d = await api("/api/run", {});  // hosted: the answer carries the run's events
+      const d = await api("/api/run", { test_run: $("test-run").checked });  // hosted: the answer carries the run's events
       if (d.status === "running" && d.streamEnded) { state.running = false; updateStart(); toast("This run is taking longer than the host allows. Try fewer or shorter sources."); }
     } catch (err) { state.running = false; updateStart(); toast(err.message); } finally { runPending = false; }
   });
@@ -1357,7 +1365,7 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
   async function startStudio() {
     try {
       const attach = new URLSearchParams(location.search).get("session"); const s = attach ? { id: attach, ...(await api("/api/info")) } : await api("/api/session", {});
-      sid = s.id; const live = String(s.mode || "").startsWith("live"), label = live ? String(s.mode).replace(/^live\W+/, "") : "demo"; $("chat-mode").textContent = label; $("hud-mode").textContent = label.toUpperCase(); renderTeam();
+      sid = s.id; const live = String(s.mode || "").startsWith("live"), label = live ? String(s.mode).replace(/^live\W+/, "") : "demo"; state.providerLabel = label; $("chat-mode").textContent = label; $("hud-mode").textContent = label.toUpperCase(); renderTeam();
       unlock(); renderBrief({}, false); streamEvents(); if (location.hash === "#chat") openChat(true); else if (!narrow.matches) $("input").focus();
     } catch (err) { if (!$("lock").hidden) { if (attempted) $("lock-error").textContent = "Incorrect password."; } else toast("Could not reach the studio server."); }
   }
