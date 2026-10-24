@@ -4,6 +4,9 @@ import json
 import pytest
 
 from ar.studio.server import Studio, handle
+from ar.studio.intake import Brief
+from ar.studio.session import Session
+from ar.web_search import SearchResult
 from ar.web_search import WebSearchError, search_crossref
 
 
@@ -52,3 +55,19 @@ def test_search_api_returns_results_without_adding_fake_sources(tmp_path, monkey
                              json.dumps({"id": session.id, "query": "handoff"}).encode())
     assert status == 200 and json.loads(body)["results"] == found
     assert session.sources == {}
+
+
+def test_run_web_scout_emits_candidates_without_turning_them_into_evidence(tmp_path, monkeypatch):
+    session = Session(tmp_path, None)
+    session.intake.brief = Brief(question="How should agents hand work to each other?", context="Research systems")
+    session.sources["uploaded-paper"] = "full text line one\nfull text line two"
+    result = SearchResult("Related paper", "A. Author", 2026, "Press", "10/x", "https://doi.org/10/x", "article")
+    monkeypatch.setattr("ar.studio.session.search_crossref", lambda query, limit: [result])
+
+    session._search_web_for_run()
+
+    assert session.web_results[0]["title"] == "Related paper"
+    assert list(session.sources) == ["uploaded-paper"]
+    assert next(e for e in session.events if e["type"] == "web_results")["query"].endswith("Research systems")
+    scout = [e for e in session.events if e["type"] == "agent" and e["id"] == "scout"]
+    assert [e["status"] for e in scout] == ["running", "done"]

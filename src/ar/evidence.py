@@ -217,6 +217,10 @@ def accept_claims(
     """
     result = AcceptResult()
     with conn:
+        # Multiple review instances may accept evidence concurrently. Lock before
+        # allocating sequential claim/rejection ids or checking draft digests.
+        if not conn.in_transaction:
+            conn.execute("BEGIN IMMEDIATE")
         n = _next_number(conn, "claims", "claim-")
         r = _next_number(conn, "claim_rejections", "rej-")
         known = {row[0] for row in conn.execute("SELECT id FROM claims")}

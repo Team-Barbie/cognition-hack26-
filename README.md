@@ -1,11 +1,91 @@
-# ar: autoresearch with explicit contracts
+# ar: research and engineering with Codex
 
-A research run you can inspect. Give it a brief and a few papers; it plans, reads each source through a
-broker, extracts claims whose quotes are checked against the exact lines the agent was handed, drafts a
-report that cites only claim ids, has it reviewed, and exports the report with a provenance manifest.
-`PROJECTSPEC.md` is the design, `PLAN.md` the build plan, `INTERFACES.md` the binding signatures.
+The default live runtime is one native Codex agent. Give it an objective and optional papers/data/code;
+it chooses how to research, implement, build, simulate and test. It retains context in one resumable
+Codex thread and can delegate focused work to native subagents when useful. There is no fixed sequence
+of specialist agents in this path. The existing broker-based pipeline remains available for the offline
+demo and explicit legacy providers.
 
-Enforcement is application-level brokerage through the runtime broker; there is no OS sandbox.
+Codex runs through its installed App Server, with workspace-write permissions and no automatic escalation.
+The application captures native tool events, command exit statuses, output artifacts and SHA-256 hashes.
+Codex citations and check summaries remain model-reported; they do not acquire the legacy pipeline's
+broker-verified quote/read-receipt guarantees. Codex's installed platform sandbox must be configured.
+
+## Native Codex workflow (default)
+
+Install the Codex CLI, authenticate with `codex login`, then install this Python project as below.
+No additional agent SDK is required: the backend speaks the native App Server JSON-RPC protocol over stdio.
+The transport was checked against Codex CLI 0.144.5. Set `AR_CODEX_BIN` if Codex is not on PATH.
+
+```text
+ar init my-project
+# Edit my-project/input/brief.md; put papers, datasets and source code under input/.
+ar run my-project --max-agents 3 --timeout 1800
+ar resume my-project
+ar status my-project
+ar pause my-project
+ar studio
+```
+
+Use `--max-agents 0` to keep all work in the lead agent. Use `--model MODEL` to choose an available
+Codex model explicitly; otherwise the runtime selects the default advertised by Codex's model catalog.
+An explicit model is never silently substituted. `--effort` sets reasoning effort. The wall-clock
+`--timeout` bounds each turn; legacy `--max-model-calls` and `--max-tasks` apply only to the old pipeline.
+Run `ar studio --fake` for the offline fixture demo. Studio also defaults to Codex and its backend supports
+follow-up steering through `/api/chat` during a run and cancellation through `/api/stop`.
+
+Outputs are `output/report.md`, `run-summary.md`, `codex-result.json`, `provenance.json`, and captured
+files in `output/deliverables/`. The native thread id, staged-input hashes and event journal live under
+`.research/`; the writable agent workspace is `.research/codex-workspace/`. Resuming reuses the thread
+and workspace while refreshing the current inputs. One project permits one active run. If a host crash
+leaves `.research/codex.lock`, verify the old worker has stopped before removing that lock.
+
+For long runs use the local persistent server or a dedicated worker host with Codex installed and
+authenticated. A serverless deployment does not automatically provide a Codex executable, credentials,
+or a working platform sandbox. Sandbox startup failures are reported as failed/blocked work, never as
+successful builds or tests. Keep the native sandbox enabled; configure/fix it or use a supported worker.
+
+## Callable by a planner or another agent
+
+The worker is also a Python API and a standalone MCP server. The caller supplies a free-form objective;
+it does not need to follow the old role graph or required-reading contracts. Native workspace permissions
+and the configured timeout still apply.
+
+```python
+from pathlib import Path
+from ar.coding_agent import CodingAgent
+
+worker = CodingAgent(Path("my-project"))
+job = worker.start("Implement the baseline and test edge cases", input_paths=["src", "tests"])
+progress = worker.status(job["job_id"])
+worker.steer(job["job_id"], "Also cover empty input")  # while running
+result = worker.wait(job["job_id"], timeout=60)
+# Resume a finished/interrupted session with a new instruction:
+# worker.start("Address the remaining failures", job_id=job["job_id"], input_paths=["src", "tests"])
+# worker.cancel(job["job_id"])  # interrupt an active job
+# worker.close()                 # cancel remaining active jobs on shutdown
+```
+
+To expose the same worker to an agent harness, register a stdio MCP server that launches:
+
+```text
+python -m ar.coding_mcp /absolute/path/to/project
+```
+
+Use the Python executable where this package is installed. The server exposes `coding.start`,
+`coding.status`, `coding.steer`, and `coding.cancel`. Start returns immediately with a job id; poll status
+using its returned `cursor` as `after` to receive more captured events and the final result. A caller can
+pass `job_id` to start to resume the same Codex session. Input paths are relative to the bound project;
+directory requests skip Git/runtime/dependency caches and environment files. Completed jobs and their
+artifacts persist under `.research/coding-jobs/`. After an unexpected server restart an in-flight job
+is reported as `execution_unknown`, rather than claimed successful or automatically rerun. Keep the
+MCP connection open while jobs run; shutdown requests cancellation of active jobs.
+
+## Legacy research pipeline
+
+`PROJECTSPEC.md`, `PLAN.md`, and `INTERFACES.md` describe the earlier contracts-based architecture.
+Its role-specific behavior and quote/read-receipt guarantees below apply to `--fake` or explicit
+`--provider anthropic` / `--provider openai`, rather than the default Codex runtime.
 
 ## Install
 
@@ -26,6 +106,115 @@ python -m venv .venv
   compares it to the answer key. It calls a real model and is not part of pytest.
 
 Both paths share the same packet and the same `AgentResult` schema.
+
+## Literature review agents
+
+Literature reviews perform real discovery and acquisition before extracting evidence. They search
+Crossref and Europe PMC, deduplicate papers by DOI (or normalized title/year), keep screening decisions,
+fetch open-access XML/PDF/HTML, and read bounded line windows through the evidence broker. General web
+search is available through the `brave` backend when `BRAVE_SEARCH_API_KEY` is set. Crossref and Europe PMC
+need no API key; choose databases appropriate to your subject. Set `WEB_SEARCH_CONTACT` for Crossref's
+polite-pool contact parameter.
+
+To create one review without preparing a project first:
+
+```text
+ar literature my-project --id methods --question "Which forecasting baselines work for weekly demand?" --backend crossref
+```
+
+For several independent agents, copy `fixtures/literature.example.yaml` to
+`my-project/input/literature.yaml` and edit the questions and limits. Every review needs a unique `id`.
+
+```text
+ar literature my-project
+ar literature my-project --review effectiveness --review limitations
+ar run my-project
+ar run my-project --provider anthropic --max-model-calls 80
+```
+
+`ar literature` defaults to the existing Codex login. Codex supplies stateless JSON decisions in a
+separate read-only workspace with inherited user tool configuration, web search, shell, plugins and
+delegation disabled. The literature runtime performs and journals actual retrieval and validates
+evidence. One model-call unit is one decision turn, including any provider-internal work/retries.
+Use `--provider anthropic` or `--provider openai` for API-based decisions instead.
+
+`ar literature` uses each configured review's budget. `ar run --provider anthropic` (or `openai`) shares its model-call allowance across
+configured reviews, reserves six calls for the final report, and passes accepted claims and review
+summaries into planning/writing. Partially covered reviews keep the overall run incomplete. The normal
+CLI provider/model/base-URL options also apply to `ar literature`.
+
+Each review records its protocol, query variants and contradictory searches, result pages and retrieval
+times, exclusions, downloaded-content hashes, extraction method, source access level, read receipts,
+accepted/rejected claims, study characteristics, follow-up gaps, and stopping reason. Its report and
+portable search ledger are in `output/literature/<id>-<spec-hash>/`. Original response bodies are in the
+project's content-addressed blob store. Model-created notes and discovery snippets never become evidence.
+Abstract-only access, unavailable papers, unread lines, missing searches, and exhausted budgets are
+reported as limitations. A quote match establishes provenance; scientific validity still requires
+assessing study design, applicability, uncertainty, and conflicting results.
+
+Repeated runs of an identical specification reuse its journal and result. Interrupted completed
+operations are replayed from the journal; an operation with an unknown outcome is not silently charged
+again. Use a new review id for a deliberate retry or a fresh search. Changing the specification creates
+a distinct version. The runtime leases an active instance to prevent duplicate execution. Independent
+instances can run concurrently through the Python API:
+
+```python
+from concurrent.futures import ThreadPoolExecutor
+from ar.literature import LiteratureReviewAgent, ReviewSpec
+
+reviewer = LiteratureReviewAgent(project_path, configured_agent)
+specs = [ReviewSpec(id="methods", question="Which methods work?"),
+         ReviewSpec(id="limitations", question="What evidence contradicts the reported gains?")]
+with ThreadPoolExecutor(max_workers=2) as pool:
+    results = list(pool.map(reviewer.run, specs))
+```
+
+In Studio, **Literature reviews** adds/removes named review instances for either runtime. An API-provider
+run without uploaded papers automatically creates a review of the brief. Search and acquisition progress appears separately for each
+instance on the stage. Demo mode continues to use the built-in fixture and does not perform web research.
+These are bounded automated reviews, not a claim of exhaustive or formally systematic coverage.
+
+The default native Codex runner executes configured literature specialists before its lead turn and
+stages their reports and search ledgers in `literature-evidence/`. Its lead session, native tools,
+delegation, coding-worker API and artifacts stay available. Review results are included in the report
+and provenance JSON; a partial/failed review keeps the combined outcome blocked. Broker quotation checks
+apply to the specialists' accepted claims; the lead's final interpretations retain native citation assurances.
+The same specialist is integrated with `ar studio --provider anthropic` and `--provider openai`.
+Long multi-review runs are best run
+locally or in a worker, since hosted request limits can end an in-flight job. `max_seconds` is checked
+between operations; an in-flight model call follows the provider timeout (120 seconds for a Codex decision).
+
+For a planner or any other agent harness, the dedicated specialist has a non-blocking Python API:
+
+```python
+from pathlib import Path
+from ar.literature_service import LiteratureService
+
+reviews = LiteratureService(Path("my-project"))
+methods = reviews.start({"id": "methods", "question": "Which methods work?"})
+safety = reviews.start({"id": "safety", "question": "What are the failure modes?"})
+progress = reviews.status(methods["job_id"])
+# Poll with after=progress["cursor"] to receive only new events.
+result = reviews.wait(methods["job_id"], timeout=60)
+```
+
+Expose it as a stdio MCP server with the Python executable where this package is installed:
+
+```text
+python -m ar.literature_mcp /absolute/path/to/project
+```
+
+The tools are `literature.start`, `literature.status`, and `literature.list`. `start` takes a `spec`
+following the same review schema as YAML, returns a job id immediately, and permits multiple independent
+jobs (four concurrently by default). `status` returns scoped events, counters and the terminal result.
+Keep the connection/host alive while jobs run. Restarted in-flight jobs report `execution_unknown`;
+completed results and search journals persist. Add `--provider anthropic` or `--provider openai` and
+optional `--model` / `--base-url` arguments to choose an API provider. The separate `coding.*` MCP tools
+remain available through `ar.coding_mcp`.
+
+Provider references: [Crossref API](https://www.crossref.org/documentation/retrieve-metadata/rest-api/),
+[Europe PMC API](https://europepmc.org/RestfulWebService), and
+[Brave Search API](https://api-dashboard.search.brave.com/documentation).
 
 ## Studio access
 

@@ -171,7 +171,7 @@ def test_cli_inspect_export_and_live_agent_selection(tmp_path, monkeypatch):
     monkeypatch.setattr(cli, "LiveAgent", lambda client: FakeAgent())
     run = runner.invoke(
         cli.app,
-        ["run", str(project), "--model", "test-model", "--effort", "high"],
+        ["run", str(project), "--provider", "anthropic", "--model", "test-model", "--effort", "high"],
     )
     assert run.exit_code == 0, run.output
     assert seen == {"model": "test-model", "effort": "high"}
@@ -281,14 +281,17 @@ def test_end_to_end_idempotency_key_reuses_completed_run(tmp_path):
 class DynamicResearchAgent:
     def __init__(self):
         self.fake = FakeAgent()
+        self.packets = {}
 
     def run(self, role, packet):
+        self.packets.setdefault(role, []).append(packet)
         result = self.fake.run(role, packet)
         if role != "planner":
             return result
         readers = [task for task in result.proposed_tasks if task.role == "evidence_reader"]
         return result.model_copy(update={"proposed_tasks": [
             *readers,
+            ProposedTask(role="research_agent", objective="Integrate evidence with the nine research checks."),
             ProposedTask(role="theorist", objective="Develop a falsifiable explanation."),
             ProposedTask(role="experiment_runner", objective="Run the configured pilot.", source_ids=["spec-1"]),
             ProposedTask(role="reproducer", objective="Repeat the configured pilot.", source_ids=["spec-1"]),
@@ -322,7 +325,12 @@ timeout_seconds: 60
         encoding="utf-8",
     )
 
-    assert run_project(project, DynamicResearchAgent()) is RunOutcome.COMPLETED
+    agent = DynamicResearchAgent()
+    assert run_project(project, agent) is RunOutcome.COMPLETED
+
+    assert "Planner assignment: Develop a falsifiable explanation." in agent.packets["theorist"][0].objective
+    assert "Planner assignment: Integrate evidence with the nine research checks." in agent.packets["research_agent"][0].objective
+    assert "Planner assignment: Compare the recorded runs." in agent.packets["analyst"][0].objective
 
     conn = connect(project)
     try:
@@ -330,7 +338,7 @@ timeout_seconds: 60
             "SELECT role FROM tasks ORDER BY created_at, id"
         ).fetchall()]
         assert roles == [
-            "planner", "evidence_reader", "evidence_reader", "evidence_reader", "theorist",
+            "planner", "evidence_reader", "evidence_reader", "evidence_reader", "research_agent", "theorist",
             "experiment_runner", "reproducer", "analyst", "writer", "reviewer",
         ]
         runs = list_runs(conn)

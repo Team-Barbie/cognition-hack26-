@@ -16,7 +16,7 @@ from ar.adapter import ChatClient, extract_json
 
 FIELDS = ("question", "context", "constraints", "open_questions")
 
-SYSTEM = """You run intake for a research system that only answers from sources the user supplies.
+SYSTEM = """You run intake for a research system that answers from supplied or runtime-retrieved documents.
 Gather, in a few plain words, like a sharp colleague with no filler or flattery:
 - question: the one research question to answer
 - context: background, domain, who the answer is for
@@ -64,7 +64,7 @@ class Brief:
                 if clean:
                     setattr(self, name, list(dict.fromkeys(clean)))
 
-    def to_markdown(self) -> str:
+    def to_markdown(self, *, native_codex: bool = False) -> str:
         """`Label: text` lines; each becomes a requirement. Context rides on the question line,
         which is the objective every agent receives."""
         question = _one_line(self.question)
@@ -73,6 +73,9 @@ class Brief:
         lines = ["# Brief", "", f"Question: {question}"]
         lines += [f"Constraint: {_one_line(c)}" for c in self.constraints]
         lines += [f"Open question: {_one_line(q)}" for q in self.open_questions]
+        if native_codex:
+            lines.append("Deliverable: Complete the requested research or engineering objective, including code, builds, simulations or tests when needed; provide the resulting artifacts and a report with evidence and limitations.")
+            return "\n".join(lines) + "\n"
         lines.append(
             "Deliverable: A report that answers the question from the supplied sources, cites a source "
             "passage for every finding, names contradictions, and states limitations."
@@ -105,7 +108,7 @@ class Intake:
 
     def opening(self) -> str:
         return (
-            "Ask your question. I'll ask a few things back, then you can add papers."
+            "Ask your question. I'll ask a few things back, then you can add papers or configure literature reviews."
         )
 
     def resume(self, ready: bool) -> None:
@@ -132,7 +135,7 @@ class Intake:
         if self._step < len(SCRIPT):
             return SCRIPT[self._step][1]
         self.ready = bool(self.brief.question)
-        return "That's enough to start. Add papers, or press Start without them."
+        return "The brief is ready. Add papers, or run without them to use labelled background notes."
 
     def _live(self, message: str) -> str | None:
         transcript = "\n".join(f"{m['role']}: {m['content']}" for m in self.history)

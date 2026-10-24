@@ -45,9 +45,16 @@ def _label(conn: sqlite3.Connection, link) -> str:
 def _footnote(conn: sqlite3.Connection, claim: Claim) -> str:
     if not claim.evidence_links:
         return f"[^{claim.id}]: {claim.statement} ({claim.epistemic_status}; no source passage)"
+    literature_labels = {}
+    if conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='literature_sources'").fetchone():
+        for link in claim.evidence_links:
+            row = conn.execute("SELECT metadata_json FROM literature_sources WHERE source_id=?", (link.source_ref.source_id,)).fetchone()
+            if row:
+                meta = json.loads(row[0])
+                literature_labels[link.source_ref.source_id] = f" [{meta['kind']}; {meta['url']}; retrieved {meta['retrieved_at']}]"
     cites = "; ".join(
         f"{l.relation}: {l.source_ref.source_id} r{l.source_ref.revision}, "
-        f"lines {l.locator.start}-{l.locator.end}, \"{l.quote}\"{_label(conn, l)} (receipt {l.read_receipt_id})"
+        f"lines {l.locator.start}-{l.locator.end}, \"{l.quote}\"{_label(conn, l)}{literature_labels.get(l.source_ref.source_id, '')} (receipt {l.read_receipt_id})"
         for l in claim.evidence_links
     )
     return f"[^{claim.id}]: {claim.statement} ({cites})"
@@ -280,6 +287,16 @@ def export_run(
         "experiments": [r.model_dump() for r in list_runs(conn)],
         "imports": [r.model_dump() for r in list_imports(conn)],
     }
+    from ar.literature import list_reviews
+    manifest["literature_reviews"] = [review.model_dump(mode="json") for review in list_reviews(conn)]
+    has_literature = conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='literature_sources'").fetchone()
+    manifest["literature_sources"] = ([json.loads(row[0]) for row in conn.execute("SELECT metadata_json FROM literature_sources ORDER BY rowid")]
+                                      if has_literature else [])
+    for reviewed in manifest["literature_reviews"]:
+        relative = Path(reviewed["report_path"])
+        for path in (Path(project_root) / relative, (Path(project_root) / relative).with_name("search-ledger.json")):
+            if path.is_file() and path.resolve().is_relative_to(out.resolve()):
+                manifest["files"][path.relative_to(out).as_posix()] = hashlib.sha256(path.read_bytes()).hexdigest()
     texts["provenance.json"] = json.dumps(manifest, indent=2, ensure_ascii=False, sort_keys=True) + "\n"
 
     written = []

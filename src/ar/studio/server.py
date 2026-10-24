@@ -74,6 +74,18 @@ class SlidingWindowLimiter:
 _RATE_LIMITER = SlidingWindowLimiter()
 
 
+class StudioHTTPServer(ThreadingHTTPServer):
+    """Threaded server whose listening port belongs to exactly one Studio process.
+
+    ``HTTPServer`` enables ``SO_REUSEADDR``.  On Windows that permits multiple
+    live processes to bind the same address, after which requests can be split
+    between unrelated in-memory session stores.  A second Studio should fail
+    clearly at startup instead of presenting an intermittently broken page.
+    """
+
+    allow_reuse_address = False
+
+
 def _rate_limit(client_id: str | None, path: str) -> tuple[int, str, bytes] | None:
     """Apply a broad API cap plus tighter caps around expensive or connection-heavy routes."""
     if not client_id or not path.startswith("/api/"):
@@ -114,10 +126,9 @@ class Studio:
         if fake:
             provider = None
         elif provider is None:
-            if os.environ.get("OPENAI_API_KEY"):
-                provider = "openai"
-            elif os.environ.get("ANTHROPIC_API_KEY"):
-                provider = "anthropic"
+            provider = "codex"
+        if provider not in {None, "codex", "openai", "anthropic"}:
+            raise ValueError("provider must be codex, openai, or anthropic")
         self.provider = provider
         self.model = model
 
@@ -126,11 +137,16 @@ class Studio:
         return f"live · {self.provider}" if self.provider else "demo · fake agent"
 
     def _client(self):
-        return make_client(self.provider, self.model) if self.provider else None
+        return make_client(self.provider, self.model) if self.provider in {"openai", "anthropic"} else None
 
     def new_session(self) -> Session:
-        make_agent = (lambda: LiveAgent(self._client())) if self.provider else None
-        session = Session(self.workdir, make_agent, client=self._client())
+        make_agent = (lambda: LiveAgent(self._client())) if self.provider in {"openai", "anthropic"} else None
+        runtime_factory = None
+        if self.provider == "codex":
+            from ar.codex_runtime import CodexRuntime
+
+            runtime_factory = lambda: CodexRuntime(model=self.model)
+        session = Session(self.workdir, make_agent, client=self._client(), runtime_factory=runtime_factory)
         with self._lock:
             self.sessions[session.id] = session
         return session
@@ -140,6 +156,12 @@ class Studio:
         if session is None:
             raise KeyError("unknown session")
         return session
+
+
+# The tab icon: the pixel invader from the UI, lime on the CRT black with its eyes in the accent colour.
+FAVICON = (
+    b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 13 13" shape-rendering="crispEdges"><rect width="13" height="13" rx="2.2" fill="#070a05"/><rect x=".5" y=".5" width="12" height="12" rx="1.8" fill="none" stroke="#2f4a12" stroke-width=".5"/><path d="M3 2h1v1h-1zM9 2h1v1h-1zM4 3h1v1h-1zM8 3h1v1h-1zM3 4h7v1h-7zM2 5h2v1h-2zM5 5h3v1h-3zM9 5h2v1h-2zM1 6h11v1h-11zM1 7h1v1h-1zM3 7h7v1h-7zM11 7h1v1h-1zM1 8h1v1h-1zM3 8h1v1h-1zM9 8h1v1h-1zM11 8h1v1h-1zM4 9h2v1h-2zM7 9h2v1h-2z" fill="#b9f04a"/><path d="M4 5h1v1h-1zM8 5h1v1h-1z" fill="#ff4fa3"/></svg>'
+)
 
 
 def studio_page() -> bytes:
@@ -220,6 +242,8 @@ def handle(studio: Studio, method: str, path: str, query: str, raw_body: bytes,
     if path.startswith("/api/") and not _authorized(authorization):
         return _json({"error": "password required"}, HTTPStatus.UNAUTHORIZED)
     if method == "GET":
+        if path in ("/favicon.svg", "/favicon.ico"):
+            return 200, "image/svg+xml", FAVICON
         if path in ("/", "/index.html"):
             return 200, "text/html; charset=utf-8", studio_page()
         if path == "/api/info":
@@ -259,8 +283,13 @@ def handle(studio: Studio, method: str, path: str, query: str, raw_body: bytes,
             session.use_demo()
         elif path == "/api/search":
             reply["results"] = session.search_web(str(data.get("query", ""))[:500])
+        elif path == "/api/literature":
+            session.set_literature_reviews(data.get("reviews", []))
+            reply["reviews"] = [spec.model_dump(mode="json") for spec in session.literature_reviews]
         elif path == "/api/run":
             session.start()
+        elif path == "/api/stop":
+            session.stop()
         else:
             return _json({"error": "not found"}, 404)
         if isinstance(data.get("after"), int):
@@ -271,6 +300,8 @@ def handle(studio: Studio, method: str, path: str, query: str, raw_body: bytes,
         return _json({"error": str(exc).strip("'\"")}, HTTPStatus.BAD_REQUEST)
     except (ValueError, RuntimeError) as exc:
         return _json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
+    except OSError as exc:
+        return _json({"error": f"studio storage is unavailable: {exc}"}, HTTPStatus.INTERNAL_SERVER_ERROR)
 
 
 def vercel_studio() -> Studio:
@@ -343,9 +374,12 @@ def make_handler(studio: Studio) -> type[BaseHTTPRequestHandler]:
 
 
 def serve(port: int = 8765, *, provider: str | None = None, model: str | None = None, fake: bool = False,
-          workdir: Path = DEFAULT_WORKDIR, env_files: tuple[Path, ...] = ()) -> ThreadingHTTPServer:
+          workdir: Path = DEFAULT_WORKDIR, env_files: tuple[Path, ...] = ()) -> StudioHTTPServer:
     load_env(*env_files)
+    # Fail before opening a browser if sessions cannot be persisted.  Otherwise
+    # the page loads normally and its first API request ends in an empty reply.
+    workdir.mkdir(parents=True, exist_ok=True)
     studio = Studio(workdir, provider, model, fake)
-    httpd = ThreadingHTTPServer(("127.0.0.1", port), make_handler(studio))
+    httpd = StudioHTTPServer(("127.0.0.1", port), make_handler(studio))
     httpd.studio = studio  # type: ignore[attr-defined]
     return httpd
