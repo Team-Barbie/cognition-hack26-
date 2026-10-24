@@ -33,8 +33,9 @@ a { color: inherit; }
 #screen.poweron { animation: poweron .95s cubic-bezier(.2,.7,.2,1) backwards; }
 #screen::-webkit-scrollbar { width: 8px; } #screen::-webkit-scrollbar-thumb { background: var(--ph-3); border-radius: 4px; }
 .fx { position: fixed; inset: var(--bz); border-radius: var(--rad); pointer-events: none; }
-.scan { z-index: 800; background: repeating-linear-gradient(to bottom, rgba(0,0,0,.27) 0 1px, transparent 1px 3px); mix-blend-mode: multiply; }
-.roll { z-index: 801; background: linear-gradient(to bottom, transparent, rgba(185,240,74,.075) 50%, transparent) 0 -30% / 100% 26% no-repeat; animation: roll 7.5s linear infinite; }
+.scan { z-index: 800; background: repeating-linear-gradient(to bottom, rgba(0,0,0,.27) 0 1px, transparent 1px 3px); }
+.roll { z-index: 801; overflow: hidden; }
+.roll::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 26%; background: linear-gradient(to bottom, transparent, rgba(185,240,74,.075) 50%, transparent); animation: roll 7.5s linear infinite; will-change: transform; }
 .vig { z-index: 802; background: radial-gradient(ellipse at center, transparent 52%, rgba(0,0,0,.42) 100%); box-shadow: inset 0 0 90px 18px rgba(0,0,0,.6); }
 .flick { z-index: 803; background: #000; opacity: 0; animation: flick 6s steps(1) infinite; }
 .bezel { position: fixed; inset: 0; z-index: 900; pointer-events: none; border: 2px solid #2b2d27; }
@@ -294,7 +295,7 @@ mark { background: var(--acc); color: var(--ink); text-shadow: none; padding: 0 
 @keyframes poweron { 0% { transform: scale(.14, .004); filter: brightness(5); } 32% { transform: scale(1, .004); filter: brightness(3.5); } 62% { transform: scale(1, .7); filter: brightness(1.7); } 100% { transform: none; filter: none; } }
 @keyframes bootout { to { opacity: 0; visibility: hidden; } }
 @keyframes winon { 0% { opacity: .1; transform: scaleY(.04); filter: brightness(2.4); } 55% { opacity: 1; transform: scaleY(1.02); } 100% { transform: none; filter: none; } }
-@keyframes roll { to { background-position: 0 150%; } }
+@keyframes roll { from { transform: translateY(-100%); } to { transform: translateY(385%); } }
 @keyframes flick { 0%, 100% { opacity: 0; } 48% { opacity: 0; } 49% { opacity: .035; } 50% { opacity: 0; } }
 @keyframes blink { 50% { opacity: .2; } }
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
@@ -305,7 +306,7 @@ mark { background: var(--acc); color: var(--ink); text-shadow: none; padding: 0 
 @keyframes scanbar { from { top: -18px; } to { top: 100%; } }
 @keyframes typein { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
 @keyframes lineup { from { opacity: .1; transform: translateY(10px); } to { opacity: 1; transform: none; } }
-@keyframes focus { from { letter-spacing: .5em; opacity: .1; filter: blur(4px); } to { letter-spacing: .08em; opacity: 1; filter: none; } }
+@keyframes focus { from { opacity: .1; transform: scale(1.05); transform-origin: left center; } to { opacity: 1; transform: none; } }
 @keyframes slidein { from { transform: translateX(60px); opacity: .2; } to { transform: none; opacity: 1; } }
 @media (max-width: 760px) {
   :root { --bz: 6px; --rad: 20px; }
@@ -739,14 +740,14 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
     if (cv.width !== w || cv.height !== hgt) { cv.width = w; cv.height = hgt; } const ctx = cv.getContext("2d"); ctx.clearRect(0, 0, w, hgt); if (!state.running) return;
     const rel = el => { const b = el.getBoundingClientRect(); return { l: b.left - r.left, t: b.top - r.top, r: b.right - r.left, b: b.bottom - r.top, cx: (b.left + b.right) / 2 - r.left, cy: (b.top + b.bottom) / 2 - r.top }; };
     const run = Object.entries(spines).filter(([k, el]) => el.classList.contains("running") && k !== "orchestrator"), orch = spines.orchestrator;
-    ctx.shadowColor = accA(.9); ctx.shadowBlur = 8; ctx.fillStyle = ACC;
+    ctx.fillStyle = ACC;
     for (const [k, el] of run) {
       const a = rel(el); let from, to;
       if (k.startsWith("reader:") && srcSpines[k.slice(7)]) { const sp = rel(srcSpines[k.slice(7)]); from = { x: a.cx, y: a.t }; to = { x: sp.cx, y: sp.b }; } else continue;
       const dx = to.x - from.x, dy = to.y - from.y, len = Math.hypot(dx, dy) || 1, ux = dx / len, uy = dy / len, step = 18, ph = (t * .07) % step;
-      ctx.strokeStyle = ACC; ctx.lineWidth = 3; ctx.lineCap = "butt"; ctx.beginPath();
-      for (let d = -step + ph; d < len; d += step) { const a0 = Math.max(0, d), b0 = Math.min(len, d + 10); if (b0 > a0) { ctx.moveTo(from.x + ux * a0, from.y + uy * a0); ctx.lineTo(from.x + ux * b0, from.y + uy * b0); } }
-      ctx.stroke();
+      ctx.lineCap = "butt"; const dashes = () => { ctx.beginPath(); for (let d = -step + ph; d < len; d += step) { const a0 = Math.max(0, d), b0 = Math.min(len, d + 10); if (b0 > a0) { ctx.moveTo(from.x + ux * a0, from.y + uy * a0); ctx.lineTo(from.x + ux * b0, from.y + uy * b0); } } ctx.stroke(); };
+      ctx.strokeStyle = accA(.3); ctx.lineWidth = 8; dashes();  // a wide faint pass stands in for a blur glow
+      ctx.strokeStyle = ACC; ctx.lineWidth = 3; dashes();
       const bk = 11 + Math.round(Math.abs(Math.sin(t * .008)) * 5), bc = 7; ctx.beginPath();
       for (const [sx, sy] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) { ctx.moveTo(to.x + sx * bk, to.y + sy * (bk - bc)); ctx.lineTo(to.x + sx * bk, to.y + sy * bk); ctx.lineTo(to.x + sx * (bk - bc), to.y + sy * bk); }
       ctx.stroke();
@@ -760,13 +761,13 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
     if (st === "done") { ctx.fillStyle = "#0c1207"; const cx = w - 12, cy = hh - 12; [[0, 4], [2, 6], [4, 8], [6, 6], [8, 4], [10, 2], [12, 0]].forEach(([x, y]) => ctx.fillRect(cx + x - 4, cy + y - 4, 3, 3)); }
   }
   const visible = { signal: true };
-  let lastScene = 0, lastTick = 0, frameN = 0, lastGlitch = 0, lastScope = 0;
+  let lastScene = 0, lastTick = 0, frameN = 0, lastGlitch = 0, lastScope = 0, lastBeams = 0;
   function loop(t) {
     requestAnimationFrame(loop); if (document.hidden) return;
     if (t - lastScene > (state.running ? 55 : 80)) { lastScene = t; drawScene(t); }
     if (t - lastScope > 90) { lastScope = t; if (visible.signal) drawScope(t); }
     if (t - lastTick > (state.running ? 230 : 640)) { lastTick = t; frameN++; for (const k of Object.keys(spines)) paintAgent(k, frameN); }
-    if (state.running) { drawBeams(t); state.beamsOn = true; } else if (state.beamsOn) { drawBeams(t); state.beamsOn = false; }
+    if (state.running) { if (t - lastBeams > 33) { lastBeams = t; drawBeams(t); } state.beamsOn = true; } else if (state.beamsOn) { drawBeams(t); state.beamsOn = false; }
     if (t - lastGlitch > 11000 + Math.random() * 6000) { lastGlitch = t; glitchHead(); }
   }
   function startLoop() {
@@ -1063,13 +1064,15 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
     busy = false;
   }
   async function streamEvents() {
-    if (!sid || streamStarted) return; streamStarted = true;
+    if (!sid || streamStarted) return; streamStarted = true; let fails = 0, retryIn = 0;
     while (sid) {
       try {
         const headers = password ? { Authorization: `Bearer ${password}` } : {};
         const res = await fetch(`/api/events/stream?id=${encodeURIComponent(sid)}&after=${after}`, { headers, cache: "no-store" });
         if (res.status === 401) { lock(); throw new Error("unauthorized"); }
+        if (res.status === 429) { retryIn = Math.max(1, Number(res.headers.get("Retry-After")) || 5) * 1000; throw new Error("rate limited"); }
         if (!res.ok || !res.body) throw new Error(`event stream HTTP ${res.status}`);
+        fails = 0;
         const reader = res.body.getReader(), decoder = new TextDecoder(); let buffer = "";
         while (true) {
           const { value, done } = await reader.read(); if (done) break;
@@ -1080,7 +1083,11 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
             if (data) applyEvents([JSON.parse(data)]);
           }
         }
-      } catch (_) { await pollOnce(); await new Promise(resolve => setTimeout(resolve, state.running ? 500 : 1400)); }
+      } catch (_) {
+        if (!runPending) await pollOnce();
+        fails = Math.min(fails + 1, 5); const wait = retryIn || Math.min(30000, 1000 * 2 ** fails); retryIn = 0;
+        await new Promise(resolve => setTimeout(resolve, wait));
+      }
     }
     streamStarted = false;
   }
