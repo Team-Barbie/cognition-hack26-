@@ -1,8 +1,8 @@
 import sqlite3
 
-from ar import evidence
+from ar import evidence, review
 from ar.completion import assess
-from ar.models import ArtifactVersion, ClaimDraft, Requirement
+from ar.models import ArtifactVersion, ClaimDraft, Requirement, ReviewResult
 
 REPORT = """# Report
 
@@ -27,12 +27,16 @@ def req(rid: str, text: str = "baseline") -> Requirement:
     return Requirement(id=rid, source_passage=text, interpretation=text)
 
 
-def conn_(n_claims: int = 2) -> sqlite3.Connection:
+def conn_(n_claims: int = 2, reviewed: bool = True) -> sqlite3.Connection:
     conn = sqlite3.connect(":memory:")
     conn.row_factory = sqlite3.Row
     evidence.ensure_schema(conn)
+    review.ensure_schema(conn)
     drafts = [ClaimDraft(statement=f"c{i}", epistemic_status="hypothesized") for i in range(n_claims)]
     evidence.accept_claims(conn, AcceptAll(), task_id="t", attempt_id="a", drafts=drafts)
+    if reviewed:
+        review.gate(conn, ReviewResult(reviewed_artifact_id="art-1", reviewed_revision=1, disposition="accept"),
+                    artifact=ART, reviewer_task="t-reviewer")
     return conn
 
 
