@@ -76,6 +76,46 @@ Reply with ONE JSON object and nothing else:
 {"notes": [{"title": str, "lines": [str]}]}"""
 
 
+def packet_view(packet: Packet) -> dict[str, Any]:
+    """A JSON-safe audit view of the exact context dispatched to one agent attempt."""
+    reads = []
+    for read in packet.reads:
+        reads.append({
+            "label": read.label,
+            "source": read.source_ref.source_id,
+            "revision": read.source_ref.revision,
+            "start": read.selector.start,
+            "end": read.selector.end,
+            "receipt": read.read_receipt_id,
+            "lines": [
+                {"n": read.selector.start + offset, "text": line}
+                for offset, line in enumerate(read.content.splitlines())
+            ],
+        })
+    dependencies = []
+    for dep in packet.dependencies:
+        dependencies.append({
+            "kind": dep.kind,
+            "id": dep.id,
+            "revision": dep.revision,
+            "content": dep.content,
+            "claim": dep.claim.model_dump(mode="json") if dep.claim else None,
+        })
+    return {
+        "id": packet.packet_id,
+        "task": packet.task_id,
+        "attempt": packet.attempt_id,
+        "role": packet.role,
+        "objective": packet.objective,
+        "requirements": [requirement.model_dump(mode="json") for requirement in packet.requirements],
+        "reads": reads,
+        "dependencies": dependencies,
+        "available_sources": [source.model_dump(mode="json") for source in packet.available_sources],
+        "review_feedback": list(packet.review_feedback),
+        "skills": list(packet.skills),
+    }
+
+
 def _slug(name: str) -> str:
     stem = re.sub(r"\.[A-Za-z0-9]+$", "", name.strip())
     return re.sub(r"[^a-z0-9]+", "-", stem.lower()).strip("-")[:48] or "source"
@@ -138,7 +178,9 @@ class StageAgent:
         card, title = self._card(role, packet)
         if role in ROLES_WITH_SCOPE:
             packet = packet.model_copy(update={"objective": f"{packet.objective}\n\n{SCOPE_NOTE}"})
-        self.session.agent(card, role=role, title=title, status="running", detail=self._start_detail(role, packet))
+        # The audit view shows the packet exactly as dispatched, scope note included.
+        self.session.agent(card, role=role, title=title, status="running", detail=self._start_detail(role, packet),
+                           packet=packet_view(packet))
         self.session.agent("orchestrator", status="running", detail=f"Dispatched {title}")
         try:
             result = self.inner.run(role, packet)
