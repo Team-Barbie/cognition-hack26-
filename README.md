@@ -27,6 +27,18 @@ python -m venv .venv
 
 Both paths share the same packet and the same `AgentResult` schema.
 
+## Studio access
+
+The studio page remains public so it can display the lock screen, while every `/api/*` route follows the
+server's access policy. Set `STUDIO_PASSWORD` to protect a deployment; local development stays open when it
+is unset, and Vercel uses its built-in password hash unless the environment variable overrides it. The
+browser keeps an entered password only for the current tab. This access gate prevents unauthenticated API
+use; volumetric DDoS protection still belongs at the hosting or CDN layer.
+
+The live stage is driven by a durable SQLite event journal. The runtime records run, task, attempt, packet,
+acceptance, and completion events; the browser consumes them over an authenticated server-sent event stream.
+`GET /api/events` remains as a reconnect fallback rather than the primary update loop.
+
 ## The five-minute demo
 
 Run it in one go with `scripts/demo.ps1` (Windows) or `scripts/demo.sh`. Or step by step, from the repo root
