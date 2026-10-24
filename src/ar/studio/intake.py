@@ -108,6 +108,11 @@ class Intake:
             "Ask your question. I'll ask a few things back, then you can add papers."
         )
 
+    def resume(self, ready: bool) -> None:
+        """Pick the script up where a restored brief left off."""
+        self.ready = ready and bool(self.brief.question)
+        self._step = len(SCRIPT) if self.ready else 2 if self.brief.context else 1 if self.brief.question else 0
+
     def reply(self, message: str) -> str:
         self.history.append({"role": "user", "content": message})
         text = self._live(message) if self.client is not None else None

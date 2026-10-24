@@ -184,7 +184,7 @@ def test_http_api_runs_a_demo_end_to_end(tmp_path):
         assert post("/api/run", {"id": s["id"]})[0] == 400  # nothing to run yet
         assert post("/api/chat", {"id": "nope", "message": "hi"})[0] == 400
         assert post("/api/demo", {"id": s["id"]}) == (200, {"ok": True})
-        assert post("/api/source", {"id": s["id"], "name": "oops.md", "text": "wrong file"}) == (200, {"ok": True})
+        assert post("/api/source", {"id": s["id"], "name": "oops.md", "text": "wrong file"}) == (200, {"ok": True, "id": "oops"})
         assert post("/api/source/remove", {"id": s["id"], "source": "oops"}) == (200, {"ok": True})
         assert post("/api/source/remove", {"id": s["id"], "source": "oops"})[0] == 400
         assert post("/api/run", {"id": s["id"]}) == (200, {"ok": True})

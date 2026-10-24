@@ -19,13 +19,16 @@ from ar.studio.server import handle, vercel_studio
 app = FastAPI()
 
 
-async def _finish_run(body: bytes) -> None:
+async def _finish_run(body: bytes) -> bytes | None:
+    """Wait for the run, then hand back everything it emitted. A later poll may reach another
+    instance that has no copy of this session, so the page gets the events from this response."""
     try:
         sid = str(json.loads(body or b"{}").get("id", ""))
         session = vercel_studio().get(sid)
     except (KeyError, ValueError):
-        return
+        return None
     await asyncio.to_thread(session.wait, 280)
+    return json.dumps({"ok": True, "events": session.since(0), "status": session.status}).encode("utf-8")
 
 
 @app.api_route("/", methods=["GET", "POST"])
@@ -35,7 +38,7 @@ async def studio(request: Request) -> Response:
     status, kind, payload = handle(vercel_studio(), request.method, request.url.path, request.url.query, body,
                                       request.headers.get("authorization", ""))
     if os.environ.get("VERCEL") == "1" and request.method == "POST" and request.url.path == "/api/run" and status == 200:
-        await _finish_run(body)
+        payload = await _finish_run(body) or payload
     return Response(
         content=payload,
         status_code=status,
