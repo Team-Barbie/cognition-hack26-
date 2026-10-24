@@ -104,9 +104,7 @@ class Intake:
     _step: int = 0
 
     def opening(self) -> str:
-        return (
-            "Ask your question. I'll ask a few things back, then you can add papers."
-        )
+        return "Ask a research question. I’ll help define it, then you can add papers and run the team."
 
     def resume(self, ready: bool) -> None:
         """Pick the script up where a restored brief left off."""
@@ -132,7 +130,7 @@ class Intake:
         if self._step < len(SCRIPT):
             return SCRIPT[self._step][1]
         self.ready = bool(self.brief.question)
-        return "That's enough to start. Add papers, or press Start without them."
+        return "The brief is ready. Add papers, or run without them to use labelled background notes."
 
     def _live(self, message: str) -> str | None:
         transcript = "\n".join(f"{m['role']}: {m['content']}" for m in self.history)
