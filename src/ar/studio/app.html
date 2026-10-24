@@ -12,7 +12,7 @@
   --bz: 14px; --rad: 30px;
   --ph: #b9f04a; --ph-hi: #e4ffa0; --ph-2: #8cc03a; --ph-3: #5b7e29; --ph-4: #34481a; --ph-5: #1d2a0f; --ink: #0c1207;
   --glow: rgba(185,240,74,.55); --glow-s: rgba(185,240,74,.26);
-  --am: #ffb62e;
+  --acc: #ff4fa3; --acc-hi: #ffb3d8;  /* the one accent colour: change this and ACC in the script */
   --mono: "SF Mono", "JetBrains Mono", Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
 }
 * { box-sizing: border-box; }
@@ -51,8 +51,8 @@ a { color: inherit; }
 .hud.top { top: 0; border-bottom: 1px solid var(--ph-4); }
 .hud.bot { bottom: 0; border-top: 1px solid var(--ph-4); gap: 26px; flex-wrap: wrap; }
 .hud b { color: var(--ph); font-weight: 700; margin-left: 6px; }
-.hud.bot span:nth-child(4) b, .hud.bot span:nth-child(6) b { color: var(--am); }
-.brand { color: var(--am); font-weight: 800; letter-spacing: .3em; text-shadow: 0 0 10px rgba(255,182,46,.5); }
+.hud.bot span:nth-child(4) b, .hud.bot span:nth-child(6) b { color: var(--acc); }
+.brand { color: var(--acc); font-weight: 800; letter-spacing: .3em; text-shadow: 0 0 10px color-mix(in srgb, var(--acc) 50%, transparent); }
 .hud nav { display: flex; gap: 20px; }
 .hud nav a { text-decoration: none; padding-bottom: 2px; border-bottom: 1px solid transparent; transition: color .15s, border-color .15s; }
 .hud nav a:hover { color: var(--ph-hi); border-bottom-color: var(--ph); }
@@ -96,8 +96,8 @@ canvas.px { image-rendering: pixelated; max-width: 100%; filter: drop-shadow(0 0
 .spine.p4::before { background: linear-gradient(color-mix(in srgb, var(--sc) 34%, transparent) 1px, transparent 1px) 0 0 / 8px 8px, linear-gradient(90deg, color-mix(in srgb, var(--sc) 34%, transparent) 1px, transparent 1px) 0 0 / 8px 8px; }
 .spine.p5::before { background: color-mix(in srgb, var(--sc) 24%, transparent); }
 .spine .t { position: relative; writing-mode: vertical-rl; transform: rotate(180deg); white-space: nowrap; overflow: hidden; text-overflow: clip; max-height: calc(var(--h) - 54px); font: 800 12px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; text-shadow: 0 0 4px #000, 0 0 2px #000, 0 0 10px var(--glow-s); background: rgba(6,10,4,.62); padding: 7px 3px; border-radius: 3px; }
-.spine.lit { transform: translateY(-14px); border-color: var(--am); box-shadow: 0 0 22px rgba(255,182,46,.55); }
-.spine.lit::after { content: ""; position: absolute; left: 0; right: 0; height: 18px; top: -18px; background: linear-gradient(to bottom, transparent, rgba(255,214,120,.75)); animation: scanbar 1.1s linear infinite; }
+.spine.lit { transform: translateY(-14px); border-color: var(--acc); box-shadow: 0 0 22px color-mix(in srgb, var(--acc) 55%, transparent); }
+.spine.lit::after { content: ""; position: absolute; left: 0; right: 0; height: 18px; top: -18px; background: linear-gradient(to bottom, transparent, color-mix(in srgb, var(--acc-hi) 75%, transparent)); animation: scanbar 1.1s linear infinite; }
 .spine .rm { all: unset; position: absolute; top: 4px; right: 3px; z-index: 2; width: 24px; height: 24px; display: grid; place-items: center; border-radius: 6px; color: var(--ph-hi); font: 700 19px/1 var(--mono); cursor: pointer; opacity: .75; transition: background .15s, color .15s, opacity .15s; }
 .spine .rm:hover { background: var(--ph); color: var(--ink); opacity: 1; text-shadow: none; }
 .spine .rm:disabled { display: none; }
@@ -111,25 +111,25 @@ canvas.px { image-rendering: pixelated; max-width: 100%; filter: drop-shadow(0 0
 .agent .sub { font: 10px var(--mono); letter-spacing: .06em; max-width: 92px; overflow: hidden; white-space: nowrap; text-overflow: clip; opacity: .8; min-height: 1.2em; }
 .agent .tag { font: 800 10px var(--mono); letter-spacing: .14em; min-height: 1.2em; }
 .agent { --ac: var(--ph-2); }
-.agent.running { --ac: var(--am); }
+.agent.running { --ac: var(--acc); }
 .agent.ghost { color: var(--ph-4); opacity: .7; }
 .agent.live .tag { color: var(--ph-2); }
 .agent.running { animation: hop 1s ease-in-out infinite; }
 .agent.running .lbl { text-shadow: 0 0 8px currentColor; }
-.agent.running .tag { color: var(--am); }
+.agent.running .tag { color: var(--acc); }
 .agent.running canvas { filter: drop-shadow(0 0 10px currentColor); }
-.agent.running::before, .agent.running::after { position: absolute; top: 10px; font: 800 30px/1 var(--mono); color: var(--am); text-shadow: 0 0 10px currentColor; animation: pulse 1s ease-in-out infinite; }
+.agent.running::before, .agent.running::after { position: absolute; top: 10px; font: 800 30px/1 var(--mono); color: var(--acc); text-shadow: 0 0 10px currentColor; animation: pulse 1s ease-in-out infinite; }
 .agent.running::before { content: "["; left: 0; } .agent.running::after { content: "]"; right: 0; }
 .agent.done { animation: settle .6s ease-out; }
 .agent.done .tag { color: var(--ph); }
-.agent.failed { background: repeating-linear-gradient(135deg, rgba(255,182,46,.14) 0 6px, transparent 6px 12px); }
-.agent.failed .tag { color: var(--am); }
+.agent.failed { background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--acc) 14%, transparent) 0 6px, transparent 6px 12px); }
+.agent.failed .tag { color: var(--acc); }
 
 .foot { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 22px; margin-top: 16px; padding-top: 16px; border-top: 1px dashed var(--ph-4); }
 .act { background: none; border: 0; padding: 3px 2px; cursor: pointer; font: 700 12px var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--ph); border-bottom: 1px solid var(--ph-4); transition: background .15s, color .15s, border-color .15s; }
 .act:hover { background: var(--ph); color: var(--ink); border-bottom-color: var(--ph); text-shadow: none; }
-.go { border: 2px solid var(--am); background: transparent; color: var(--am); padding: 11px 30px; border-radius: 12px; cursor: pointer; font: 800 13px var(--mono); letter-spacing: .22em; text-transform: uppercase; box-shadow: 0 0 16px rgba(255,182,46,.28); transition: background .15s, color .15s, box-shadow .15s, transform .2s; }
-.go:hover { background: var(--am); color: var(--ink); text-shadow: none; box-shadow: 0 0 26px rgba(255,182,46,.6); transform: translateY(-2px); }
+.go { border: 2px solid var(--acc); background: transparent; color: var(--acc); padding: 11px 30px; border-radius: 12px; cursor: pointer; font: 800 13px var(--mono); letter-spacing: .22em; text-transform: uppercase; box-shadow: 0 0 16px color-mix(in srgb, var(--acc) 28%, transparent); transition: background .15s, color .15s, box-shadow .15s, transform .2s; }
+.go:hover { background: var(--acc); color: var(--ink); text-shadow: none; box-shadow: 0 0 26px color-mix(in srgb, var(--acc) 60%, transparent); transform: translateY(-2px); }
 .go:disabled { border-color: var(--ph-4); color: var(--ph-3); background: transparent; cursor: default; box-shadow: none; transform: none; }
 .paste { display: grid; gap: 10px; margin-top: 14px; padding: 14px; border: 1px dashed var(--ph-3); border-radius: 12px; }
 .paste[hidden] { display: none; }
@@ -158,14 +158,14 @@ canvas.px { image-rendering: pixelated; max-width: 100%; filter: drop-shadow(0 0
 .sig-l { align-self: end; }
 .code { font: 13.5px/1.75 var(--mono); max-width: 60ch; }
 .code .ln2 { white-space: normal; overflow-wrap: anywhere; animation: typein .5s steps(26) backwards; }
-.code .ln2.c { color: var(--ph-2); } .code .ln2.bad { color: var(--am); background: rgba(255,182,46,.12); } .code .ln2.old { opacity: .35; }
+.code .ln2.c { color: var(--ph-2); } .code .ln2.bad { color: var(--acc); background: color-mix(in srgb, var(--acc) 12%, transparent); } .code .ln2.old { opacity: .35; }
 .sig-r { align-self: center; display: grid; gap: 18px; justify-items: start; }
 .cap { font: 700 11px var(--mono); letter-spacing: .16em; text-transform: uppercase; color: var(--ph-2); margin-top: 6px; }
 .loadbar { display: grid; gap: 8px; font: 700 12px var(--mono); letter-spacing: .12em; width: 100%; max-width: 320px; text-transform: uppercase; }
 .blocks { display: flex; gap: 3px; }
 .blocks i { flex: 1; height: 20px; background: var(--ph-5); border-radius: 2px; transition: background .25s, box-shadow .25s; }
 .blocks i.on { background: var(--ph); box-shadow: 0 0 9px var(--glow); }
-.blocks i.on.lead { background: var(--am); box-shadow: 0 0 9px rgba(255,182,46,.6); }
+.blocks i.on.lead { background: var(--acc); box-shadow: 0 0 9px color-mix(in srgb, var(--acc) 60%, transparent); }
 .blocks i.lead { animation: pulse .8s ease-in-out infinite; }
 .sig-side { writing-mode: vertical-rl; transform: rotate(180deg); align-self: center; font: 700 12px var(--mono); letter-spacing: .16em; color: var(--ph-2); }
 
@@ -192,8 +192,8 @@ canvas.px { image-rendering: pixelated; max-width: 100%; filter: drop-shadow(0 0
 .article ol { padding-left: 1.6em; max-width: 70ch; } .article ol > li { margin: 0 0 8px; }
 .sheet .notes li { padding-left: 16px; } .sheet .notes li::before { content: none; }
 .article code { background: var(--ph-5); padding: 1px 6px; border-radius: 4px; }
-.cite { border: 0; background: none; padding: 0 1px; color: var(--am); font: 800 .8em var(--mono); vertical-align: super; cursor: pointer; text-decoration: underline; }
-.cite:hover { background: var(--am); color: var(--ink); text-shadow: none; text-decoration: none; }
+.cite { border: 0; background: none; padding: 0 1px; color: var(--acc); font: 800 .8em var(--mono); vertical-align: super; cursor: pointer; text-decoration: underline; }
+.cite:hover { background: var(--acc); color: var(--ink); text-shadow: none; text-decoration: none; }
 .cite.unknown { color: var(--ph-3); cursor: default; text-decoration: none; }
 .rail { display: grid; gap: 24px; align-content: start; padding: 18px; border: 1px dashed var(--ph-3); border-radius: 14px; }
 .layer { display: grid; grid-template-columns: minmax(0, 1fr) 46px; gap: 4px 10px; align-items: center; margin-top: 12px; }
@@ -208,10 +208,10 @@ canvas.px { image-rendering: pixelated; max-width: 100%; filter: drop-shadow(0 0
 .list .src { font: 12px var(--mono); color: var(--ph-2); }
 .list .stmt { font: 15px/1.6 var(--mono); }
 .list .why { font: 12.5px/1.6 var(--mono); color: var(--ph-2); overflow-wrap: anywhere; }
-.list .rejected .id { text-decoration: line-through; color: var(--am); }
+.list .rejected .id { text-decoration: line-through; color: var(--acc); }
 .rel { font: 800 11px var(--mono); letter-spacing: .12em; text-transform: uppercase; padding: 1px 8px; border: 1px solid var(--ph-3); border-radius: 6px; }
-.rel.supports { color: var(--ph-hi); border-color: var(--ph-2); } .rel.qualifies { color: var(--am); border-color: var(--am); }
-.rel.contradicts { background: var(--am); color: var(--ink); text-shadow: none; border-color: var(--am); }
+.rel.supports { color: var(--ph-hi); border-color: var(--ph-2); } .rel.qualifies { color: var(--acc); border-color: var(--acc); }
+.rel.contradicts { background: var(--acc); color: var(--ink); text-shadow: none; border-color: var(--acc); }
 .notes { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; align-content: start; }
 .notes li { padding: 12px 16px; border: 1px solid var(--ph-4); border-radius: 12px; display: grid; gap: 4px; }
 .notes b { font: 800 11px var(--mono); letter-spacing: .16em; text-transform: uppercase; color: var(--ph-hi); }
@@ -226,15 +226,15 @@ blockquote { margin: 0; padding: 4px 0 4px 14px; border-left: 3px solid var(--ph
 .msg .who { display: flex; align-items: center; gap: 10px; font: 800 10.5px var(--mono); letter-spacing: .18em; text-transform: uppercase; color: var(--ph-3); }
 .msg .who::after { content: ""; flex: 1; height: 1px; background: var(--ph-4); }
 .msg p { margin: 0; font: 14px/1.6 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; color: var(--ph-2); }
-.msg.you p { color: #ffd98a; } .msg.you p::before { content: "> "; color: var(--am); }
+.msg.you p { color: var(--acc-hi); } .msg.you p::before { content: "> "; color: var(--acc); }
 .msg.team p { border-left: 2px solid var(--ph-3); padding-left: 10px; }
 .msg.typing p { color: var(--ph); }
 .chat-foot { border-top: 1px dashed var(--ph-4); padding: 12px 14px 14px; display: grid; gap: 12px; }
 .chips { display: flex; flex-wrap: wrap; gap: 8px; }
 .chip { padding: 7px 13px; border: 1px solid var(--ph-3); border-radius: 10px; background: none; cursor: pointer; font: 800 11px var(--mono); letter-spacing: .14em; text-transform: uppercase; white-space: nowrap; color: var(--ph); transition: background .15s, color .15s; }
 .chip:hover { background: var(--ph); color: var(--ink); text-shadow: none; }
-.chip.go-chip { border-color: var(--am); color: var(--am); box-shadow: 0 0 12px rgba(255,182,46,.25); }
-.chip.go-chip:hover { background: var(--am); }
+.chip.go-chip { border-color: var(--acc); color: var(--acc); box-shadow: 0 0 12px color-mix(in srgb, var(--acc) 25%, transparent); }
+.chip.go-chip:hover { background: var(--acc); }
 .chip:disabled { opacity: .45; cursor: default; background: none; color: var(--ph); }
 .chat-form { display: grid; grid-template-columns: 22px minmax(0, 1fr) 56px; align-items: start; gap: 6px; border: 1px solid var(--ph-3); border-radius: 12px; padding: 8px 8px 8px 12px; transition: border-color .2s, box-shadow .2s; }
 .chat-form:focus-within { border-color: var(--ph-hi); box-shadow: 0 0 16px var(--glow-s); }
@@ -277,7 +277,7 @@ blockquote { margin: 0; padding: 4px 0 4px 14px; border-left: 3px solid var(--ph
 .ln .n { text-align: right; padding-right: 12px; color: var(--ph-3); user-select: none; }
 .ln .t { white-space: pre-wrap; overflow-wrap: anywhere; color: var(--ph-2); }
 .ln.in { background: rgba(185,240,74,.1); } .ln.in .t { color: var(--ph); } .ln.in .n { color: var(--ph-hi); }
-mark { background: var(--am); color: var(--ink); text-shadow: none; padding: 0 2px; }
+mark { background: var(--acc); color: var(--ink); text-shadow: none; padding: 0 2px; }
 .facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 3px 16px; margin: 0; }
 .facts dt { font: 800 10.5px/2 var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--ph-3); }
 .facts dd { margin: 0; font: 13px/2 var(--mono); overflow-wrap: anywhere; }
@@ -462,6 +462,8 @@ mark { background: var(--am); color: var(--ink); text-shadow: none; padding: 0 2
   const narrow = matchMedia("(max-width: 1260px)");
   const state = { briefReady: false, sources: 0, running: false, reportShown: false, sourceList: [], question: "", t0: 0, tEnd: 0 };
   const lerp = (a, b, t) => a + (b - a) * t;
+  const ACC = "#ff4fa3", ACC_RGB = [1, 3, 5].map(i => parseInt(ACC.slice(i, i + 2), 16));  // the one accent colour (keep in step with --acc)
+  const accA = a => `rgba(${ACC_RGB.join(",")},${a})`, accMix = (to, t) => ACC_RGB.map((v, i) => lerp(v, to[i], t));
   let sid = null, after = 0, report = null, busy = false, returnFocus = null, password = "", attempted = false;
   try { password = sessionStorage.getItem("studioPassword") || ""; } catch (_) { /* storage can be blocked */ }
 
@@ -623,7 +625,7 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
     head.lines = lines; head.scale = Math.max(2, s);
   }
   function paintHead(limit) {
-    const cv = $("px-head"); pxPaint(cv, head.lines, { bold: true, scale: head.scale, shadow: true, limit, top: [226, 255, 140], bottom: [124, 170, 52], shadowColor: [96, 58, 6] });
+    const cv = $("px-head"); pxPaint(cv, head.lines, { bold: true, scale: head.scale, shadow: true, limit, top: [226, 255, 140], bottom: [124, 170, 52], shadowColor: accMix([0, 0, 0], .66) });
     head.off = head.off || document.createElement("canvas"); head.off.width = cv.width; head.off.height = cv.height; head.off.getContext("2d").drawImage(cv, 0, 0);
   }
   function setHeadline(question) {
@@ -651,9 +653,9 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
   }
   let subText = "", stText = "";
   const setSub = t => { if (t !== subText) { subText = t; paintLine("px-sub", t, { max: 4, top: [150, 200, 70], bottom: [110, 150, 50] }); } };
-  const STATE_COL = { ready: { top: [238, 255, 170], bottom: [160, 226, 70] }, run: { top: [255, 228, 150], bottom: [255, 170, 40] }, done: { top: [238, 255, 170], bottom: [160, 226, 70] } };
+  const STATE_COL = { ready: { top: [238, 255, 170], bottom: [160, 226, 70] }, run: { top: accMix([255, 255, 255], .6), bottom: ACC_RGB }, done: { top: [238, 255, 170], bottom: [160, 226, 70] } };
   const setStateLine = (t, run, kind) => { const key = t + "|" + kind; if (key !== stText) { stText = key; paintLine("px-state", t, { max: 5, ...STATE_COL[kind || "ready"] }); } $("px-state").classList.toggle("run", !!run); };
-  const COUNT_PAL = { green: { top: [228, 255, 150], bottom: [150, 200, 62] }, amber: { top: [255, 226, 150], bottom: [255, 160, 30] } };
+  const COUNT_PAL = { green: { top: [228, 255, 150], bottom: [150, 200, 62] }, accent: { top: accMix([255, 255, 255], .55), bottom: ACC_RGB } };
   function drawNumber(cv, n, s) { pxPaint(cv, [String(n).padStart(2, "0")], { bold: false, scale: s, shadow: true, align: "left", ...(cv._pal || COUNT_PAL.green), hatch: true }); }
   function setCount(cv, n, s) {
     const from = cv._v ?? 0; cv._v = n; if (from === n || reduce) { drawNumber(cv, n, s); return; }
@@ -662,12 +664,12 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
 
   // ================= the living scene, beams, sprites, scope: one animation loop =================
   const scene = { W: 0, H: 0, PX: 3, bullets: [], lastShot: 0, ufoAt: 6 };
-  const spriteDefs = [{ s: "crab", c: "#b9f04a", fx: .06, fy: .22, amp: 6, sp: .8 }, { s: "squid", c: "#b9f04a", fx: .90, fy: .15, amp: 5, sp: 1.1 }, { s: "octo", c: "#b9f04a", fx: .07, fy: .60, amp: 7, sp: .7 }, { s: "ant", c: "#ffb62e", fx: .90, fy: .52, amp: 6, sp: .95 }];
-  const gemDefs = [{ c: "#b9f04a", fx: .19, fy: .74, r: 8, ph: 0 }, { c: "#b9f04a", fx: .80, fy: .30, r: 10, ph: 2 }, { c: "#ffb62e", fx: .14, fy: .40, r: 5, ph: 4 }, { c: "#b9f04a", fx: .86, fy: .76, r: 7, ph: 1 }];
+  const spriteDefs = [{ s: "crab", c: "#b9f04a", fx: .06, fy: .22, amp: 6, sp: .8 }, { s: "squid", c: "#b9f04a", fx: .90, fy: .15, amp: 5, sp: 1.1 }, { s: "octo", c: "#b9f04a", fx: .07, fy: .60, amp: 7, sp: .7 }, { s: "ant", c: ACC, fx: .90, fy: .52, amp: 6, sp: .95 }];
+  const gemDefs = [{ c: "#b9f04a", fx: .19, fy: .74, r: 8, ph: 0 }, { c: "#b9f04a", fx: .80, fy: .30, r: 10, ph: 2 }, { c: ACC, fx: .14, fy: .40, r: 5, ph: 4 }, { c: "#b9f04a", fx: .86, fy: .76, r: 7, ph: 1 }];
   const starDefs = Array.from({ length: 46 }, (_, i) => ({ fx: ((i * 0.6180339) % 1) * .94 + .03, fy: ((i * 0.4142136 + .13) % 1) * .72 + .04, ph: i * 1.7 })).filter(s => s.fx < .19 || s.fx > .81);
   const hexRgb = hx => [1, 3, 5].map(i => parseInt(hx.slice(i, i + 2), 16));
   const palOf = hx => { const c = hexRgb(hx), dk = [8, 12, 5]; return { fg: rgb(c), mid: rgb(mix(c, dk, .42)), dim: rgb(mix(c, dk, .74)), hi: rgb(mix(c, [255, 255, 255], .5)) }; };
-  const PAL = {}; ["#b9f04a", "#ffb62e"].forEach(c => { PAL[c] = palOf(c); }); const STAR_COLS = ["#b9f04a", "#b9f04a", "#b9f04a", "#ffb62e"];
+  const PAL = {}; ["#b9f04a", ACC].forEach(c => { PAL[c] = palOf(c); }); const STAR_COLS = ["#b9f04a", "#b9f04a", "#b9f04a", ACC];
   const SC = { fg: "rgb(188,243,76)", mid: "rgb(122,168,52)", dim: "rgb(52,76,26)", hi: "rgb(232,255,160)" };
   function resizeScene() { const r = $("hero").getBoundingClientRect(), cv = $("scene"); scene.W = Math.max(60, Math.ceil(r.width / scene.PX)); scene.H = Math.max(60, Math.ceil(r.height / scene.PX)); cv.width = scene.W; cv.height = scene.H; }
   function drawScene(t) {
@@ -683,13 +685,13 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
     spriteDefs.forEach((a, ai) => { const rows = SPR[a.s][f], step = Math.round(Math.sin(ts * a.sp * drift) * a.amp / 2) * 2, fx = small ? .14 + ai * .24 : a.fx, fy = small ? .035 : a.fy, x = Math.round(fx * W - rows[0].length * sc / 2 + step), y = Math.round(fy * H + (work ? Math.sin(ts * 3 + a.fx * 9) * 2 : 0));
       ctx.fillStyle = PAL[a.c].fg; drawSprite(ctx, rows, x, y, sc);
       if (work && t - scene.lastShot > 520) { scene.bullets.push({ x: x + rows[0].length * sc / 2, y: y + rows.length * sc, v: 1.1 + Math.random() * .6 }); scene.lastShot = t; } });
-    ctx.fillStyle = PAL["#ffb62e"].hi; scene.bullets = scene.bullets.filter(b => b.y < H - 12); for (const b of scene.bullets) { b.y += b.v * 1.6; ctx.fillRect(Math.round(b.x), Math.round(b.y), 1, 4); }
-    const ux = (ts - scene.ufoAt) * (work ? 16 : 9); if (ux > W + 40) scene.ufoAt = ts + (work ? 2 : 8); else if (ux > -40) { ctx.fillStyle = PAL["#ffb62e"].fg; drawSprite(ctx, SPR.ufo[f], Math.round(ux - 16), small ? 14 : 6, small ? 1 : 2); }
+    ctx.fillStyle = PAL[ACC].hi; scene.bullets = scene.bullets.filter(b => b.y < H - 12); for (const b of scene.bullets) { b.y += b.v * 1.6; ctx.fillRect(Math.round(b.x), Math.round(b.y), 1, 4); }
+    const ux = (ts - scene.ufoAt) * (work ? 16 : 9); if (ux > W + 40) scene.ufoAt = ts + (work ? 2 : 8); else if (ux > -40) { ctx.fillStyle = PAL[ACC].fg; drawSprite(ctx, SPR.ufo[f], Math.round(ux - 16), small ? 14 : 6, small ? 1 : 2); }
     const off = ts * (work ? 40 : 14);
     for (let x = 0; x < W; x++) { const hh = 7 + 4 * Math.sin((x + off) * .06) + 3 * Math.sin((x + off) * .17 + 1) + 2 * Math.sin((x + off) * .33), top = Math.round(H - hh);
       ctx.fillStyle = SC.fg; ctx.fillRect(x, top, 1, 1); for (let y = top + 1; y < H; y++) { ctx.fillStyle = ((x + y) & 1) ? SC.mid : SC.dim; ctx.fillRect(x, y, 1, 1); } }
   }
-  const DITH = { c: [[14, 22, 8], [20, 32, 11], [30, 46, 15], [58, 84, 24], [255, 182, 46]], B: [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5], img: null };
+  const DITH = { c: [[14, 22, 8], [20, 32, 11], [30, 46, 15], [58, 84, 24], ACC_RGB], B: [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5], img: null };
   function drawScope(t) {
     const cv = $("dither"), ctx = cv.getContext("2d", { alpha: false }), W = 140, H = 48; if (cv.width !== W) { cv.width = W; cv.height = H; DITH.img = ctx.createImageData(W, H); }
     const d = DITH.img.data, tt = t * .0005 * (state.running ? 2.6 : 1), sweep = ((t * (state.running ? .05 : .02)) % (W + 40)) - 20;
@@ -703,12 +705,12 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
     if (cv.width !== w || cv.height !== hgt) { cv.width = w; cv.height = hgt; } const ctx = cv.getContext("2d"); ctx.clearRect(0, 0, w, hgt); if (!state.running) return;
     const rel = el => { const b = el.getBoundingClientRect(); return { l: b.left - r.left, t: b.top - r.top, r: b.right - r.left, b: b.bottom - r.top, cx: (b.left + b.right) / 2 - r.left, cy: (b.top + b.bottom) / 2 - r.top }; };
     const run = Object.entries(spines).filter(([k, el]) => el.classList.contains("running") && k !== "orchestrator"), orch = spines.orchestrator;
-    ctx.shadowColor = "rgba(255,182,46,.9)"; ctx.shadowBlur = 8; ctx.fillStyle = "#ffb62e";
+    ctx.shadowColor = accA(.9); ctx.shadowBlur = 8; ctx.fillStyle = ACC;
     for (const [k, el] of run) {
       const a = rel(el); let from, to;
       if (k.startsWith("reader:") && srcSpines[k.slice(7)]) { const sp = rel(srcSpines[k.slice(7)]); from = { x: a.cx, y: a.t }; to = { x: sp.cx, y: sp.b }; } else continue;
       const dx = to.x - from.x, dy = to.y - from.y, len = Math.hypot(dx, dy) || 1, ux = dx / len, uy = dy / len, step = 18, ph = (t * .07) % step;
-      ctx.strokeStyle = "#ffb62e"; ctx.lineWidth = 3; ctx.lineCap = "butt"; ctx.beginPath();
+      ctx.strokeStyle = ACC; ctx.lineWidth = 3; ctx.lineCap = "butt"; ctx.beginPath();
       for (let d = -step + ph; d < len; d += step) { const a0 = Math.max(0, d), b0 = Math.min(len, d + 10); if (b0 > a0) { ctx.moveTo(from.x + ux * a0, from.y + uy * a0); ctx.lineTo(from.x + ux * b0, from.y + uy * b0); } }
       ctx.stroke();
       const bk = 11 + Math.round(Math.abs(Math.sin(t * .008)) * 5), bc = 7; ctx.beginPath();
@@ -719,7 +721,7 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
     function paintAgent(key, frame) {
     const el = spines[key]; if (!el) return; const card = cards[key], st = card ? (card.status || "waiting") : "ghost", rows = SPR[ROLE_SPR[roleOf(key)]][frame & 1], cv = el._cv, S = 4;
     const w = rows[0].length * S, hh = rows.length * S; if (cv.width !== w) { cv.width = w; cv.height = hh; }
-    const ctx = cv.getContext("2d"); ctx.clearRect(0, 0, w, hh); ctx.fillStyle = st === "running" && !["orchestrator", "quality"].includes(roleOf(key)) ? "#ffb62e" : "#b9f04a"; ctx.globalAlpha = st === "ghost" ? .22 : st === "waiting" ? .55 : 1; drawSprite(ctx, rows, 0, 0, S); ctx.globalAlpha = 1;
+    const ctx = cv.getContext("2d"); ctx.clearRect(0, 0, w, hh); ctx.fillStyle = st === "running" && !["orchestrator", "quality"].includes(roleOf(key)) ? ACC : "#b9f04a"; ctx.globalAlpha = st === "ghost" ? .22 : st === "waiting" ? .55 : 1; drawSprite(ctx, rows, 0, 0, S); ctx.globalAlpha = 1;
     if (st === "failed") { ctx.fillStyle = "#0c1207"; for (let i = 0; i < Math.min(w, hh); i += 2) { ctx.fillRect(i, i, 3, 3); ctx.fillRect(w - 3 - i, i, 3, 3); } }
     if (st === "done") { ctx.fillStyle = "#0c1207"; const cx = w - 12, cy = hh - 12; [[0, 4], [2, 6], [4, 8], [6, 6], [8, 4], [10, 2], [12, 0]].forEach(([x, y]) => ctx.fillRect(cx + x - 4, cy + y - 4, 3, 3)); }
   }
@@ -999,7 +1001,7 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
 
   boot(); startLoop(); tickClock(); setInterval(tickClock, 1000);
   const dt = new Date(); $("sig-date").textContent = `${clock2(dt.getDate())}/${clock2(dt.getMonth() + 1)}/${String(dt.getFullYear()).slice(2)}`;
-  $("stat-rejected")._pal = COUNT_PAL.amber;
+  $("stat-rejected")._pal = COUNT_PAL.accent;
   $("code").dataset.idle = "1"; setCode(IDLE); setCount($("stat-claims"), 0, 6); setCount($("stat-rejected"), 0, 6); progress(false);
   renderSources([]); renderBrief({}, false); updateHint(); startStudio();
 })();
