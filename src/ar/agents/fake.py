@@ -10,7 +10,7 @@ from ar.agents.roles import get_role
 from ar.models import AgentResult, Role
 from ar.packet import Packet
 
-ANSWER_KEY_PATH = Path(__file__).resolve().parents[3] / "fixtures" / "baselines" / "answer_key.json"
+ANSWER_KEY_PATH = Path(__file__).resolve().parents[1] / "fixtures" / "baselines" / "answer_key.json"
 
 
 class FakeAgent:
