@@ -206,12 +206,15 @@ MAX_RESTORED_SOURCES = 40
 
 
 class Session:
-    def __init__(self, workdir: Path, make_agent: Callable[[], Any] | None, client=None) -> None:
+    def __init__(self, workdir: Path, make_agent: Callable[[], Any] | None, client=None,
+                 runtime_factory: Callable[[], Any] | None = None) -> None:
         self.id = uuid.uuid4().hex[:12]
         self.root = workdir / self.id
         self.root.mkdir(parents=True, exist_ok=True)
         self.event_database = self.root / "studio-events.sqlite"
         self.make_agent = make_agent  # None means demo mode with the fake agent
+        self.runtime_factory = runtime_factory
+        self.codex_runtime = None
         self.client = client  # live chat client for intake and the scout; None in demo mode
         self.intake = Intake(client=client)
         self.sources: dict[str, str] = {}
@@ -228,9 +231,12 @@ class Session:
         self._thread: threading.Thread | None = None
         self._init_event_journal()
         opening = self.intake.opening()
-        if make_agent is None:
+        if make_agent is None and runtime_factory is None:
             opening += " Demo mode is active; choose Load demo to try the full workflow."
         self.emit("chat", role="assistant", who="Intake", text=opening)
+
+        if runtime_factory is not None:
+            self.emit("chat", role="assistant", who="Codex", text="One Codex agent handles research, coding, simulation and testing, with focused delegation when useful.")
 
     # feed
 
@@ -302,6 +308,16 @@ class Session:
         if not message:
             return
         self.emit("chat", role="user", who="You", text=message)
+        if self.runtime_factory and self.running:
+            if self.codex_runtime:
+                self.codex_runtime.steer(message)
+                self.emit("chat", role="assistant", who="Codex", text="Follow-up sent to the running Codex session.")
+            return
+        if self.runtime_factory and self.status != "intake":
+            self.intake.brief.context += "\nFollow-up from the user: " + message
+            self.emit("chat", role="assistant", who="Codex", text="Ready. Start again to continue the same Codex session with this follow-up.")
+            self.emit("brief", brief=self.intake.brief.as_dict(), ready=True)
+            return
         if self.status in ("done", "blocked", "failed") and self.open_questions:
             self.intake.brief.context = (self.intake.brief.context + " Answers from the user: " + message).strip()
             self.emit("chat", role="assistant", who="Intake",
@@ -342,7 +358,7 @@ class Session:
     def use_demo(self) -> None:
         for path in sorted((FIXTURE / "input" / "papers").glob("*.md")):
             self.sources[path.stem] = path.read_text(encoding="utf-8")
-        if not self.intake.brief.question or self.make_agent is None:
+        if not self.intake.brief.question or (self.make_agent is None and not self.runtime_factory):
             self.intake.brief = Brief(**DEMO_BRIEF.as_dict())
             self.intake.ready = True
             self.emit("chat", role="assistant", who="Intake",
@@ -398,11 +414,11 @@ class Session:
             raise RuntimeError("a run is already in progress")
         if not self.intake.brief.question:
             raise ValueError("ask your question in the chat first")
-        if not self.sources and self.make_agent is None:
+        if not self.sources and self.make_agent is None and not self.runtime_factory:
             self.use_demo()  # demo mode can only read the demo papers
             self.emit("chat", role="assistant", who="Res Loop",
                       text="No papers, so I loaded the demo ones. Add OPENAI_API_KEY to .env to start without papers.")
-        if self.make_agent is None and set(self.sources) - {p.stem for p in (FIXTURE / "input" / "papers").glob("*.md")}:
+        if self.make_agent is None and not self.runtime_factory and set(self.sources) - {p.stem for p in (FIXTURE / "input" / "papers").glob("*.md")}:
             raise ValueError("Demo mode only reads the demo papers. Add OPENAI_API_KEY to .env to use your own.")
         self.runs += 1
         self.status = "running"
@@ -411,8 +427,11 @@ class Session:
         self.open_questions.clear()
         self.skipped.clear()
         self.web_results = []
-        project = self.root / f"run-{self.runs}"
-        self._thread = threading.Thread(target=self._run, args=(project, max_model_calls), daemon=True)
+        project = self.root / ("codex-project" if self.runtime_factory else f"run-{self.runs}")
+        if self.runtime_factory:
+            self.codex_runtime = self.runtime_factory()
+        target = self._run_codex if self.runtime_factory else self._run
+        self._thread = threading.Thread(target=target, args=(project, max_model_calls), daemon=True)
         self._thread.start()
 
     def _scout(self) -> None:
@@ -443,6 +462,50 @@ class Session:
                   text=f"No sources, so I wrote {len(added)} notes from the model's own knowledge. They're labelled that way. "
                        "Treat anything cited from them as unchecked.")
 
+    def stop(self) -> None:
+        if not self.running or not self.codex_runtime:
+            raise RuntimeError("No Codex run is active")
+        self.codex_runtime.cancel()
+        self.emit("chat", role="assistant", who="Codex", text="Stopping the active turn. Start again to resume this session.")
+
+    def _codex_event(self, method: str, payload: dict) -> None:
+        self.emit("codex", event=method, payload=payload)
+        item = payload.get("item", {})
+        if method in {"item/started", "item/completed"}:
+            detail = item.get("command") or item.get("text") or item.get("type", "Working")
+            self.agent("codex", role="codex", title="Codex", status="running", detail=str(detail)[:500])
+        if item.get("type") == "collabAgentToolCall":
+            states = item.get("agentsStates", {})
+            for tid in item.get("receiverThreadIds", []):
+                state = states.get(tid, {})
+                label = state.get("status", "running")
+                self.agent(f"codex:{tid}", role="codex_delegate", title="Delegate",
+                           status="done" if label == "completed" else "failed" if label in {"errored", "shutdown"} else "running",
+                           detail=str(state.get("message") or item.get("prompt") or item.get("tool", "Delegated task"))[:500])
+
+    def _run_codex(self, project: Path, _legacy_model_budget: int) -> None:
+        from ar.codex_research import run_research
+
+        self.emit("run", status="started", run=self.runs, project=str(project), runtime="codex")
+        self.agent("codex", role="codex", title="Codex", status="running", detail="Starting native Codex session")
+        try:
+            self._write_project(project)
+            self.report = run_research(project, self.codex_runtime, on_event=self._codex_event)
+            status = self.report["outcome"]
+        except Exception as exc:
+            status = "failed"
+            self.report = {"runtime": "codex", "outcome": status, "markdown": "", "claims": [], "cited": [],
+                           "rejections": [], "sources": [], "requirements": [], "open_questions": [],
+                           "checks": [], "artifacts": [], "executions": [], "limitations": [], "problems": [str(exc)]}
+            self.emit("chat", role="assistant", who="Codex", text=f"The run stopped: {exc}")
+        self.status = "done" if status == "completed" else status
+        self.agent("codex", role="codex", title="Codex", status="done" if status == "completed" else "failed",
+                   detail=self.report.get("summary") or status.replace("_", " "))
+        self.emit("run", status=status, run=self.runs, runtime="codex")
+        self.emit("report", report=self.report)
+        self.emit("chat", role="assistant", who="Codex",
+                  text=self.report.get("summary") or f"Run {status.replace('_', ' ')}. See the report and captured tool activity.")
+
     @property
     def running(self) -> bool:
         return bool(self._thread and self._thread.is_alive())
@@ -452,11 +515,12 @@ class Session:
             self._thread.join(timeout)
 
     def _write_project(self, project: Path) -> None:
-        if project.exists():
-            shutil.rmtree(project)
         papers = project / "input" / "papers"
-        papers.mkdir(parents=True)
-        (project / "input" / "brief.md").write_text(self.intake.brief.to_markdown(), encoding="utf-8")
+        papers.mkdir(parents=True, exist_ok=True)
+        for old in papers.glob("*.md"):
+            if old.stem not in self.sources:
+                old.unlink()
+        (project / "input" / "brief.md").write_text(self.intake.brief.to_markdown(native_codex=bool(self.runtime_factory)), encoding="utf-8")
         for sid, text in self.sources.items():
             (papers / f"{sid}.md").write_text(text if text.endswith("\n") else text + "\n", encoding="utf-8")
 

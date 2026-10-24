@@ -14,8 +14,8 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="ar studio", description="Open Res Loop, the research studio, in your browser.")
     parser.add_argument("--port", type=int, default=8765)
-    parser.add_argument("--provider", choices=["openai", "anthropic"], help="default: whichever key is in .env")
-    parser.add_argument("--model", help="model id (default: gpt-5.6-terra for openai)")
+    parser.add_argument("--provider", choices=["codex", "openai", "anthropic"], default="codex", help="default: native Codex; legacy providers remain available")
+    parser.add_argument("--model", help="Codex model id; defaults to the available Codex catalog default")
     parser.add_argument("--fake", action="store_true", help="demo mode on the built-in papers, no API key")
     parser.add_argument("--no-browser", action="store_true")
     args = parser.parse_args(argv)

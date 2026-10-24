@@ -171,7 +171,7 @@ def test_cli_inspect_export_and_live_agent_selection(tmp_path, monkeypatch):
     monkeypatch.setattr(cli, "LiveAgent", lambda client: FakeAgent())
     run = runner.invoke(
         cli.app,
-        ["run", str(project), "--model", "test-model", "--effort", "high"],
+        ["run", str(project), "--provider", "anthropic", "--model", "test-model", "--effort", "high"],
     )
     assert run.exit_code == 0, run.output
     assert seen == {"model": "test-model", "effort": "high"}
