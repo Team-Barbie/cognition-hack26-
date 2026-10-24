@@ -77,3 +77,22 @@ def test_make_client_unknown_provider():
     with pytest.raises(AdapterError, match="unknown provider"):
         make_client("gemini")
     assert adapter.PROVIDERS == ("anthropic", "openai")
+
+
+def test_cli_run_accepts_provider_openai(tmp_path, monkeypatch):
+    from typer.testing import CliRunner
+
+    from ar import cli
+    from ar.agents.fake import FakeAgent
+
+    seen = {}
+    monkeypatch.setattr(cli, "make_client", lambda *a: seen.update(args=a) or object())
+    monkeypatch.setattr(cli, "LiveAgent", lambda client: FakeAgent())
+    shutil.copytree(Path(__file__).parent.parent / "fixtures" / "baselines", tmp_path / "p")
+    result = CliRunner().invoke(
+        cli.app, ["run", str(tmp_path / "p"), "--provider", "openai", "--model", "gpt-4o-mini"]
+    )
+    assert result.exit_code == 0, result.output
+    assert seen["args"] == ("openai", "gpt-4o-mini", "medium", None)
+    bad = CliRunner().invoke(cli.app, ["run", str(tmp_path / "p"), "--provider", "gemini"])
+    assert bad.exit_code == 2

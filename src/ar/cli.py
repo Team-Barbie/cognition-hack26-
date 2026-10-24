@@ -6,7 +6,7 @@ from pathlib import Path
 
 import typer
 
-from ar.adapter import AnthropicClient, LiveAgent
+from ar.adapter import PROVIDERS, AnthropicClient, LiveAgent, make_client
 from ar.agents.fake import FakeAgent
 from ar.broker import Broker
 from ar.controller import export_project as export_committed_project
@@ -31,6 +31,12 @@ PROJECT_DIRECTORIES = (
 
 def _database(root: Path) -> Path:
     return root / ".research" / "state.sqlite"
+
+
+def _live_agent(provider: str, model: str | None, effort: str, base_url: str | None) -> LiveAgent:
+    if provider == "anthropic":
+        return LiveAgent(AnthropicClient(model=model or "claude-opus-5-5", effort=effort))
+    return LiveAgent(make_client(provider, model, effort, base_url))
 
 
 @app.command("init")
@@ -80,7 +86,9 @@ def status(
 def run_project(
     path: Path = typer.Argument(Path.cwd(), help="Project directory."),
     fake: bool = typer.Option(False, "--fake", help="Use the deterministic fixture agent."),
-    model: str | None = typer.Option(None, "--model", help="Claude model id for a live run."),
+    provider: str = typer.Option("anthropic", "--provider", help="Live provider: anthropic or openai."),
+    model: str | None = typer.Option(None, "--model", help="Model id for a live run."),
+    base_url: str | None = typer.Option(None, "--base-url", help="OpenAI-compatible endpoint (openai provider)."),
     effort: str = typer.Option("medium", "--effort", help="Live model effort."),
     max_tasks: int = typer.Option(12, min=4, help="Maximum tasks dispatched."),
     max_model_calls: int = typer.Option(20, min=0, help="Stop before dispatching past this budget."),
@@ -92,10 +100,13 @@ def run_project(
     if not _database(root).is_file():
         connection = initialize_project(root)
         connection.close()
+    if provider not in PROVIDERS:
+        typer.echo(f"--provider must be one of: {', '.join(PROVIDERS)}.", err=True)
+        raise typer.Exit(code=2)
     if effort not in {"low", "medium", "high", "xhigh", "max"}:
         typer.echo("--effort must be low, medium, high, xhigh, or max.", err=True)
         raise typer.Exit(code=2)
-    agent = FakeAgent() if fake else LiveAgent(AnthropicClient(model=model or "claude-opus-5-5", effort=effort))
+    agent = FakeAgent() if fake else _live_agent(provider, model, effort, base_url)
     try:
         outcome = execute_project(
             root,
@@ -192,7 +203,9 @@ def pause(
 def resume(
     path: Path = typer.Argument(Path.cwd(), help="Project directory."),
     fake: bool = typer.Option(False, "--fake", help="Use the deterministic fixture agent."),
-    model: str | None = typer.Option(None, "--model", help="Claude model id for a live run."),
+    provider: str = typer.Option("anthropic", "--provider", help="Live provider: anthropic or openai."),
+    model: str | None = typer.Option(None, "--model", help="Model id for a live run."),
+    base_url: str | None = typer.Option(None, "--base-url", help="OpenAI-compatible endpoint (openai provider)."),
     effort: str = typer.Option("medium", "--effort", help="Live model effort."),
     max_tasks: int = typer.Option(12, min=4),
     max_model_calls: int = typer.Option(20, min=0),
@@ -204,10 +217,13 @@ def resume(
     if not _database(root).is_file():
         typer.echo("Not an autoresearch project.", err=True)
         raise typer.Exit(code=1)
+    if provider not in PROVIDERS:
+        typer.echo(f"--provider must be one of: {', '.join(PROVIDERS)}.", err=True)
+        raise typer.Exit(code=2)
     if effort not in {"low", "medium", "high", "xhigh", "max"}:
         typer.echo("--effort must be low, medium, high, xhigh, or max.", err=True)
         raise typer.Exit(code=2)
-    agent = FakeAgent() if fake else LiveAgent(AnthropicClient(model=model or "claude-opus-5-5", effort=effort))
+    agent = FakeAgent() if fake else _live_agent(provider, model, effort, base_url)
     try:
         outcome = execute_project(
             root,
