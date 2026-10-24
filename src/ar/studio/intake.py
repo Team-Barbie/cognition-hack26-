@@ -17,7 +17,7 @@ from ar.adapter import ChatClient, extract_json
 FIELDS = ("question", "context", "constraints", "open_questions")
 
 SYSTEM = """You run intake for a research system that only answers from sources the user supplies.
-Gather, in a friendly and brief way:
+Gather, in a few plain words, like a sharp colleague with no filler or flattery:
 - question: the one research question to answer
 - context: background, domain, who the answer is for
 - constraints: rules, scope limits, or claims to test (list)
@@ -32,10 +32,10 @@ Reply with ONE JSON object and nothing else:
  "brief": {"question": str, "context": str, "constraints": [str], "open_questions": [str]}}"""
 
 SCRIPT = [
-    ("question", "What should I research? Give me the question in one sentence."),
-    ("context", "What's the context: the domain, why it matters, and who the answer is for?"),
-    ("constraints", "Any constraints or claims to test? For example a rule you suspect is wrong. Say \"none\" to skip."),
-    ("open_questions", "Which open questions must the report answer? One per line, or \"none\"."),
+    ("question", "What's the question?"),
+    ("context", "What's it for? Field, purpose, who reads it."),
+    ("constraints", "Any limits, or a claim you want tested? Say none to skip."),
+    ("open_questions", "What must the report answer? One per line, or none."),
 ]
 
 _NONE = {"", "none", "no", "n/a", "na", "skip", "-"}
@@ -105,10 +105,13 @@ class Intake:
 
     def opening(self) -> str:
         return (
-            "Hi, I'm the research intake agent. Tell me what you want researched. I'll ask a few questions "
-            "about context, constraints, and open questions, then you add the sources (paste text or upload "
-            ".md/.txt files) and I'll hand it to the agent team."
+            "Ask your question. I'll ask a few things back, then you can add papers."
         )
+
+    def resume(self, ready: bool) -> None:
+        """Pick the script up where a restored brief left off."""
+        self.ready = ready and bool(self.brief.question)
+        self._step = len(SCRIPT) if self.ready else 2 if self.brief.context else 1 if self.brief.question else 0
 
     def reply(self, message: str) -> str:
         self.history.append({"role": "user", "content": message})
@@ -129,7 +132,7 @@ class Intake:
         if self._step < len(SCRIPT):
             return SCRIPT[self._step][1]
         self.ready = bool(self.brief.question)
-        return "Got it. Add your sources on the right of the chat box, then press Start research."
+        return "That's enough to start. Add papers, or press Start without them."
 
     def _live(self, message: str) -> str | None:
         transcript = "\n".join(f"{m['role']}: {m['content']}" for m in self.history)
@@ -149,6 +152,6 @@ class Intake:
             self.brief.merge({"question": message})
         self.ready = bool(data.get("ready")) and bool(self.brief.question)
         reply = str(data.get("reply") or "").strip()
-        if self.ready and "source" not in reply.lower():
-            reply += " Add your sources, then press Start research."
+        if self.ready and not any(w in reply.lower() for w in ("source", "paper", "shelf")):
+            reply += " Put papers on the shelf, then press Start."
         return reply or "Tell me a bit more about what you need."

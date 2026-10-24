@@ -15,9 +15,9 @@ from ar.evidence import CITATION, contradicting_claims, get_claim
 from ar.models import ArtifactVersion, Requirement
 from ar.review import GateDecision, latest_review, list_findings
 
-__all__ = ["CITATION", "HEADING", "CompletionAssessment", "RequirementRow", "assess", "sections"]
+__all__ = ["CompletionAssessment", "RequirementRow", "assess", "sections"]
 
-HEADING = re.compile(r"^\s{0,3}#{1,6}\s+(.*?)\s*#*\s*$", re.M)
+_LEVELED = re.compile(r"^\s{0,3}(#{1,6})\s+(.*?)\s*#*\s*$", re.M)
 
 
 @dataclass
@@ -44,12 +44,16 @@ def _norm(text: str) -> str:
 
 
 def sections(content: str) -> dict[str, str]:
-    """Normalized heading to the text under it, up to the next heading of any level."""
-    marks = list(HEADING.finditer(content))
+    """Normalized heading to the text under it, subsections included.
+
+    A section runs to the next heading of the same or a higher level, so `## Protocol` that holds only
+    `###` parts is not empty."""
+    marks = list(_LEVELED.finditer(content))
     out: dict[str, str] = {}
     for i, m in enumerate(marks):
-        end = marks[i + 1].start() if i + 1 < len(marks) else len(content)
-        out.setdefault(_norm(m.group(1)), content[m.end() : end])
+        level = len(m.group(1))
+        end = next((n.start() for n in marks[i + 1 :] if len(n.group(1)) <= level), len(content))
+        out.setdefault(_norm(m.group(2)), content[m.end() : end])
     return out
 
 

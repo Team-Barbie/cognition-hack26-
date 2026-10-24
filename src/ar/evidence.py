@@ -13,10 +13,10 @@ import re
 import sqlite3
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
 from typing import Protocol
 
 from ar.broker import normalize_quote
+from ar.clock import utc_now as _now
 from ar.imports import ImportRecord, import_for_source
 from ar.models import Claim, ClaimDraft, EvidenceLink, LineSelector, SourceRef
 
@@ -104,10 +104,6 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
         cols = {r[1] for r in conn.execute("PRAGMA table_info(claims)")}
         if "digest" not in cols:  # databases created before claim digests
             conn.execute("ALTER TABLE claims ADD COLUMN digest TEXT")
-
-
-def _now() -> str:
-    return datetime.now(UTC).isoformat()
 
 
 def draft_digest(task_id: str, draft: ClaimDraft) -> str:
