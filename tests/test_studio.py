@@ -8,7 +8,7 @@ import urllib.request
 import pytest
 
 from ar.studio.intake import Brief, Intake
-from ar.studio.server import SlidingWindowLimiter, event_stream, handle, serve
+from ar.studio.server import SlidingWindowLimiter, Studio, event_stream, handle, serve
 from ar.models import LineSelector, Requirement, SourceRef
 from ar.packet import DeliveredRead, Packet
 from ar.studio.session import Session, packet_view
@@ -394,3 +394,13 @@ def test_writer_gets_the_scope_note_and_a_nudge_when_it_balks(tmp_path):
     assert all("Scope note" in e["payload"]["packet"]["objective"] for e in dispatched
                if e["payload"]["packet"]["role"] in ("planner", "writer", "reviewer"))
     assert not any("Scope note" in e.get("text", "") for e in s.events if e["type"] == "chat")  # the user never sees it
+
+
+def test_the_page_has_a_tab_icon_served_by_the_app(tmp_path):
+    studio = Studio(tmp_path, fake=True)
+    page = handle(studio, "GET", "/", "", b"")[2].decode()
+    assert '<link rel="icon" href="/favicon.svg"' in page
+    assert "http://" not in page and "https://" not in page  # the page itself still makes no external requests
+    for path in ("/favicon.svg", "/favicon.ico"):
+        status, kind, body = handle(studio, "GET", path, "", b"")
+        assert (status, kind) == (200, "image/svg+xml") and body.startswith(b"<svg")
