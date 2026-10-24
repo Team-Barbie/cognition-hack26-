@@ -169,3 +169,5 @@ Contracts and Quality are on main. These differ from the sketch above, so code a
   from `ar.adapter` (credentials via `ANTHROPIC_API_KEY` or `ant auth login`).
 - Done when `ar run fixtures/baselines --fake` writes `output/report.md` with two citations and a second run
   does not duplicate accepted artifacts. `tests/test_fake_chain.py` shows the packet shapes each role expects.
+- Providers: build the live client with `ar.adapter.make_client(provider, model, effort, base_url)`;
+  `provider` is `anthropic` (default) or `openai`. Wire `ar run --provider/--model/--effort/--base-url` to it.

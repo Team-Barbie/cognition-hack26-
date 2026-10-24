@@ -1,7 +1,7 @@
 """Run the evidence reader live on the baselines fixture and check it against the answer key.
 
-Uses the Claude API. Credentials come from the SDK: ANTHROPIC_API_KEY, or run `ant auth login`
-once and no env var is needed. Not part of pytest: it calls a real model.
+Providers: anthropic (default; ANTHROPIC_API_KEY or `ant auth login`) or openai (OPENAI_API_KEY,
+optional OPENAI_BASE_URL for a local server). Not part of pytest: it calls a real model.
 """
 
 import argparse
@@ -12,7 +12,7 @@ from pathlib import Path
 ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 
-from ar.adapter import DEFAULT_MODEL, AnthropicClient, LiveAgent  # noqa: E402
+from ar.adapter import PROVIDERS, LiveAgent, make_client  # noqa: E402
 from ar.models import LineSelector, SourceRef  # noqa: E402
 from ar.packet import DeliveredRead, Packet  # noqa: E402
 
@@ -22,10 +22,12 @@ FIXTURE = ROOT / "fixtures" / "baselines"
 def main() -> int:
     key = json.loads((FIXTURE / "answer_key.json").read_text())
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model", default=DEFAULT_MODEL)
+    parser.add_argument("--provider", default="anthropic", choices=PROVIDERS)
+    parser.add_argument("--model")
+    parser.add_argument("--base-url")
     parser.add_argument("--effort", default="medium", choices=["low", "medium", "high", "xhigh", "max"])
     args = parser.parse_args()
-    client = AnthropicClient(model=args.model, effort=args.effort)
+    client = make_client(args.provider, args.model, args.effort, args.base_url)
     agent = LiveAgent(client)
     failures = 0
     for source_id, entry in key["sources"].items():
