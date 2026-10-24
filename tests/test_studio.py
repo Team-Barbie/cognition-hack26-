@@ -191,3 +191,123 @@ def test_filler_items_from_the_model_are_dropped():
     b.merge({"question": "Q", "constraints": ["Only 2020+ studies", "No other constraints specified.", "none"],
              "open_questions": ["No further questions", "What horizon?"]})
     assert b.constraints == ["Only 2020+ studies"] and b.open_questions == ["What horizon?"]
+
+
+def test_scout_writes_labelled_notes_when_no_sources_are_given(tmp_path):
+    notes = {"notes": [
+        {"title": "Catalogues", "lines": ["Fact one.", "Fact two.", "Fact three (uncertain)."]},
+        {"title": "Too short", "lines": ["only one"]},
+    ]}
+    s = Session(tmp_path, make_agent=lambda: None, client=Scripted(notes))
+    s.intake.brief = Brief(question="Are there new giant radio galaxies in LoTSS DR3?")
+    s._scout()
+    assert list(s.sources) == ["notes-catalogues"]
+    text = s.sources["notes-catalogues"]
+    assert text.splitlines()[0] == "# Catalogues" and "Model-generated background notes" in text
+    assert any("model-generated background notes" in c for c in s.intake.brief.constraints)
+    assert "model-generated background notes" in s.intake.brief.to_markdown()
+    cards = {e["id"]: e for e in s.events if e["type"] == "agent"}
+    assert cards["scout"]["status"] == "done"
+
+
+def test_scout_with_nothing_usable_stops_honestly(tmp_path):
+    s = Session(tmp_path, make_agent=lambda: None, client=Scripted({"notes": []}))
+    s.intake.brief = Brief(question="Q?")
+    s.start()
+    s.wait(30)
+    assert s.status == "failed" and not s.sources
+    assert "could not write background notes" in [e for e in s.events if e["type"] == "chat"][-1]["text"]
+
+
+def test_demo_mode_without_sources_loads_the_demo_papers(tmp_path):
+    s = Session(tmp_path, None)
+    s.intake.brief = Brief(question="Q?")
+    s.start()
+    s.wait(60)
+    assert set(s.sources) == {"paper-a", "paper-b", "paper-c"} and s.status == "done"
+
+
+def test_a_reader_that_balks_is_retried_then_skipped_without_killing_the_run(tmp_path):
+    from ar.agents.fake import FakeAgent
+    from ar.models import AgentResult
+
+    class Flaky:
+        """paper-c's reader balks twice; paper-a's balks once and then works."""
+        def __init__(self):
+            self.inner, self.calls = FakeAgent(), {}
+
+        def run(self, role, packet):
+            label = packet.reads[0].label if role == "evidence_reader" and packet.reads else role
+            self.calls[label] = self.calls.get(label, 0) + 1
+            if label == "paper-c" or (label == "paper-a" and self.calls[label] == 1):
+                return AgentResult(role=role, task_id=packet.task_id, outcome="unable_to_complete", unresolved=["model hiccup"])
+            return self.inner.run(role, packet)
+
+    flaky = Flaky()
+    s = Session(tmp_path, make_agent=lambda: flaky, client=None)
+    s.use_demo()
+    s.start()
+    s.wait(60)
+    assert s.status == "done" and flaky.calls["paper-a"] == 2 and flaky.calls["paper-c"] == 2
+    cards = {e["id"]: e for e in s.events if e["type"] == "agent"}
+    assert cards["reader:paper-c"]["status"] == "failed" and "Skipped" in cards["reader:paper-c"]["detail"]
+    assert cards["reader:paper-a"]["status"] == "done"
+    assert any("paper-c could not complete" in lim for lim in s.report["limitations"])
+    assert len(s.report["cited"]) == 2
+
+
+def test_a_planner_that_proposes_a_plan_but_wants_more_inputs_does_not_stop_the_run(tmp_path):
+    from ar.agents.fake import FakeAgent
+    from ar.models import AgentResult
+
+    class WantsData:
+        def __init__(self):
+            self.inner, self.planner_calls = FakeAgent(), 0
+
+        def run(self, role, packet):
+            result = self.inner.run(role, packet)
+            if role == "planner":
+                self.planner_calls += 1
+                return result.model_copy(update={"outcome": "needs_dependency", "payload": {},
+                                                 "unresolved": ["Supply the LoTSS DR3 catalogue.", "Who is the audience?"]})
+            return result
+
+    agent = WantsData()
+    s = Session(tmp_path, make_agent=lambda: agent, client=None)
+    s.use_demo()
+    s.start()
+    s.wait(60)
+    assert s.status == "done" and agent.planner_calls == 1  # no wasted retry
+    planner = next(e for e in s.events if e["type"] == "agent" and e["id"] == "planner" and e["status"] == "done")
+    assert planner["questions"] == ["Supply the LoTSS DR3 catalogue.", "Who is the audience?"]
+    assert "Supply the LoTSS DR3 catalogue." in s.open_questions
+
+
+def test_writer_gets_the_scope_note_and_a_nudge_when_it_balks(tmp_path):
+    from ar.agents.fake import FakeAgent
+    from ar.models import AgentResult
+
+    class Balky:
+        """Writer answers needs_dependency unless it was told the run cannot fetch data, or nudged to proceed."""
+        def __init__(self):
+            self.inner, self.seen = FakeAgent(), {}
+
+        def run(self, role, packet):
+            if role in ("planner", "writer", "reviewer"):
+                self.seen.setdefault(role, []).append(packet)
+            if role == "writer" and "Scope note" not in packet.objective:
+                return AgentResult(role=role, task_id=packet.task_id, outcome="needs_dependency", unresolved=["Need data"])
+            if role == "writer" and len(self.seen["writer"]) == 1 and not packet.review_feedback:
+                return AgentResult(role=role, task_id=packet.task_id, outcome="needs_dependency", unresolved=["Still need data"])
+            return self.inner.run(role, packet)
+
+    agent = Balky()
+    s = Session(tmp_path, make_agent=lambda: agent, client=None)
+    s.use_demo()
+    s.start()
+    s.wait(60)
+    assert s.status == "done"
+    assert all("Scope note" in p.objective for ps in agent.seen.values() for p in ps)
+    writers = agent.seen["writer"]
+    assert len(writers) == 2 and "previous reply asked for inputs" in writers[1].review_feedback[-1]
+    assert not any("Scope note" in e.get("text", "") for e in s.events if e["type"] == "chat")  # the user never sees it
