@@ -467,13 +467,34 @@ mark { background: var(--acc); color: var(--ink); text-shadow: none; padding: 0 
   let sid = null, after = 0, report = null, busy = false, returnFocus = null, password = "", attempted = false;
   try { password = sessionStorage.getItem("studioPassword") || ""; } catch (_) { /* storage can be blocked */ }
 
-  async function api(path, body) {
+  // What the page remembers, so a session the server lost can be rebuilt (serverless hosts keep sessions per instance).
+  const snap = { brief: {}, ready: false, sources: {}, demo: false };
+  const attached = !!new URLSearchParams(location.search).get("session");
+  let runPending = false, restoring = null;
+  async function api(path, body, retried) {
     const headers = { "Content-Type": "application/json", ...(password ? { Authorization: `Bearer ${password}` } : {}) };
-    const res = await fetch(path, { method: body === undefined ? "GET" : "POST", headers, body: body === undefined ? undefined : JSON.stringify({ id: sid, ...body }) });
+    const res = await fetch(path, { method: body === undefined ? "GET" : "POST", headers, body: body === undefined ? undefined : JSON.stringify({ id: sid, after, ...body }) });
     const data = await res.json().catch(() => ({}));
     if (res.status === 401) lock();
-    if (!res.ok) { if (/unknown session/.test(data.error || "")) restarted(); throw new Error(data.error || `HTTP ${res.status}`); }
+    if (!res.ok) {
+      if (/unknown session/.test(data.error || "") && body !== undefined && path !== "/api/session" && !retried && await recover()) return api(path, body, true);
+      throw new Error(data.error || `HTTP ${res.status}`);
+    }
+    if (Array.isArray(data.events)) for (const e of data.events) if (e.seq > after) { apply(e); after = e.seq; }
     return data;
+  }
+  // Start a fresh session on the server and refill it from the page. Quiet when it works.
+  function recover() {
+    if (attached) { restarted(); return Promise.resolve(false); }
+    restoring = restoring || (async () => {
+      try {
+        const d = await api("/api/session", { restore: snap });
+        sid = d.id; after = d.seen || 0;
+        if (state.running && !runPending) { state.running = false; updateStart(); toast("The server restarted and the run stopped. Press Run again."); }
+        return true;
+      } catch (err) { restarted(); return false; }
+    })().finally(() => { restoring = null; });
+    return restoring;
   }
   // The lock appears only if the server asks for a password (HTTP 401).
   function lock() { password = ""; try { sessionStorage.removeItem("studioPassword"); } catch (_) {} $("lock").hidden = false; $("screen").setAttribute("aria-hidden", "true"); $("screen").inert = true; setTimeout(() => $("password").focus(), 0); }
@@ -964,31 +985,37 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
 
   // ================= events, inputs, start =================
   function apply(e) {
+    if (e.type === "brief") { snap.brief = e.brief; snap.ready = !!e.ready; }
+    else if (e.type === "sources") for (const k of Object.keys(snap.sources)) if (!e.sources.some(x => x.id === k)) delete snap.sources[k];
     if (e.type === "chat") addTurn(e); else if (e.type === "brief") renderBrief(e.brief, e.ready); else if (e.type === "sources") renderSources(e.sources);
     else if (e.type === "agent") upsertAgent(e); else if (e.type === "quality") addTicker(e);
     else if (e.type === "run") { if (e.status === "started") { report = null; resetTeam(); } setRun(e.status); } else if (e.type === "report") renderReport(e.report);
   }
   async function poll() {
-    if (sid && !busy) { busy = true; try { const d = await api(`/api/events?id=${encodeURIComponent(sid)}&after=${after}`); for (const e of d.events) { apply(e); after = e.seq; } } catch (err) { /* server restarting; keep polling */ } busy = false; }
+    if (sid && !busy) { busy = true; try { await api(`/api/events?id=${encodeURIComponent(sid)}&after=${after}`); } catch (err) { if (/unknown session/.test(err.message) && state.running && !runPending) await recover(); /* else keep polling */ } busy = false; }
     setTimeout(poll, state.running ? 400 : 900);
   }
   $("composer").addEventListener("submit", async e => { e.preventDefault(); const text = $("input").value.trim(); if (!text) return; $("input").value = ""; $("input").style.height = ""; typing(true); try { await api("/api/chat", { message: text }); } catch (err) { typing(false); toast(err.message); } });
   $("input").addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); $("composer").requestSubmit(); } });
   $("input").addEventListener("input", e => { e.target.style.height = "auto"; e.target.style.height = Math.min(140, e.target.scrollHeight) + "px"; });
   for (const id of ["upload-label", "chip-upload"]) $(id).addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); $("file").click(); } });
-  async function addFiles(files) { for (const f of files) { try { await api("/api/source", { name: f.name, text: await f.text() }); } catch (err) { toast(err.message); } } }
+  async function addFiles(files) { for (const f of files) { try { const text = await f.text(); snap.sources[(await api("/api/source", { name: f.name, text })).id] = text; } catch (err) { toast(err.message); } } }
   $("file").addEventListener("change", async e => { await addFiles(e.target.files); e.target.value = ""; });
   const stage = $("stage");
   stage.addEventListener("dragover", e => { e.preventDefault(); stage.classList.add("drop"); }); stage.addEventListener("dragleave", e => { if (!stage.contains(e.relatedTarget)) stage.classList.remove("drop"); });
   stage.addEventListener("drop", async e => { e.preventDefault(); stage.classList.remove("drop"); await addFiles(e.dataTransfer.files); });
   $("paste-toggle").addEventListener("click", () => { $("paste").hidden = !$("paste").hidden; if (!$("paste").hidden) $("paste-name").focus(); });
-  $("paste").addEventListener("submit", async e => { e.preventDefault(); try { await api("/api/source", { name: $("paste-name").value, text: $("paste-text").value }); $("paste").reset(); $("paste").hidden = true; } catch (err) { toast(err.message); } });
-  const useDemo = async () => { try { await api("/api/demo", {}); } catch (err) { toast(err.message); } };
+  $("paste").addEventListener("submit", async e => { e.preventDefault(); try { const text = $("paste-text").value; snap.sources[(await api("/api/source", { name: $("paste-name").value, text })).id] = text; $("paste").reset(); $("paste").hidden = true; } catch (err) { toast(err.message); } });
+  const useDemo = async () => { try { await api("/api/demo", {}); snap.demo = true; } catch (err) { toast(err.message); } };
   $("demo").addEventListener("click", useDemo); $("chip-demo").addEventListener("click", useDemo); $("chip-start").addEventListener("click", () => $("start").click());
   $("chat-fab").addEventListener("click", () => openChat(true)); $("chat-close").addEventListener("click", () => openChat(false));
   $("start").addEventListener("click", async () => {
     const why = missing(); if (why) { addTurn({ role: "assistant", who: "Res Loop", text: why }); openChat(true); toast(why); return; }
-    state.running = true; updateStart(); try { await api("/api/run", {}); } catch (err) { state.running = false; updateStart(); toast(err.message); }
+    state.running = true; updateStart(); runPending = true;
+    try {
+      const d = await api("/api/run", {});  // hosted: the answer carries the run's events
+      if (d.status === "running") { state.running = false; updateStart(); toast("This run is taking longer than the host allows. Try fewer or shorter sources."); }
+    } catch (err) { state.running = false; updateStart(); toast(err.message); } finally { runPending = false; }
   });
   async function startStudio() {
     try {

@@ -58,7 +58,7 @@ class Studio:
     def get(self, sid: str) -> Session:
         session = self.sessions.get(sid)
         if session is None:
-            raise KeyError("unknown session; reload the page")
+            raise KeyError("unknown session")
         return session
 
 
@@ -130,12 +130,15 @@ def handle(studio: Studio, method: str, path: str, query: str, raw_body: bytes,
             raise ValueError("expected a JSON object")
         if path == "/api/session":
             created = studio.new_session()
-            return _json({"id": created.id, "mode": studio.mode})
+            if isinstance(data.get("restore"), dict):
+                created.restore(data["restore"])
+            return _json({"id": created.id, "mode": studio.mode, "seen": len(created.events)})
         session = studio.get(str(data.get("id", "")))
+        reply: dict[str, Any] = {"ok": True}
         if path == "/api/chat":
             session.chat(str(data.get("message", ""))[:8000])
         elif path == "/api/source":
-            session.add_source(str(data.get("name", "source"))[:120], str(data.get("text", "")))
+            reply["id"] = session.add_source(str(data.get("name", "source"))[:120], str(data.get("text", "")))
         elif path == "/api/source/remove":
             session.remove_source(str(data.get("source", "")))
         elif path == "/api/demo":
@@ -144,7 +147,10 @@ def handle(studio: Studio, method: str, path: str, query: str, raw_body: bytes,
             session.start()
         else:
             return _json({"error": "not found"}, 404)
-        return _json({"ok": True})
+        if isinstance(data.get("after"), int):
+            # A hosted instance may not be the one the next poll reaches, so the answer carries the news.
+            reply["events"] = session.since(max(0, data["after"]))
+        return _json(reply)
     except KeyError as exc:
         return _json({"error": str(exc).strip("'\"")}, HTTPStatus.BAD_REQUEST)
     except (ValueError, RuntimeError) as exc:

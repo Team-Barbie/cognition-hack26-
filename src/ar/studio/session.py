@@ -218,6 +218,9 @@ class StageAgent:
         return result
 
 
+MAX_RESTORED_SOURCES = 40
+
+
 class Session:
     def __init__(self, workdir: Path, make_agent: Callable[[], Any] | None, client=None) -> None:
         self.id = uuid.uuid4().hex[:12]
@@ -286,6 +289,20 @@ class Session:
         self.sources[sid] = text.replace("\r\n", "\n")
         self.emit("sources", sources=self.source_list())
         return sid
+
+    def restore(self, state: dict[str, Any]) -> None:
+        """Rebuild a session another server instance lost, from what the page remembers.
+
+        Serverless hosts keep sessions in memory per instance, so a later request can land
+        on an instance that has never seen this one."""
+        if isinstance(state.get("brief"), dict):
+            self.intake.brief.merge(state["brief"])
+        if isinstance(state.get("sources"), dict):
+            for name, text in list(state["sources"].items())[:MAX_RESTORED_SOURCES]:
+                self.add_source(str(name)[:120], str(text))
+        if state.get("demo"):
+            self.use_demo()
+        self.intake.resume(bool(state.get("ready")))
 
     def use_demo(self) -> None:
         for path in sorted((FIXTURE / "input" / "papers").glob("*.md")):
