@@ -152,3 +152,20 @@ class LiveAgent:
             proposed_tasks=[ProposedTask.model_validate(t) for t in envelope.get("proposed_tasks", [])],
             model_calls=calls,
         )
+
+
+PROVIDERS = ("anthropic", "openai")
+
+
+def make_client(
+    provider: str = "anthropic", model: str | None = None, effort: str = "medium",
+    base_url: str | None = None,
+) -> ChatClient:
+    """Build the live chat client for a provider. `effort` applies to Claude only."""
+    if provider == "anthropic":
+        return AnthropicClient(model=model or DEFAULT_MODEL, effort=effort)
+    if provider == "openai":
+        from ar.openai_client import OpenAICompatClient
+
+        return OpenAICompatClient.from_env(model=model, base_url=base_url)
+    raise AdapterError(f"unknown provider {provider!r}; choose one of {', '.join(PROVIDERS)}")
