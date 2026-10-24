@@ -46,10 +46,13 @@ def test_vercel_run_waits_for_the_demo_before_returning(tmp_path, monkeypatch):
 
     sid = client.post("/api/session", json={}).json()["id"]
     assert client.post("/api/demo", json={"id": sid}).status_code == 200
-    ran = client.post("/api/run", json={"id": sid}).json()
-    assert ran["ok"] and ran["status"] == "done"
-    events = ran["events"]  # the run answers with its events: a later poll may reach another instance
-    assert events == client.get("/api/events", params={"id": sid}).json()["events"]
+    ran = client.post("/api/run", json={"id": sid, "after": 0})
+    assert ran.headers["content-type"].startswith("application/x-ndjson")
+    lines = [json.loads(line) for line in ran.text.splitlines()]
+    assert lines[-1] == {"done": True, "status": "done"}
+    events = lines[:-1]  # streamed from the instance that runs it: a later poll may reach another instance
+    assert [e["seq"] for e in events] == sorted({e["seq"] for e in events})
+    assert events == client.get("/api/events", params={"id": sid}).json()["events"][-len(events):]
     report = next(event["report"] for event in events if event["type"] == "report")
     assert report["outcome"] == "completed" and report["cited"] == ["claim-1", "claim-2"]
     assert json.dumps(report)

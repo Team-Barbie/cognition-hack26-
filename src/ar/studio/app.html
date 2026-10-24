@@ -474,6 +474,7 @@ mark { background: var(--acc); color: var(--ink); text-shadow: none; padding: 0 
   async function api(path, body, retried) {
     const headers = { "Content-Type": "application/json", ...(password ? { Authorization: `Bearer ${password}` } : {}) };
     const res = await fetch(path, { method: body === undefined ? "GET" : "POST", headers, body: body === undefined ? undefined : JSON.stringify({ id: sid, after, ...body }) });
+    if (res.ok && (res.headers.get("Content-Type") || "").includes("ndjson")) return readRun(res);
     const data = await res.json().catch(() => ({}));
     if (res.status === 401) lock();
     if (!res.ok) {
@@ -482,6 +483,18 @@ mark { background: var(--acc); color: var(--ink); text-shadow: none; padding: 0 
     }
     if (Array.isArray(data.events)) applyEvents(data.events);
     return data;
+  }
+  // A hosted run answers with a stream, one JSON event per line, so progress still animates.
+  async function readRun(res) {
+    const reader = res.body.getReader(), decoder = new TextDecoder(); let buffer = "", final = {};
+    const line = text => { if (!text.trim()) return; const m = JSON.parse(text); if (m.done) final = m; else applyEvents([m]); };
+    while (true) {
+      const { value, done } = await reader.read(); if (done) break;
+      buffer += decoder.decode(value, { stream: true }); let nl;
+      while ((nl = buffer.indexOf("\n")) >= 0) { line(buffer.slice(0, nl)); buffer = buffer.slice(nl + 1); }
+    }
+    line(buffer);
+    return { ok: true, status: final.status };
   }
   // Start a fresh session on the server and refill it from the page. Quiet when it works.
   function recover() {
