@@ -13,7 +13,7 @@ The first thing that has to work is a literature run you can inspect. Four peopl
 
 ## Stack
 
-Python 3.12, Pydantic v2 as the only schema source, SQLite, content-addressed blobs, Typer, pytest, and one OpenAI-compatible adapter plus a `FakeAgent` so the demo still runs with no API key. The run record states that enforcement is application-level brokerage.
+Python 3.12, Pydantic v2 as the only schema source, SQLite, content-addressed blobs, Typer, pytest, and a Claude adapter (Anthropic SDK), an OpenAI-compatible adapter, and a `FakeAgent` so the demo still runs with no API key. The run record states that enforcement is application-level brokerage.
 
 JSON Schema is generated from the Pydantic models. Do not maintain a second hand-written schema.
 
@@ -235,7 +235,7 @@ Done when the wave 1–2 pytest cases pass against the broker with no model in t
 | --- | --- |
 | Wave 0 | `run(role, packet) -> AgentResult` agreed and committed as a Protocol |
 | Wave 1 | `FakeAgent` emits the answer key: support in paper A, contradiction in paper B, paper C unused |
-| Wave 2 | OpenAI-compatible adapter, one schema repair, reviewer returns blocking or note on the exact artifact version |
+| Wave 2 | Claude and OpenAI-compatible adapters behind `make_client`, one schema repair, reviewer returns blocking or note on the exact artifact version |
 | Wave 3 | Local source scout, theorist and analyst roles, skills as method text without extra tools |
 
 Done when swapping `--fake` for a live model uses the same packet and the same result schema.
