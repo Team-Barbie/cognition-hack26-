@@ -6,14 +6,14 @@ import json
 import shutil
 import sqlite3
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Literal
 from uuid import uuid4
 
-from ar.models import AgentResult
+from ar.models import AgentResult, Requirement
 
-DB_SCHEMA_VERSION = 3
+DB_SCHEMA_VERSION = 4
 
 
 @dataclass(frozen=True)
@@ -30,6 +30,15 @@ class StatusSummary:
     tasks: int
     latest_run_status: str | None
     task_states: dict[str, int]
+    paused: bool = False
+    stale_tasks: int = 0
+
+
+@dataclass(frozen=True)
+class Lease:
+    token: str
+    fencing_token: int
+    expires_at: str
 
 
 RunStatus = Literal["pending", "running", "completed", "budget_exhausted", "failed"]
@@ -82,6 +91,52 @@ def _migrate(connection: sqlite3.Connection) -> None:
                 """
             )
             connection.execute(f"PRAGMA user_version = {DB_SCHEMA_VERSION}")
+    if version < 4:
+        additions = {
+            "runs": {
+                "max_tasks": "INTEGER NOT NULL DEFAULT 12",
+                "pause_requested": "INTEGER NOT NULL DEFAULT 0",
+                "outcome": "TEXT",
+                "idempotency_key": "TEXT",
+            },
+            "tasks": {
+                "fencing_token": "INTEGER NOT NULL DEFAULT 0",
+                "is_stale": "INTEGER NOT NULL DEFAULT 0",
+                "input_fingerprint": "TEXT",
+            },
+            "attempts": {
+                "lease_token": "TEXT",
+                "lease_expires_at": "TEXT",
+                "fencing_token": "INTEGER",
+            },
+        }
+        with connection:
+            for table, columns in additions.items():
+                present = {
+                    row["name"]
+                    for row in connection.execute(f"PRAGMA table_info({table})").fetchall()
+                }
+                for name, definition in columns.items():
+                    if name not in present:
+                        connection.execute(
+                            f"ALTER TABLE {table} ADD COLUMN {name} {definition}"
+                        )
+            connection.executescript(
+                """
+                CREATE TABLE IF NOT EXISTS input_versions (
+                    source_id TEXT PRIMARY KEY, fingerprint TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS idempotency_records (
+                    scope TEXT NOT NULL, key TEXT NOT NULL,
+                    response_json TEXT NOT NULL, created_at TEXT NOT NULL,
+                    PRIMARY KEY (scope, key)
+                );
+                CREATE UNIQUE INDEX IF NOT EXISTS runs_idempotency
+                    ON runs(idempotency_key) WHERE idempotency_key IS NOT NULL;
+                """
+            )
+            connection.execute(f"PRAGMA user_version = {DB_SCHEMA_VERSION}")
 
 
 def initialize(database: Path, project_root: Path) -> InitResult:
@@ -118,6 +173,10 @@ def initialize(database: Path, project_root: Path) -> InitResult:
                     )),
                     max_model_calls INTEGER NOT NULL CHECK (max_model_calls >= 0),
                     model_calls INTEGER NOT NULL DEFAULT 0 CHECK (model_calls >= 0),
+                    max_tasks INTEGER NOT NULL DEFAULT 12,
+                    pause_requested INTEGER NOT NULL DEFAULT 0,
+                    outcome TEXT,
+                    idempotency_key TEXT,
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL
                 );
@@ -133,6 +192,9 @@ def initialize(database: Path, project_root: Path) -> InitResult:
                     contract_revision INTEGER NOT NULL DEFAULT 1,
                     attempt_count INTEGER NOT NULL DEFAULT 0,
                     result_json TEXT,
+                    fencing_token INTEGER NOT NULL DEFAULT 0,
+                    is_stale INTEGER NOT NULL DEFAULT 0,
+                    input_fingerprint TEXT,
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL
                 );
@@ -146,6 +208,9 @@ def initialize(database: Path, project_root: Path) -> InitResult:
                     )),
                     started_at TEXT NOT NULL,
                     finished_at TEXT,
+                    lease_token TEXT,
+                    lease_expires_at TEXT,
+                    fencing_token INTEGER,
                     UNIQUE (task_id, number)
                 );
                 CREATE TABLE events (
@@ -158,6 +223,17 @@ def initialize(database: Path, project_root: Path) -> InitResult:
                     source_passage TEXT NOT NULL, interpretation TEXT NOT NULL,
                     acceptance_checks_json TEXT NOT NULL, deliverable TEXT NOT NULL
                 );
+                CREATE TABLE input_versions (
+                    source_id TEXT PRIMARY KEY, fingerprint TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+                CREATE TABLE idempotency_records (
+                    scope TEXT NOT NULL, key TEXT NOT NULL,
+                    response_json TEXT NOT NULL, created_at TEXT NOT NULL,
+                    PRIMARY KEY (scope, key)
+                );
+                CREATE UNIQUE INDEX runs_idempotency
+                    ON runs(idempotency_key) WHERE idempotency_key IS NOT NULL;
                 """
             )
             connection.execute(
@@ -231,7 +307,7 @@ def read_status(database: Path) -> StatusSummary:
         runs = connection.execute("SELECT COUNT(*) AS count FROM runs").fetchone()["count"]
         tasks = connection.execute("SELECT COUNT(*) AS count FROM tasks").fetchone()["count"]
         latest = connection.execute(
-            "SELECT status FROM runs ORDER BY created_at DESC LIMIT 1"
+            "SELECT status, outcome, pause_requested FROM runs ORDER BY created_at DESC LIMIT 1"
         ).fetchone()
         state_rows = connection.execute(
             "SELECT state, COUNT(*) AS count FROM tasks GROUP BY state ORDER BY state"
@@ -240,20 +316,39 @@ def read_status(database: Path) -> StatusSummary:
             project_id=project["id"],
             runs=runs,
             tasks=tasks,
-            latest_run_status=latest["status"] if latest else None,
+            latest_run_status=(
+                "paused"
+                if latest and latest["pause_requested"]
+                else (latest["outcome"] or latest["status"] if latest else None)
+            ),
             task_states={row["state"]: row["count"] for row in state_rows},
+            paused=bool(latest["pause_requested"]) if latest else False,
+            stale_tasks=connection.execute(
+                "SELECT COUNT(*) AS count FROM tasks WHERE is_stale=1"
+            ).fetchone()["count"],
         )
     finally:
         connection.close()
 
 
-def create_run(database: Path, max_model_calls: int) -> str:
+def create_run(
+    database: Path,
+    max_model_calls: int,
+    max_tasks: int = 12,
+    idempotency_key: str | None = None,
+) -> str:
     """Create and start one run."""
 
     if max_model_calls < 0:
         raise ValueError("max_model_calls must be non-negative")
     connection = connect(database)
     try:
+        if idempotency_key:
+            existing = connection.execute(
+                "SELECT id FROM runs WHERE idempotency_key=?", (idempotency_key,)
+            ).fetchone()
+            if existing:
+                return existing["id"]
         project = connection.execute("SELECT id FROM project LIMIT 1").fetchone()
         if project is None:
             raise RuntimeError("project database is missing its project record")
@@ -262,9 +357,10 @@ def create_run(database: Path, max_model_calls: int) -> str:
         with connection:
             connection.execute(
                 """INSERT INTO runs
-                   (id, project_id, status, max_model_calls, model_calls, created_at, updated_at)
-                   VALUES (?, ?, 'running', ?, 0, ?, ?)""",
-                (run_id, project["id"], max_model_calls, now, now),
+                   (id, project_id, status, max_model_calls, model_calls, max_tasks,
+                    idempotency_key, created_at, updated_at)
+                   VALUES (?, ?, 'running', ?, 0, ?, ?, ?, ?)""",
+                (run_id, project["id"], max_model_calls, max_tasks, idempotency_key, now, now),
             )
         return run_id
     finally:
@@ -351,14 +447,49 @@ def recover_interrupted_task(database: Path, task_id: str) -> None:
         connection.close()
 
 
-def start_attempt(database: Path, task_id: str, attempt_id: str) -> None:
+def recover_expired_leases(database: Path, at: datetime | None = None) -> list[str]:
+    """Return expired running tasks to ready while preserving their audit trail."""
+
+    cutoff = (at or datetime.now(UTC)).isoformat()
+    connection = connect(database)
+    try:
+        rows = connection.execute(
+            """SELECT DISTINCT task_id FROM attempts
+               WHERE status='running' AND lease_expires_at IS NOT NULL
+               AND lease_expires_at<=?""",
+            (cutoff,),
+        ).fetchall()
+        task_ids = [row["task_id"] for row in rows]
+        with connection:
+            for task_id in task_ids:
+                connection.execute(
+                    """UPDATE attempts SET status='failed', finished_at=?
+                       WHERE task_id=? AND status='running'""",
+                    (cutoff, task_id),
+                )
+                connection.execute(
+                    """UPDATE tasks SET state='ready', updated_at=?
+                       WHERE id=? AND state='running'""",
+                    (cutoff, task_id),
+                )
+        return task_ids
+    finally:
+        connection.close()
+
+
+def start_attempt(
+    database: Path,
+    task_id: str,
+    attempt_id: str,
+    lease_seconds: int = 300,
+) -> Lease:
     """Atomically mark a task running and create its first attempt."""
 
     connection = connect(database)
     try:
         with connection:
             task = connection.execute(
-                "SELECT state, attempt_count FROM tasks WHERE id = ?", (task_id,)
+                "SELECT state, attempt_count, fencing_token FROM tasks WHERE id = ?", (task_id,)
             ).fetchone()
             if task is None:
                 raise KeyError(task_id)
@@ -366,15 +497,22 @@ def start_attempt(database: Path, task_id: str, attempt_id: str) -> None:
                 raise RuntimeError(f"task {task_id} is not ready")
             number = task["attempt_count"] + 1
             now = _now()
+            fencing_token = task["fencing_token"] + 1
+            lease_token = f"lease-{uuid4()}"
+            expires_at = (datetime.now(UTC) + timedelta(seconds=lease_seconds)).isoformat()
             connection.execute(
-                "UPDATE tasks SET state = 'running', attempt_count = ?, updated_at = ? WHERE id = ?",
-                (number, now, task_id),
+                """UPDATE tasks SET state='running', attempt_count=?, fencing_token=?, updated_at=?
+                   WHERE id=?""",
+                (number, fencing_token, now, task_id),
             )
             connection.execute(
-                """INSERT INTO attempts (id, task_id, number, status, started_at)
-                   VALUES (?, ?, ?, 'running', ?)""",
-                (attempt_id, task_id, number, now),
+                """INSERT INTO attempts
+                   (id, task_id, number, status, started_at, lease_token,
+                    lease_expires_at, fencing_token)
+                   VALUES (?, ?, ?, 'running', ?, ?, ?, ?)""",
+                (attempt_id, task_id, number, now, lease_token, expires_at, fencing_token),
             )
+            return Lease(lease_token, fencing_token, expires_at)
     finally:
         connection.close()
 
@@ -407,7 +545,11 @@ def finish_attempt(
 
 
 def accept_attempt(
-    database: Path, task_id: str, attempt_id: str, result: AgentResult
+    database: Path,
+    task_id: str,
+    attempt_id: str,
+    result: AgentResult,
+    fencing_token: int | None = None,
 ) -> None:
     """Atomically accept an attempt and save its typed result for resume."""
 
@@ -415,6 +557,12 @@ def accept_attempt(
     try:
         with connection:
             now = _now()
+            if fencing_token is not None:
+                current = connection.execute(
+                    "SELECT fencing_token FROM tasks WHERE id=?", (task_id,)
+                ).fetchone()
+                if current is None or current["fencing_token"] != fencing_token:
+                    raise RuntimeError(f"stale fencing token for task {task_id}")
             updated = connection.execute(
                 """UPDATE attempts SET status = 'accepted', finished_at = ?
                    WHERE id = ? AND task_id = ? AND status = 'running'""",
@@ -445,6 +593,7 @@ def finish_run(
     run_id: str,
     status: Literal["completed", "budget_exhausted", "failed"],
     model_calls: int,
+    outcome: str | None = None,
 ) -> None:
     """Persist the terminal outcome and model-call usage of a run."""
 
@@ -452,9 +601,9 @@ def finish_run(
     try:
         with connection:
             updated = connection.execute(
-                """UPDATE runs SET status = ?, model_calls = ?, updated_at = ?
+                """UPDATE runs SET status=?, outcome=?, model_calls=?, pause_requested=0, updated_at=?
                    WHERE id = ? AND status = 'running'""",
-                (status, model_calls, _now(), run_id),
+                (status, outcome or status, model_calls, _now(), run_id),
             )
             if updated.rowcount != 1:
                 raise RuntimeError(f"run {run_id} is not running")
@@ -475,5 +624,208 @@ def record_model_calls(database: Path, run_id: str, model_calls: int) -> None:
             )
             if updated.rowcount != 1:
                 raise RuntimeError(f"run {run_id} is not running")
+    finally:
+        connection.close()
+
+
+def record_event(
+    database: Path,
+    kind: str,
+    payload: dict,
+    *,
+    run_id: str | None = None,
+    task_id: str | None = None,
+) -> None:
+    connection = connect(database)
+    try:
+        with connection:
+            connection.execute(
+                """INSERT INTO events (run_id, task_id, kind, payload_json, created_at)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (run_id, task_id, kind, json.dumps(payload, sort_keys=True), _now()),
+            )
+    finally:
+        connection.close()
+
+
+def request_pause(database: Path) -> str:
+    connection = connect(database)
+    try:
+        with connection:
+            row = connection.execute(
+                "SELECT id FROM runs WHERE status='running' ORDER BY created_at DESC LIMIT 1"
+            ).fetchone()
+            if row is None:
+                raise RuntimeError("there is no active run to pause")
+            connection.execute(
+                "UPDATE runs SET pause_requested=1, updated_at=? WHERE id=?",
+                (_now(), row["id"]),
+            )
+            return row["id"]
+    finally:
+        connection.close()
+
+
+def clear_pause(database: Path, run_id: str) -> None:
+    connection = connect(database)
+    try:
+        with connection:
+            connection.execute(
+                "UPDATE runs SET pause_requested=0, updated_at=? WHERE id=? AND status='running'",
+                (_now(), run_id),
+            )
+    finally:
+        connection.close()
+
+
+def pause_requested(database: Path, run_id: str) -> bool:
+    return bool(read_run(database, run_id)["pause_requested"])
+
+
+def save_idempotent(database: Path, scope: str, key: str, response: dict) -> None:
+    connection = connect(database)
+    try:
+        with connection:
+            connection.execute(
+                """INSERT OR IGNORE INTO idempotency_records
+                   (scope, key, response_json, created_at) VALUES (?, ?, ?, ?)""",
+                (scope, key, json.dumps(response, sort_keys=True), _now()),
+            )
+    finally:
+        connection.close()
+
+
+def load_idempotent(database: Path, scope: str, key: str) -> dict | None:
+    connection = connect(database)
+    try:
+        row = connection.execute(
+            "SELECT response_json FROM idempotency_records WHERE scope=? AND key=?",
+            (scope, key),
+        ).fetchone()
+        return json.loads(row["response_json"]) if row else None
+    finally:
+        connection.close()
+
+
+def update_input_versions(database: Path, versions: dict[str, str]) -> bool:
+    """Record current inputs and mark historical tasks stale when any input changed."""
+
+    connection = connect(database)
+    try:
+        changed = False
+        with connection:
+            for source_id, fingerprint in versions.items():
+                row = connection.execute(
+                    "SELECT fingerprint FROM input_versions WHERE source_id=?", (source_id,)
+                ).fetchone()
+                if row and row["fingerprint"] != fingerprint:
+                    changed = True
+                connection.execute(
+                    """INSERT INTO input_versions (source_id, fingerprint, updated_at)
+                       VALUES (?, ?, ?) ON CONFLICT(source_id) DO UPDATE SET
+                       fingerprint=excluded.fingerprint, updated_at=excluded.updated_at""",
+                    (source_id, fingerprint, _now()),
+                )
+            known = {
+                row["source_id"]
+                for row in connection.execute("SELECT source_id FROM input_versions")
+            }
+            if known - set(versions):
+                changed = True
+                connection.executemany(
+                    "DELETE FROM input_versions WHERE source_id=?",
+                    [(source_id,) for source_id in known - set(versions)],
+                )
+            if changed:
+                connection.execute("UPDATE tasks SET is_stale=1 WHERE state='accepted'")
+                connection.execute(
+                    """UPDATE runs SET status='failed', outcome='stale', updated_at=?
+                       WHERE status='running'""",
+                    (_now(),),
+                )
+        return changed
+    finally:
+        connection.close()
+
+
+def list_requirements(database: Path) -> list[Requirement]:
+    connection = connect(database)
+    try:
+        rows = connection.execute("SELECT * FROM requirements ORDER BY id").fetchall()
+        return [
+            Requirement(
+                id=row["id"],
+                revision=row["revision"],
+                source_passage=row["source_passage"],
+                interpretation=row["interpretation"],
+                acceptance_checks=json.loads(row["acceptance_checks_json"]),
+                deliverable=row["deliverable"],
+            )
+            for row in rows
+        ]
+    finally:
+        connection.close()
+
+
+def refresh_requirements(database: Path, brief: Path) -> list[Requirement]:
+    """Compile the current brief into durable requirement rows."""
+
+    rows = []
+    for number, line in enumerate(brief.read_text(encoding="utf-8").splitlines(), start=1):
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        text = stripped[2:].strip() if stripped.startswith("- ") else stripped
+        if ":" not in text and not stripped.startswith("- "):
+            continue
+        rows.append((f"req-{number}", 1, stripped, text, "[]", "report.md"))
+    connection = connect(database)
+    try:
+        with connection:
+            connection.execute("DELETE FROM requirements")
+            connection.executemany(
+                """INSERT INTO requirements
+                   (id, revision, source_passage, interpretation,
+                    acceptance_checks_json, deliverable) VALUES (?, ?, ?, ?, ?, ?)""",
+                rows,
+            )
+    finally:
+        connection.close()
+    return list_requirements(database)
+
+
+def latest_run(database: Path) -> sqlite3.Row | None:
+    connection = connect(database)
+    try:
+        return connection.execute(
+            "SELECT * FROM runs ORDER BY created_at DESC LIMIT 1"
+        ).fetchone()
+    finally:
+        connection.close()
+
+
+def inspect_task(database: Path, task_id: str) -> str:
+    connection = connect(database)
+    try:
+        task = connection.execute("SELECT * FROM tasks WHERE id=?", (task_id,)).fetchone()
+        if task is None:
+            return f"No such task: {task_id}"
+        attempts = connection.execute(
+            """SELECT id, number, status, started_at, finished_at, fencing_token
+               FROM attempts WHERE task_id=? ORDER BY number""",
+            (task_id,),
+        ).fetchall()
+        lines = [
+            f"Task: {task['id']}",
+            f"Run: {task['run_id']}",
+            f"Role: {task['role']}",
+            f"State: {task['state']}",
+            f"Stale: {'yes' if task['is_stale'] else 'no'}",
+        ]
+        lines += [
+            f"Attempt {row['number']}: {row['id']} — {row['status']} (fence {row['fencing_token']})"
+            for row in attempts
+        ]
+        return "\n".join(lines)
     finally:
         connection.close()

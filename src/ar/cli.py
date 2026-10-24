@@ -6,9 +6,13 @@ from pathlib import Path
 
 import typer
 
+from ar.adapter import AnthropicClient, LiveAgent
 from ar.agents.fake import FakeAgent
+from ar.broker import Broker
+from ar.controller import export_project as export_committed_project
 from ar.controller import run_project as execute_project
-from ar.db import init_project as initialize_project, read_status
+from ar.db import connect, init_project as initialize_project, inspect_task, read_status, request_pause
+from ar.evidence import inspect_claim
 
 app = typer.Typer(no_args_is_help=True, help="Local research with explicit contracts.")
 
@@ -27,11 +31,6 @@ PROJECT_DIRECTORIES = (
 
 def _database(root: Path) -> Path:
     return root / ".research" / "state.sqlite"
-
-
-def _not_ready(command: str) -> None:
-    typer.echo(f"ar {command} is reserved for the next build wave.", err=True)
-    raise typer.Exit(code=2)
 
 
 @app.command("init")
@@ -71,6 +70,8 @@ def status(
     typer.echo(f"Tasks: {summary.tasks}")
     if summary.latest_run_status:
         typer.echo(f"Latest run: {summary.latest_run_status}")
+    if summary.stale_tasks:
+        typer.echo(f"Stale tasks: {summary.stale_tasks}")
     for state, count in summary.task_states.items():
         typer.echo(f"  {state}: {count}")
 
@@ -79,7 +80,11 @@ def status(
 def run_project(
     path: Path = typer.Argument(Path.cwd(), help="Project directory."),
     fake: bool = typer.Option(False, "--fake", help="Use the deterministic fixture agent."),
+    model: str | None = typer.Option(None, "--model", help="Claude model id for a live run."),
+    effort: str = typer.Option("medium", "--effort", help="Live model effort."),
+    max_tasks: int = typer.Option(12, min=4, help="Maximum tasks dispatched."),
     max_model_calls: int = typer.Option(20, min=0, help="Stop before dispatching past this budget."),
+    idempotency_key: str | None = typer.Option(None, "--idempotency-key"),
 ) -> None:
     """Run the fixed planner, reader, writer, and reviewer loop."""
 
@@ -87,11 +92,18 @@ def run_project(
     if not _database(root).is_file():
         connection = initialize_project(root)
         connection.close()
-    if not fake:
-        typer.echo("Only --fake is connected in this build.", err=True)
+    if effort not in {"low", "medium", "high", "xhigh", "max"}:
+        typer.echo("--effort must be low, medium, high, xhigh, or max.", err=True)
         raise typer.Exit(code=2)
+    agent = FakeAgent() if fake else LiveAgent(AnthropicClient(model=model or "claude-opus-5-5", effort=effort))
     try:
-        outcome = execute_project(root, FakeAgent(), max_model_calls=max_model_calls)
+        outcome = execute_project(
+            root,
+            agent,
+            max_tasks=max_tasks,
+            max_model_calls=max_model_calls,
+            idempotency_key=idempotency_key,
+        )
     except (FileNotFoundError, ValueError, RuntimeError) as exc:
         typer.echo(f"Run failed: {exc}", err=True)
         raise typer.Exit(code=1) from None
@@ -102,17 +114,112 @@ def run_project(
 
 
 @app.command()
-def inspect() -> None:
-    """Inspect a claim or task (implemented in Wave 2)."""
+def inspect(
+    kind: str = typer.Argument(help="claim, task, or reads"),
+    identifier: str = typer.Argument(help="Claim or task id."),
+    project: Path = typer.Option(Path.cwd(), "--project", help="Project directory."),
+) -> None:
+    """Inspect committed claims, tasks, or read receipts."""
 
-    _not_ready("inspect")
+    database = _database(project.resolve())
+    if not database.is_file():
+        typer.echo("Not an autoresearch project.", err=True)
+        raise typer.Exit(code=1)
+    connection = connect(database)
+    try:
+        if kind == "claim":
+            typer.echo(inspect_claim(connection, identifier))
+        elif kind == "task":
+            typer.echo(inspect_task(database, identifier))
+        elif kind == "reads":
+            attempt = connection.execute(
+                """SELECT id FROM attempts WHERE task_id=?
+                   ORDER BY number DESC LIMIT 1""",
+                (identifier,),
+            ).fetchone()
+            if attempt is None:
+                typer.echo(f"No reads for task: {identifier}")
+            else:
+                receipts = Broker(connection, project.resolve()).receipts_for(
+                    identifier, attempt["id"]
+                )
+                if not receipts:
+                    typer.echo(f"No reads for task: {identifier}")
+                for receipt in receipts:
+                    typer.echo(
+                        f"{receipt.id}: {receipt.source_ref.source_id} "
+                        f"r{receipt.source_ref.revision} lines "
+                        f"{receipt.selector.start}-{receipt.selector.end} "
+                        f"attempt={receipt.attempt_id}"
+                    )
+        else:
+            typer.echo("Kind must be claim, task, or reads.", err=True)
+            raise typer.Exit(code=2)
+    finally:
+        connection.close()
 
 
 @app.command("export")
-def export_project() -> None:
-    """Export reviewed deliverables (implemented with the Quality track)."""
+def export_project(
+    path: Path = typer.Argument(Path.cwd(), help="Project directory."),
+) -> None:
+    """Re-export the newest committed deliverable."""
 
-    _not_ready("export")
+    try:
+        paths = export_committed_project(path.resolve())
+    except (FileNotFoundError, RuntimeError, ValueError) as exc:
+        typer.echo(f"Export failed: {exc}", err=True)
+        raise typer.Exit(code=1) from None
+    for exported in paths:
+        typer.echo(str(exported))
+
+
+@app.command()
+def pause(
+    path: Path = typer.Argument(Path.cwd(), help="Project directory."),
+) -> None:
+    """Request that the active run stop before its next task."""
+
+    try:
+        run_id = request_pause(_database(path.resolve()))
+    except (FileNotFoundError, RuntimeError) as exc:
+        typer.echo(f"Pause failed: {exc}", err=True)
+        raise typer.Exit(code=1) from None
+    typer.echo(f"Pause requested for {run_id}")
+
+
+@app.command()
+def resume(
+    path: Path = typer.Argument(Path.cwd(), help="Project directory."),
+    fake: bool = typer.Option(False, "--fake", help="Use the deterministic fixture agent."),
+    model: str | None = typer.Option(None, "--model", help="Claude model id for a live run."),
+    effort: str = typer.Option("medium", "--effort", help="Live model effort."),
+    max_tasks: int = typer.Option(12, min=4),
+    max_model_calls: int = typer.Option(20, min=0),
+    idempotency_key: str | None = typer.Option(None, "--idempotency-key"),
+) -> None:
+    """Resume the active paused or interrupted run."""
+
+    root = path.resolve()
+    if not _database(root).is_file():
+        typer.echo("Not an autoresearch project.", err=True)
+        raise typer.Exit(code=1)
+    if effort not in {"low", "medium", "high", "xhigh", "max"}:
+        typer.echo("--effort must be low, medium, high, xhigh, or max.", err=True)
+        raise typer.Exit(code=2)
+    agent = FakeAgent() if fake else LiveAgent(AnthropicClient(model=model or "claude-opus-5-5", effort=effort))
+    try:
+        outcome = execute_project(
+            root,
+            agent,
+            max_tasks=max_tasks,
+            max_model_calls=max_model_calls,
+            idempotency_key=idempotency_key,
+        )
+    except (FileNotFoundError, ValueError, RuntimeError) as exc:
+        typer.echo(f"Resume failed: {exc}", err=True)
+        raise typer.Exit(code=1) from None
+    typer.echo(f"Status: {outcome.value}")
 
 
 if __name__ == "__main__":  # pragma: no cover
