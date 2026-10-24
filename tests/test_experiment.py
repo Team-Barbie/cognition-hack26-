@@ -72,6 +72,10 @@ def test_same_seed_gives_identical_output_hashes(project):
     {"expected_outputs": ["../escape.json"]},
     {"expected_outputs": ["/abs/results.json"]},
     {"command": ["python", "baseline_mae.py", "--out", "../escape.json"]},
+    {"input_files": ["..\\outside.txt"]},
+    {"expected_outputs": ["sub\\..\\..\\escape.json"]},
+    {"working_dir": "\\\\server\\share"},
+    {"command": ["python", "baseline_mae.py", "--out", "..\\escape.json"]},
 ])
 def test_unsafe_paths_are_rejected_before_anything_runs(project, change):
     root, conn = project
