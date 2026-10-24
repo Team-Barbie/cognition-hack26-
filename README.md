@@ -50,11 +50,41 @@ per minute, 6 agent runs per 10 minutes, and 20 event-stream connections per min
 returns HTTP 429 with `Retry-After`. This in-process layer limits accidental abuse and simple bots; use
 Vercel Firewall/WAF rules as the outer layer for distributed traffic and DDoS protection.
 
+## Planner-driven research
+
+The controller commits the planner first, validates its proposed graph, and then dispatches the bounded
+specialists it selected. A run may include local source screening, evidence readers, a theorist, a
+configured experiment, one independent repeat, and an analyst before the mandatory writer and reviewer.
+Unknown sources, unconfigured execution, duplicate specialist roles, and tasks beyond the run budget are
+rejected or clamped and recorded in the `planner_proposals` event. The original literature-only sequence
+remains the fallback for old planners and simple briefs.
+
+Executable work is never taken from model output. To make an experiment available to the planner, place a
+fully declared `ExperimentSpec` in `input/experiment.yaml`, for example:
+
+```yaml
+id: weekly-baseline
+question: Seasonal-naive MAE on weekly demand
+status: pilot
+input_files: [input/datasets/data.csv, input/code/baseline.py]
+command: [python, baseline.py, --seed, "7"]
+working_dir: input/code
+seed: 7
+metrics: [mae]
+success_criteria: [mae computed]
+expected_outputs: [results.json]
+timeout_seconds: 60
+```
+
+The runtime executes the exact configured command in its working-directory jail. A reproduction request
+runs the frozen specification again as a distinct recorded run; the analyst receives only captured run
+records and hashes. Without this file, experiment and analyst proposals cannot execute.
+
 ## The five-minute demo
 
 Run it in one go with `scripts/demo.ps1` (Windows) or `scripts/demo.sh`. Or step by step, from the repo root
-with the venv active. Status: the CLI commands below follow INTERFACES.md; end-to-end output has **not yet
-been verified** against the Spine track's CLI. Items marked (verified) are covered by pytest today.
+with the venv active. The CLI path and generated output are covered end to end; items marked (verified)
+also have focused pytest coverage.
 
 1. **The brief.** `fixtures/baselines/input/brief.md` asks whether seasonal naive is an adequate weekly
    baseline and states a constraint: series shorter than 52 weeks are excluded. Paper A supports the
