@@ -44,8 +44,10 @@ def default_policy() -> PermissionPolicy:
             "evidence_reader": ["files.read", "tasks.submit"],
             "writer": ["files.read", "artifacts.create", "artifacts.revise", "tasks.submit"],
             "reviewer": ["files.read", "tasks.submit"],
-            "scout": ["files.read", "tasks.submit"],
+            "source_scout": ["files.read", "tasks.submit"],
             "theorist": ["files.read", "artifacts.create", "tasks.submit"],
+            "experiment_runner": ["files.read", "experiments.execute", "tasks.submit"],
+            "reproducer": ["files.read", "experiments.execute", "tasks.submit"],
             "analyst": ["files.read", "artifacts.create", "tasks.submit"],
         }
     )
