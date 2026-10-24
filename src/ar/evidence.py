@@ -299,11 +299,13 @@ def list_rejections(conn: sqlite3.Connection) -> list[tuple[Rejection, str, str]
     return [(_rejection(r), r["task_id"], r["attempt_id"]) for r in rows]
 
 
-def contradicting_claims(conn: sqlite3.Connection) -> list[str]:
+def contradicting_claims(conn: sqlite3.Connection, scope: list[str] | None = None) -> list[str]:
+    """Claims with a contradicts link, limited to `scope` (e.g. an artifact's depends_on) when given."""
     rows = conn.execute(
         "SELECT DISTINCT claim_id FROM evidence_links WHERE relation='contradicts' ORDER BY rowid"
     ).fetchall()
-    return [r[0] for r in rows]
+    ids = [r[0] for r in rows]
+    return [i for i in ids if i in scope] if scope else ids
 
 
 def _window(lines: list[str], loc: LineSelector, context: int) -> list[str]:

@@ -21,6 +21,8 @@ Reply with a single JSON object and nothing else, shaped exactly as:
  "proposed_tasks": [...], "outcome": "produced" | "needs_dependency" | "unable_to_complete"}
 "payload" follows the role schema above. Each item of "claims" is a claim draft
 (statement, kind, epistemic_status, scope, evidence_links, derivation, limitations).
+Only the evidence reader creates claims. Every other role returns "claims": [] and refers to
+existing claims by id inside its payload.
 Each item of "proposed_tasks" has role, objective, source_ids.
 "limitations" and "unresolved" are lists of strings. Use empty lists when empty.
 Do not include model_calls or any other field."""
@@ -146,7 +148,7 @@ class LiveAgent:
             task_id=packet.task_id,
             outcome=outcome,
             payload=payload,
-            claims=[ClaimDraft.model_validate(c) for c in envelope.get("claims", [])],
+            claims=[ClaimDraft.model_validate(c) for c in envelope.get("claims", [])] if role == "evidence_reader" else [],
             limitations=envelope.get("limitations", []),
             unresolved=envelope.get("unresolved", []),
             proposed_tasks=[ProposedTask.model_validate(t) for t in envelope.get("proposed_tasks", [])],
@@ -155,6 +157,30 @@ class LiveAgent:
 
 
 PROVIDERS = ("anthropic", "openai")
+
+
+def load_env(*paths) -> list[str]:
+    """Set KEY=value lines from `.env` files into os.environ without overriding what is already set.
+
+    Returns the names that were set. Values are never printed.
+    """
+    import os
+    from pathlib import Path
+
+    loaded: list[str] = []
+    for path in map(Path, paths):
+        if not path.is_file():
+            continue
+        for line in path.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            name, value = line.removeprefix("export ").split("=", 1)
+            name, value = name.strip(), value.strip().strip("'\"")
+            if name and value and name not in os.environ:
+                os.environ[name] = value
+                loaded.append(name)
+    return loaded
 
 
 def make_client(
