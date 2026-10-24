@@ -19,8 +19,8 @@ def check_answer_key(conn: sqlite3.Connection, content: str, key: dict[str, Any]
     links = [link for c in cited for link in c.evidence_links]
 
     expected = key.get("expected_citations")
-    if expected is not None and len(cited) != expected:
-        problems.append(f"deliverable cites {len(cited)} claims; the answer key expects {expected}")
+    if expected is not None and len(cited) < expected:  # a live model may find extra valid claims
+        problems.append(f"deliverable cites {len(cited)} claims; the answer key expects at least {expected}")
 
     for source_id, entry in key.get("sources", {}).items():
         mine = [l for l in links if l.source_ref.source_id == source_id]

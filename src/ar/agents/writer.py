@@ -30,6 +30,9 @@ class Draft(Record):
     limitations_stated: bool
 
 
+PAYLOAD = Draft
+
+
 def _relations(item: DependencyItem) -> set[str]:
     return {link.relation for link in item.claim.evidence_links} if item.claim else set()
 

@@ -6,7 +6,7 @@ from pathlib import Path
 
 import typer
 
-from ar.adapter import PROVIDERS, AnthropicClient, LiveAgent, make_client
+from ar.adapter import PROVIDERS, AnthropicClient, LiveAgent, load_env, make_client
 from ar.agents.fake import FakeAgent
 from ar.broker import Broker
 from ar.controller import export_project as export_committed_project
@@ -33,7 +33,10 @@ def _database(root: Path) -> Path:
     return root / ".research" / "state.sqlite"
 
 
-def _live_agent(provider: str, model: str | None, effort: str, base_url: str | None) -> LiveAgent:
+def _live_agent(
+    provider: str, model: str | None, effort: str, base_url: str | None, root: Path | None = None
+) -> LiveAgent:
+    load_env(*([root / ".env"] if root else []), Path.cwd() / ".env")
     if provider == "anthropic":
         return LiveAgent(AnthropicClient(model=model or "claude-opus-5-5", effort=effort))
     return LiveAgent(make_client(provider, model, effort, base_url))
@@ -106,7 +109,7 @@ def run_project(
     if effort not in {"low", "medium", "high", "xhigh", "max"}:
         typer.echo("--effort must be low, medium, high, xhigh, or max.", err=True)
         raise typer.Exit(code=2)
-    agent = FakeAgent() if fake else _live_agent(provider, model, effort, base_url)
+    agent = FakeAgent() if fake else _live_agent(provider, model, effort, base_url, root)
     try:
         outcome = execute_project(
             root,
@@ -223,7 +226,7 @@ def resume(
     if effort not in {"low", "medium", "high", "xhigh", "max"}:
         typer.echo("--effort must be low, medium, high, xhigh, or max.", err=True)
         raise typer.Exit(code=2)
-    agent = FakeAgent() if fake else _live_agent(provider, model, effort, base_url)
+    agent = FakeAgent() if fake else _live_agent(provider, model, effort, base_url, root)
     try:
         outcome = execute_project(
             root,

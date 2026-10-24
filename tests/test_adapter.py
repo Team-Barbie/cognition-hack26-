@@ -106,18 +106,26 @@ def test_two_bad_replies_unable_to_complete():
 
 
 def test_claims_and_tasks_validated():
+    roles.OVERRIDES["evidence_reader"] = roles.OVERRIDES["writer"]  # same stub payload
     good = envelope(
         claims=[{"statement": "s"}],
         proposed_tasks=[{"role": "reviewer", "objective": "check"}],
     )
-    result = LiveAgent(ScriptedClient([good])).run("writer", packet())
+    result = LiveAgent(ScriptedClient([good])).run("evidence_reader", packet())
     assert result.claims[0].statement == "s"
     assert result.proposed_tasks[0].role == "reviewer"
 
     bad = envelope(claims=[{"statement": "s", "bogus": 1}])
-    result = LiveAgent(ScriptedClient([bad, bad])).run("writer", packet())
+    result = LiveAgent(ScriptedClient([bad, bad])).run("evidence_reader", packet())
     assert result.outcome == "unable_to_complete"
     assert result.model_calls == 2
+
+
+def test_only_the_evidence_reader_creates_claims():
+    # A writer that echoes claim references in the envelope must not fail validation or mint claims.
+    echoed = envelope(claims=[{"claim_id": "claim-1", "evidence_links": [{"claim_id": "claim-1"}]}])
+    result = LiveAgent(ScriptedClient([echoed])).run("writer", packet())
+    assert result.outcome == "produced" and result.claims == [] and result.model_calls == 1
 
 
 def test_non_produced_outcome_passes_through():

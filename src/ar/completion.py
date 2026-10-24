@@ -65,22 +65,28 @@ def assess(
     unknown = [cid for cid in cited if get_claim(conn, cid) is None]
     problems += [f"citation [claim:{cid}] does not resolve to a committed claim" for cid in unknown]
 
-    uncited = [cid for cid in contradicting_claims(conn) if cid not in cited]
+    uncited = [cid for cid in contradicting_claims(conn, artifact.depends_on or None) if cid not in cited]
     problems += [f"contradicting claim [claim:{cid}] is not cited in the deliverable" for cid in uncited]
 
     found = sections(content)
     rows: list[RequirementRow] = []
     for req in requirements:
         section = coverage.get(req.id)
-        body = found.get(_norm(section)) if section is not None else None
         if section is None:
             problems.append(f"requirement {req.id} is not mapped to a section")
-        elif body is None:
-            problems.append(f"requirement {req.id} maps to section '{section}', which is not in the deliverable")
-        elif not body.strip():
+            rows.append(RequirementRow(req.id, None, False))
+            continue
+        # A writer may map one requirement to several sections: "Findings; Conclusion".
+        names = [part.strip() for part in section.split(";") if part.strip()] or [section]
+        missing = [name for name in names if _norm(name) not in found]
+        bodies = [found[_norm(name)] for name in names if _norm(name) in found]
+        if missing:
+            listed = ", ".join(f"'{name}'" for name in missing)
+            problems.append(f"requirement {req.id} maps to section {listed}, which is not in the deliverable")
+        elif not any(body.strip() for body in bodies):
             problems.append(f"requirement {req.id} maps to section '{section}', which is empty")
-        covered = body is not None and bool(body.strip())
-        ids = list(dict.fromkeys(CITATION.findall(body or "")))
+        covered = not missing and any(body.strip() for body in bodies)
+        ids = list(dict.fromkeys(cid for body in bodies for cid in CITATION.findall(body)))
         rows.append(RequirementRow(req.id, section, covered, ids))
 
     carried = list(limitations)

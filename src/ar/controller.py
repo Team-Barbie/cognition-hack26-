@@ -340,8 +340,8 @@ def run_project(
                     attempt_id=accepted_attempt(result.task_id),
                     drafts=result.claims,
                 )
-                if accepted.rejected:
-                    raise RuntimeError(accepted.rejected[0].reason)
+                # Rejected drafts are stored by evidence.accept_claims and reported at export;
+                # the run continues with the claims that passed.
                 claims = accepted.accepted
                 stored.extend(claims)
             for claim in claims:
