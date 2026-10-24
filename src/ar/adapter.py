@@ -1,20 +1,19 @@
-"""Live model entry behind the Agent protocol: OpenAI-compatible chat, one repair retry."""
+"""Live model entry behind the Agent protocol: Claude API, one schema-repair retry."""
 
 from __future__ import annotations
 
 import json
-import os
-import urllib.error
-import urllib.request
 from typing import Any, Protocol
 
+import anthropic
 from pydantic import ValidationError
 
 from ar.agents.roles import get_role
 from ar.models import AgentResult, ClaimDraft, ProposedTask, Role
 from ar.packet import Packet
 
-DEFAULT_BASE_URL = "https://api.openai.com/v1"
+DEFAULT_MODEL = "claude-opus-5-5"
+FALLBACK_BETA = "server-side-fallback-2026-07-01"
 
 ENVELOPE_INSTRUCTIONS = """\
 Reply with a single JSON object and nothing else, shaped exactly as:
@@ -35,51 +34,41 @@ class ChatClient(Protocol):
     def complete(self, system: str, user: str) -> str: ...
 
 
-class OpenAICompatClient:
-    def __init__(self, base_url: str, api_key: str, model: str, timeout: float = 60) -> None:
-        self.base_url = base_url.rstrip("/")
-        self.model = model
-        self.timeout = timeout
-        self._api_key = api_key
+class AnthropicClient:
+    """Claude Messages API. Credentials resolve via the SDK (ANTHROPIC_API_KEY or `ant auth login`)."""
 
-    @classmethod
-    def from_env(cls) -> OpenAICompatClient:
-        base_url = os.environ.get("AR_BASE_URL", DEFAULT_BASE_URL)
-        key = os.environ.get("AR_API_KEY", "")
-        if not key and base_url.rstrip("/") == DEFAULT_BASE_URL:
-            raise AdapterError("AR_API_KEY is not set")
-        model = os.environ.get("AR_MODEL")
-        if not model:
-            raise AdapterError("AR_MODEL is not set")
-        return cls(base_url, key, model)
+    def __init__(
+        self,
+        sdk: anthropic.Anthropic | None = None,
+        model: str = DEFAULT_MODEL,
+        effort: str = "medium",
+        max_tokens: int = 16000,
+    ) -> None:
+        self._sdk = sdk
+        self.model = model
+        self.effort = effort
+        self.max_tokens = max_tokens
 
     def complete(self, system: str, user: str) -> str:
-        body = {
-            "model": self.model,
-            "temperature": 0,
-            "response_format": {"type": "json_object"},
-            "messages": [
-                {"role": "system", "content": system},
-                {"role": "user", "content": user},
-            ],
-        }
-        request = urllib.request.Request(
-            f"{self.base_url}/chat/completions",
-            data=json.dumps(body).encode("utf-8"),
-            headers={
-                "Content-Type": "application/json",
-                **({"Authorization": f"Bearer {self._api_key}"} if self._api_key else {}),
-            },
-            method="POST",
-        )
         try:
-            with urllib.request.urlopen(request, timeout=self.timeout) as response:
-                data = json.loads(response.read().decode("utf-8"))
-            return data["choices"][0]["message"]["content"]
-        except urllib.error.HTTPError as exc:
-            raise AdapterError(f"model endpoint returned HTTP {exc.code}") from exc
-        except (OSError, ValueError, KeyError, IndexError, TypeError) as exc:
+            sdk = self._sdk or anthropic.Anthropic()
+            response = sdk.beta.messages.create(
+                model=self.model,
+                max_tokens=self.max_tokens,
+                system=system,
+                messages=[{"role": "user", "content": user}],
+                output_config={"effort": self.effort},
+                betas=[FALLBACK_BETA],
+                fallbacks="default",
+            )
+        except anthropic.APIStatusError as exc:
+            raise AdapterError(f"model endpoint returned HTTP {exc.status_code}") from exc
+        except anthropic.APIError as exc:
             raise AdapterError(f"model call failed: {type(exc).__name__}") from exc
+        if response.stop_reason == "refusal":
+            category = getattr(response.stop_details, "category", None)
+            raise AdapterError(f"model refused the request (category: {category})")
+        return "".join(block.text for block in response.content if block.type == "text")
 
 
 def extract_json(text: str) -> dict[str, Any]:

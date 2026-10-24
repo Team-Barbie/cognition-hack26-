@@ -1,7 +1,7 @@
 """Run the evidence reader live on the baselines fixture and check it against the answer key.
 
-Pass --base-url/--model/--api-key, or set AR_BASE_URL/AR_MODEL/AR_API_KEY. A local
-OpenAI-compatible server (e.g. Ollama) needs no key. Not part of pytest: it calls a model.
+Uses the Claude API. Credentials come from the SDK: ANTHROPIC_API_KEY, or run `ant auth login`
+once and no env var is needed. Not part of pytest: it calls a real model.
 """
 
 import argparse
@@ -12,7 +12,7 @@ from pathlib import Path
 ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 
-from ar.adapter import DEFAULT_BASE_URL, LiveAgent, OpenAICompatClient  # noqa: E402
+from ar.adapter import DEFAULT_MODEL, AnthropicClient, LiveAgent  # noqa: E402
 from ar.models import LineSelector, SourceRef  # noqa: E402
 from ar.packet import DeliveredRead, Packet  # noqa: E402
 
@@ -22,16 +22,10 @@ FIXTURE = ROOT / "fixtures" / "baselines"
 def main() -> int:
     key = json.loads((FIXTURE / "answer_key.json").read_text())
     parser = argparse.ArgumentParser()
-    parser.add_argument("--base-url")
-    parser.add_argument("--model")
-    parser.add_argument("--api-key")
+    parser.add_argument("--model", default=DEFAULT_MODEL)
+    parser.add_argument("--effort", default="medium", choices=["low", "medium", "high", "xhigh", "max"])
     args = parser.parse_args()
-    if args.base_url or args.model or args.api_key:
-        client = OpenAICompatClient(
-            args.base_url or DEFAULT_BASE_URL, args.api_key or "", args.model or ""
-        )
-    else:
-        client = OpenAICompatClient.from_env()
+    client = AnthropicClient(model=args.model, effort=args.effort)
     agent = LiveAgent(client)
     failures = 0
     for source_id, entry in key["sources"].items():
