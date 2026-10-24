@@ -255,6 +255,24 @@ mark { background: var(--mark); color: var(--ink); box-shadow: 0 2px 0 var(--red
 
 @keyframes rise { from { opacity: .55; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 @keyframes drop { from { opacity: .6; transform: translate(-50%, -75%) scale(.7); } to { opacity: 1; transform: translate(-50%, -50%); } }
+/* lock screen: shown only when the server answers 401 */
+.lock { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: 22px; background: var(--paper); }
+.lock[hidden] { display: none; }
+.lock-card { width: min(420px, 100%); padding: 32px; background: #fbf9f4; border: 2px solid var(--ink); box-shadow: 10px 10px 0 var(--ink); display: grid; gap: 14px; }
+.lock-card h1 { margin: 0; font: 900 34px/1 var(--display); letter-spacing: -.03em; }
+.lock-card p { margin: 0; color: var(--ink-2); }
+.lock-card input { width: 100%; padding: 12px 14px; border: 1px solid var(--ink); background: var(--paper); color: var(--ink); font: 18px var(--mono); letter-spacing: .14em; }
+.lock-card input:focus { outline: 2px solid var(--red); outline-offset: -1px; }
+.lock-error { min-height: 1.4em; color: var(--red); font: 600 13px var(--sans); }
+/* context packet inspector */
+.packet-note { padding: 10px 12px; background: var(--paper-2); border-left: 3px solid var(--ink); font-size: 14.5px; color: var(--ink-2); }
+.packet-section { display: grid; gap: 8px; padding-top: 14px; border-top: 1px solid var(--rule); }
+.packet-section h4 { margin: 0; font: 600 10.5px var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--red); }
+.packet-objective { margin: 0; padding: 10px 12px; background: #fbf9f4; border: 1px solid var(--rule); white-space: pre-wrap; overflow-wrap: anywhere; font-size: 15px; }
+.packet-dep { display: grid; gap: 6px; padding: 10px 12px; background: #fbf9f4; border: 1px solid var(--rule); }
+.packet-dep pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: 12.5px/1.6 var(--mono); }
+.packet-lines { max-height: 260px; overflow: auto; }
+.playbook .packet-link { grid-column: 2 / -1; justify-self: start; }
 @keyframes blink { 50% { opacity: .3; } }
 @keyframes ring { from { transform: scale(.8); opacity: .9; } to { transform: scale(1.5); opacity: 0; } }
 @keyframes pass { to { stroke-dashoffset: -40; } }
@@ -263,6 +281,16 @@ mark { background: var(--mark); color: var(--ink); box-shadow: 0 2px 0 var(--red
 </style>
 </head>
 <body>
+<div class="lock" id="lock" hidden>
+  <form class="lock-card" id="unlock-form">
+    <h1>Res Loop</h1>
+    <p>This studio is protected. Enter the access password.</p>
+    <input id="password" type="password" autocomplete="current-password" aria-label="Password" required>
+    <div class="lock-error" id="lock-error" role="alert"></div>
+    <button class="go" type="submit">Unlock</button>
+  </form>
+</div>
+<div id="app">
 <div class="mast">
   <div class="bar">
     <span class="mono-mark" aria-label="Res Loop">Res Loop<span>.</span></span>
@@ -417,8 +445,9 @@ mark { background: var(--mark); color: var(--ink); box-shadow: 0 2px 0 var(--red
   </aside>
 </div>
 <button class="chat-fab" id="chat-fab" type="button" aria-label="Open chat">Chat <b id="unread" hidden>0</b></button>
+</div>
 
-<div class="drawer" id="drawer" hidden><div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-label="Claim proof"></div></div>
+<div class="drawer" id="drawer" hidden><div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-label="Audit details"></div></div>
 <div class="toast" id="toast" role="alert" hidden></div>
 <script>
 (() => {
@@ -440,18 +469,29 @@ mark { background: var(--mark); color: var(--ink); box-shadow: 0 2px 0 var(--red
   const STATE_WORD = { running: "on the ball", done: "done", failed: "stopped", waiting: "waiting" };
   const LAYER_COLORS = ["#3b6fd6", "#e9c23a", "#e8664f", "#22306b", "#c8343a", "#5aa86b", "#7b5ea7", "#2a9bb3"];
   const state = { briefReady: false, sources: 0, running: false, reportShown: false };
-  let sid = null, after = 0, report = null, busy = false;
+  let sid = null, after = 0, report = null, busy = false, returnFocus = null;
+  let password = "", attempted = false;
+  try { password = sessionStorage.getItem("studioPassword") || ""; } catch (_) { /* storage can be blocked */ }
 
   async function api(path, body) {
-    const res = await fetch(path, { method: body === undefined ? "GET" : "POST",
-      headers: { "Content-Type": "application/json" }, body: body === undefined ? undefined : JSON.stringify({ id: sid, ...body }) });
+    const headers = { "Content-Type": "application/json", ...(password ? { Authorization: `Bearer ${password}` } : {}) };
+    const res = await fetch(path, { method: body === undefined ? "GET" : "POST", headers,
+      body: body === undefined ? undefined : JSON.stringify({ id: sid, ...body }) });
     const data = await res.json().catch(() => ({}));
+    if (res.status === 401) lock();
     if (!res.ok) {
       if (/unknown session/.test(data.error || "")) restarted();
       throw new Error(data.error || `HTTP ${res.status}`);
     }
     return data;
   }
+  // The lock appears only if the server asks for a password (HTTP 401), so an open local studio has no extra step.
+  function lock() {
+    password = ""; try { sessionStorage.removeItem("studioPassword"); } catch (_) {}
+    $("lock").hidden = false; $("app").setAttribute("aria-hidden", "true"); $("app").inert = true;
+    setTimeout(() => $("password").focus(), 0);
+  }
+  function unlock() { $("lock").hidden = true; $("app").removeAttribute("aria-hidden"); $("app").inert = false; }
   let recovering = false;
   function restarted() {
     if (recovering) return;
@@ -598,7 +638,9 @@ mark { background: var(--mark); color: var(--ink); box-shadow: 0 2px 0 var(--red
     li.className = e.status || "waiting";
     li.replaceChildren(h("span", { class: "nm" }, e.title || e.id), h("span", { class: "st" }, STATE_WORD[e.status] || e.status || ""),
       e.detail ? h("span", { class: "dt" }, e.detail + (e.calls ? ` · ${e.calls} model call${e.calls === 1 ? "" : "s"}` : "")) : null,
-      ...(e.questions || []).slice(0, 2).map(q => h("span", { class: "ask" }, "Asks: " + q)));
+      ...(e.questions || []).slice(0, 2).map(q => h("span", { class: "ask" }, "Asks: " + q)),
+      e.packet ? h("button", { class: "link packet-link", type: "button", onclick: ev => openPacket(e.packet, ev.currentTarget) },
+        `Inspect packet · ${e.packet.reads.length} read${e.packet.reads.length === 1 ? "" : "s"}, ${e.packet.dependencies.length} dependenc${e.packet.dependencies.length === 1 ? "y" : "ies"}`) : null);
   }
   let accepted = 0, rejected = 0;
   function addTicker(e) {
@@ -688,7 +730,9 @@ mark { background: var(--mark); color: var(--ink); box-shadow: 0 2px 0 var(--red
   }
   function openProof(id) {
     const c = report.claimMap[id]; if (!c) return;
+    returnFocus = document.activeElement;
     const sheet = $("sheet"); sheet.replaceChildren();
+    sheet.setAttribute("aria-label", `Proof for ${id}`);
     sheet.append(h("div", { style: "display:flex;align-items:flex-start;gap:16px" },
       h("span", { class: "no" }, report.numbers[id] ? `[${report.numbers[id]}]` : id), h("span", { class: "spacer" }),
       h("button", { class: "link", type: "button", onclick: closeProof }, "Close")));
@@ -710,7 +754,51 @@ mark { background: var(--mark); color: var(--ink); box-shadow: 0 2px 0 var(--red
     if (c.limitations && c.limitations.length) sheet.append(h("ul", { class: "beliefs" }, c.limitations.map(x => h("li", {}, h("div", {}, h("b", {}, "Limitation"), h("span", {}, x))))));
     $("drawer").hidden = false; sheet.querySelector("button").focus();
   }
-  function closeProof() { $("drawer").hidden = true; }
+  function packetLines(read) {
+    return h("div", { class: "lines packet-lines" }, read.lines.map(row =>
+      h("div", { class: "ln in" }, h("span", { class: "n" }, row.n), h("span", { class: "t" }, row.text || " "))));
+  }
+  function openPacket(packet, trigger) {
+    returnFocus = trigger || document.activeElement;
+    const sheet = $("sheet"); sheet.replaceChildren();
+    sheet.setAttribute("aria-label", `Context packet ${packet.id}`);
+    sheet.append(h("div", { style: "display:flex;align-items:flex-start;gap:16px" },
+      h("p", { class: "kicker", style: "margin:0" }, `${packet.id} · dispatched`), h("span", { class: "spacer" }),
+      h("button", { class: "link", type: "button", onclick: closeProof }, "Close")));
+    sheet.append(h("div", { class: "packet-note" },
+      "This is the exact bounded context dispatched to this agent attempt, not a shared transcript or an unrestricted project view."));
+    sheet.append(h("dl", { class: "facts" }, h("dt", {}, "Role"), h("dd", {}, packet.role), h("dt", {}, "Task"), h("dd", {}, packet.task),
+      h("dt", {}, "Attempt"), h("dd", {}, packet.attempt)));
+    sheet.append(h("section", { class: "packet-section" }, h("h4", {}, "Objective"), h("p", { class: "packet-objective" }, packet.objective)));
+    if (packet.requirements.length) sheet.append(h("section", { class: "packet-section" }, h("h4", {}, `Requirements · ${packet.requirements.length}`),
+      packet.requirements.map(r => h("div", { class: "packet-dep" }, h("b", {}, `${r.id} · r${r.revision}`), h("div", {}, r.interpretation),
+        r.acceptance_checks.length ? h("div", { class: "muted" }, `Checks: ${r.acceptance_checks.join("; ")}`) : null))));
+    if (packet.reads.length) sheet.append(h("section", { class: "packet-section" }, h("h4", {}, `Delivered reads · ${packet.reads.length}`),
+      packet.reads.map(read => h("div", { class: "packet-dep" }, h("b", {}, `${read.label || read.source} · ${read.source} r${read.revision}`),
+        h("dl", { class: "facts" }, h("dt", {}, "Selector"), h("dd", {}, `lines ${read.start}–${read.end}`), h("dt", {}, "Receipt"), h("dd", {}, read.receipt)),
+        packetLines(read)))));
+    if (packet.dependencies.length) sheet.append(h("section", { class: "packet-section" }, h("h4", {}, `Accepted dependencies · ${packet.dependencies.length}`),
+      packet.dependencies.map(dep => {
+        const text = dep.kind === "claim" && dep.claim ? dep.claim.statement : dep.content;
+        return h("div", { class: "packet-dep" }, h("b", {}, `${dep.id} · ${dep.kind} r${dep.revision}`),
+          text ? h("pre", {}, text) : h("span", { class: "muted" }, "No inline content"));
+      })));
+    if (packet.available_sources.length) sheet.append(h("section", { class: "packet-section" }, h("h4", {}, "Available source metadata"),
+      h("ul", {}, packet.available_sources.map(src => h("li", {}, `${src.source_id} · ${src.path}`)))));
+    if (packet.review_feedback.length) sheet.append(h("section", { class: "packet-section" }, h("h4", {}, "Review feedback"),
+      h("ul", {}, packet.review_feedback.map(item => h("li", {}, item)))));
+    if (packet.skills.length) sheet.append(h("section", { class: "packet-section" }, h("h4", {}, "Method skills"),
+      packet.skills.map(skill => h("pre", { class: "packet-dep" }, skill))));
+    sheet.append(h("section", { class: "packet-section" }, h("h4", {}, "Boundary"), h("div", { class: "packet-note" },
+      "Not included: other agents' chat history, unlisted source text, unaccepted outputs, or direct database access.")));
+    $("drawer").hidden = false; sheet.querySelector("button").focus();
+  }
+  function closeProof() {
+    if ($("drawer").hidden) return;
+    $("drawer").hidden = true;
+    if (returnFocus && document.contains(returnFocus)) returnFocus.focus();
+    returnFocus = null;
+  }
   $("drawer").addEventListener("click", e => { if (e.target === $("drawer")) closeProof(); });
   document.addEventListener("keydown", e => { if (e.key === "Escape") closeProof(); });
 
@@ -828,20 +916,29 @@ mark { background: var(--mark); color: var(--ink); box-shadow: 0 2px 0 var(--red
     try { await api("/api/run", {}); } catch (err) { state.running = false; updateStart(); toast(err.message); }
   });
 
-  (async () => {
+  async function startStudio() {
     try {
       const attach = new URLSearchParams(location.search).get("session");  // reopen an existing session
-      const s = attach ? { id: attach, ...(await fetch("/api/info").then(r => r.json())) }
-        : await fetch("/api/session", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }).then(r => r.json());
+      const s = attach ? { id: attach, ...(await api("/api/info")) } : await api("/api/session", {});
       sid = s.id;
       const live = String(s.mode || "").startsWith("live");
       $("mode").className = "live" + (live ? " on" : "");
       $("mode").lastChild.textContent = live ? `Live · ${s.mode.split("·")[1].trim()}` : "Demo · fake agent";
-    } catch (err) { toast("Could not reach the studio server."); }
-    renderBrief({}, false); poll();
-    if (location.hash === "#chat") openChat(true);  // a link that opens the chat
-    else if (!narrow.matches) $("input").focus();
-  })();
+      unlock(); renderBrief({}, false); poll();
+      if (location.hash === "#chat") openChat(true);  // a link that opens the chat
+      else if (!narrow.matches) $("input").focus();
+    } catch (err) {
+      if (!$("lock").hidden) { if (attempted) $("lock-error").textContent = "Incorrect password."; }
+      else toast("Could not reach the studio server.");
+    }
+  }
+  $("unlock-form").addEventListener("submit", async e => {
+    e.preventDefault(); $("lock-error").textContent = "";
+    attempted = true; password = $("password").value;
+    try { sessionStorage.setItem("studioPassword", password); } catch (_) {}
+    await startStudio();
+  });
+  startStudio();
 })();
 </script>
 </body>
