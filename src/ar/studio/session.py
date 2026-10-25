@@ -662,6 +662,19 @@ class Session:
         if web_scout is not None:
             web_scout.join(14)
         self.report = build_report(project, status, self.open_questions)
+        if status == "blocked" and not self.report["markdown"]:
+            discovery = build_discovery_report(project, self.intake.brief.question)
+            if discovery is not None:
+                # Discovery completed, but no source passage passed the evidence
+                # gate. Deliver the real search ledger as an honest report instead
+                # of reducing the entire run to an orchestrator error.
+                markdown, discovery_limitations = discovery
+                status = "completed"
+                self.report["outcome"] = status
+                self.report["markdown"] = markdown
+                self.report["discovery_only"] = True
+                self.report["limitations"] = [*discovery_limitations, *self.report["limitations"]]
+                self.report["open_questions"] = []
         self.report["web_results"] = self.web_results
         self.report["limitations"] = [*self.skipped, *self.report["limitations"]]
         self.status = "done" if status == "completed" else status
@@ -727,6 +740,9 @@ def _rows(conn: sqlite3.Connection, sql: str, params: tuple = ()) -> list[sqlite
 
 
 def _closing(report: dict[str, Any]) -> str:
+    if report.get("discovery_only"):
+        return ("Done. The search report lists the real candidate literature and retrieval limitations. "
+                "No source passage passed verification, so it contains no unsupported claims.")
     n = len(report.get("cited", []))
     head = "Done." if report["outcome"] == "completed" else f"Stopped: {report['outcome'].replace('_', ' ')}."
     parts = [f"{head} The report uses {n} verified claim{'s' if n != 1 else ''}."]
@@ -736,6 +752,101 @@ def _closing(report: dict[str, Any]) -> str:
     if report.get("open_questions"):
         parts.append("The agents left open questions. Answer them here and run again.")
     return " ".join(parts)
+
+
+def build_discovery_report(project: Path, question: str) -> tuple[str, list[str]] | None:
+    """Build a useful zero-claim report from durable literature search ledgers.
+
+    Candidate metadata is reported as discovery output, never promoted to evidence.
+    This lets Studio finish honestly when papers were found but no readable passage
+    survived acquisition and claim validation.
+    """
+    ledgers = sorted((project / "output" / "literature").glob("*/search-ledger.json"))
+    if not ledgers:
+        return None
+    searches = documents = fetches = 0
+    backends: list[str] = []
+    candidates: dict[str, dict[str, Any]] = {}
+    limitations: list[str] = []
+    for path in ledgers:
+        try:
+            ledger = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError, TypeError):
+            continue
+        protocol = ledger.get("protocol") if isinstance(ledger.get("protocol"), dict) else {}
+        result = ledger.get("result") if isinstance(ledger.get("result"), dict) else {}
+        backends.extend(str(item) for item in protocol.get("backends", []) if item)
+        searches += int(result.get("searches") or 0)
+        documents += int(result.get("documents") or 0)
+        fetches += int(result.get("fetches") or 0)
+        limitations.extend(str(item).strip() for item in result.get("limitations", []) if str(item).strip())
+        reason = str(result.get("stop_reason") or "").strip()
+        if reason:
+            limitations.append(reason)
+        for row in ledger.get("candidates", []):
+            if not isinstance(row, dict):
+                continue
+            data = row.get("data_json", {})
+            if isinstance(data, str):
+                try:
+                    data = json.loads(data)
+                except ValueError:
+                    continue
+            if not isinstance(data, dict):
+                continue
+            key = str(data.get("doi") or data.get("url") or data.get("id") or data.get("title") or "").strip()
+            if key:
+                candidates.setdefault(key, data)
+    if not candidates and searches == 0 and not limitations:
+        return None
+
+    def clean(value: Any) -> str:
+        return re.sub(r"\s+", " ", str(value or "")).strip()
+
+    unique_limits = list(dict.fromkeys(clean(item) for item in limitations if clean(item)))
+    lines = [
+        f"# Research report: {clean(question)}",
+        "",
+        "## Result",
+        "",
+        "The research search completed, but no source passage passed the evidence-verification gate. "
+        "A supported answer cannot be stated yet. The discovery results below are real search outputs, "
+        "but bibliographic metadata is not treated as evidence.",
+        "",
+        "## Search performed",
+        "",
+        f"- Backends: {', '.join(dict.fromkeys(backends)) or 'configured scholarly indexes'}",
+        f"- Searches completed: {searches}",
+        f"- Documents acquired: {documents}",
+        f"- Retrieval attempts: {fetches}",
+        f"- Candidate works found: {len(candidates)}",
+        "",
+        "## Candidate works",
+        "",
+    ]
+    for candidate in list(candidates.values())[:20]:
+        title = clean(candidate.get("title")) or "Untitled result"
+        year = clean(candidate.get("year")) or "date unknown"
+        authors = clean(candidate.get("authors"))
+        doi = clean(candidate.get("doi"))
+        detail = " · ".join(item for item in (authors, year, f"DOI {doi}" if doi else "") if item)
+        lines.append(f"- {title}" + (f" — {detail}" if detail else ""))
+    if len(candidates) > 20:
+        lines.append(f"- …and {len(candidates) - 20} additional candidates in the audit ledger.")
+    lines += ["", "## Limitations", ""]
+    lines += [f"- {item}" for item in unique_limits] or [
+        "- Readable full text or abstracts were unavailable, or extracted claims did not pass quote verification."
+    ]
+    lines += [
+        "",
+        "## Next steps",
+        "",
+        "- Add accessible papers or select candidate DOIs for another run.",
+        "- Configure Brave Search for broader web discovery when the scholarly indexes are too narrow.",
+        "- The system will only convert retrieved source passages—not search metadata—into verified findings.",
+        "",
+    ]
+    return "\n".join(lines), unique_limits
 
 
 def build_report(project: Path, outcome: str, open_questions: dict[str, str]) -> dict[str, Any]:

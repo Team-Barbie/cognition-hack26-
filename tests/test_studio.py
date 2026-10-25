@@ -11,7 +11,7 @@ from ar.studio.intake import Brief, Intake
 from ar.studio.server import SlidingWindowLimiter, Studio, event_stream, handle, serve
 from ar.models import LineSelector, Requirement, SourceRef
 from ar.packet import DeliveredRead, Packet
-from ar.studio.session import Session, packet_view
+from ar.studio.session import Session, build_discovery_report, packet_view
 
 
 @pytest.fixture(autouse=True)
@@ -368,14 +368,38 @@ def test_no_source_run_configures_actual_literature_review(tmp_path, monkeypatch
     assert s.sources == {} and s.client.calls == []
 
 
-def test_no_literature_evidence_stops_without_fabricating_background_notes(tmp_path):
+def test_no_literature_evidence_returns_an_honest_search_report(tmp_path):
     from ar.agents.fake import FakeAgent
     s = Session(tmp_path, make_agent=FakeAgent)
     s.intake.brief = Brief(question="A question without evidence?")
     s.start()
     s.wait(30)
-    assert s.status == "blocked" and not s.sources
+    assert s.status == "done" and not s.sources
     assert s.report["claims"] == []
+    assert s.report["outcome"] == "completed"
+    assert "no source passage passed the evidence-verification gate" in s.report["markdown"]
+    assert "bibliographic metadata is not treated as evidence" in s.report["markdown"]
+    assert s.report["open_questions"] == []
+    assert s.events[-1]["type"] == "chat" and "search report lists" in s.events[-1]["text"]
+
+
+def test_discovery_report_surfaces_real_candidate_metadata_without_calling_it_evidence(tmp_path):
+    folder = tmp_path / "output" / "literature" / "review-1"
+    folder.mkdir(parents=True)
+    (folder / "search-ledger.json").write_text(json.dumps({
+        "protocol": {"backends": ["crossref"]},
+        "result": {"searches": 2, "documents": 0, "fetches": 1,
+                   "stop_reason": "no source-supported claims were accepted",
+                   "limitations": ["Full text unavailable."]},
+        "candidates": [{"data_json": {"id": "paper-1", "title": "Urban Trees and Heat",
+                                         "authors": "A. Researcher", "year": 2025,
+                                         "doi": "10.1000/trees"}}],
+    }), encoding="utf-8")
+
+    markdown, limitations = build_discovery_report(tmp_path, "Do urban trees reduce heat risk?")
+    assert "Urban Trees and Heat" in markdown and "DOI 10.1000/trees" in markdown
+    assert "Candidate works found: 1" in markdown and "metadata is not treated as evidence" in markdown
+    assert "Full text unavailable." in limitations
 
 
 def test_studio_supports_multiple_independent_literature_specs(tmp_path):
