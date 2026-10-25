@@ -8,6 +8,7 @@ rejections, and reviews as Quality commits them. The final report is read from c
 from __future__ import annotations
 
 import json
+import os
 import re
 import shutil
 import sqlite3
@@ -291,8 +292,10 @@ class Session:
         self._events_ready = threading.Condition(self._lock)
         self._thread: threading.Thread | None = None
         self._init_event_journal()
-        opening = self.intake.opening()
-        if make_agent is None:
+        if make_agent is not None:
+            opening = "Ask any research question. I'll search the web, read the available sources, and return a cited report."
+        else:
+            opening = self.intake.opening()
             opening += " Demo mode is active; choose Load demo to try the full workflow."
         self.emit("chat", role="assistant", who="Intake", text=opening)
 
@@ -418,6 +421,7 @@ class Session:
         if prompt:
             if len(prompt) > 2000:
                 raise ValueError("demo prompt must be at most 2000 characters")
+            self.emit("chat", role="user", who="You", text=prompt)
             self.intake.brief = Brief(question=prompt)
             self.intake.ready = True
 
@@ -432,11 +436,15 @@ class Session:
             self.test_run = self.test_model is not None
             fixture_ids = {path.stem for path in (FIXTURE / "input" / "papers").glob("*.md")}
             self.sources = {sid: text for sid, text in self.sources.items() if sid not in fixture_ids}
+            backends = ["crossref", "europe_pmc"]
+            if os.environ.get("BRAVE_SEARCH_API_KEY"):
+                backends.append("brave")
             self.literature_reviews = [ReviewSpec(
                 id="prompt-research",
                 question=custom_question,
                 subquestions=self.intake.brief.open_questions[:4],
                 inclusion=self.intake.brief.constraints[:8],
+                backends=backends,
                 max_searches=4,
                 max_model_calls=8,
                 max_documents=4,

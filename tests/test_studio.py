@@ -220,9 +220,10 @@ def test_showcase_mode_is_explicit_and_normal_demo_resets_it(tmp_path):
     assert s.showcase_mode is False
 
 
-def test_live_demo_researches_an_arbitrary_prompt_instead_of_loading_fixture_papers(tmp_path):
+def test_live_demo_researches_an_arbitrary_prompt_instead_of_loading_fixture_papers(tmp_path, monkeypatch):
     from ar.agents.fake import FakeAgent
 
+    monkeypatch.setenv("BRAVE_SEARCH_API_KEY", "configured")
     s = Session(tmp_path, make_agent=FakeAgent)
     s.use_demo(prompt="How do urban trees affect heat-related mortality?")
 
@@ -232,6 +233,8 @@ def test_live_demo_researches_an_arbitrary_prompt_instead_of_loading_fixture_pap
     assert [spec.id for spec in s.literature_reviews] == ["prompt-research"]
     spec = s.literature_reviews[0]
     assert spec.question == s.intake.brief.question and spec.max_seconds == 120
+    assert spec.backends == ["crossref", "europe_pmc", "brave"]
+    assert any(e["type"] == "chat" and e["role"] == "user" and e["text"] == spec.question for e in s.events)
 
 
 def test_offline_demo_keeps_its_evidence_backed_fixture_for_an_arbitrary_prompt(tmp_path):
@@ -510,6 +513,8 @@ def test_the_page_has_a_tab_icon_served_by_the_app(tmp_path):
     studio = Studio(tmp_path, fake=True)
     page = handle(studio, "GET", "/", "", b"")[2].decode()
     assert '<link rel="icon" href="/favicon.svg"' in page
+    assert "state.canResearch && !state.question" in page
+    assert "await beginRun()" in page
     assert "http://" not in page and "https://" not in page  # the page itself still makes no external requests
     for path in ("/favicon.svg", "/favicon.ico"):
         status, kind, body = handle(studio, "GET", path, "", b"")

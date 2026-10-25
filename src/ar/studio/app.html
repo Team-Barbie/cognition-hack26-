@@ -560,7 +560,7 @@ mark { background: rgba(185,240,74,.16); color: var(--ph-hi); border-bottom: 1px
   }
   const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
   const narrow = matchMedia("(max-width: 1260px)");
-  const state = { briefReady: false, sources: 0, running: false, reportShown: false, sourceList: [], question: "", t0: 0, tEnd: 0 };
+  const state = { briefReady: false, sources: 0, running: false, reportShown: false, sourceList: [], question: "", canResearch: false, t0: 0, tEnd: 0 };
   const lerp = (a, b, t) => a + (b - a) * t;
   const ACC = "#ff4fa3", ACC_RGB = [1, 3, 5].map(i => parseInt(ACC.slice(i, i + 2), 16));  // the one accent colour (keep in step with --acc)
   const accA = a => `rgba(${ACC_RGB.join(",")},${a})`, accMix = (to, t) => ACC_RGB.map((v, i) => lerp(v, to[i], t));
@@ -1341,7 +1341,20 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
     }
     streamStarted = false;
   }
-  $("composer").addEventListener("submit", async e => { e.preventDefault(); const text = $("input").value.trim(); if (!text) return; $("input").value = ""; $("input").style.height = ""; typing(true); try { await api("/api/chat", { message: text }); } catch (err) { typing(false); toast(err.message); } });
+  $("composer").addEventListener("submit", async e => {
+    e.preventDefault();
+    const text = $("input").value.trim();
+    if (!text || state.running) return;
+    $("input").value = ""; $("input").style.height = ""; typing(true);
+    try {
+      if (state.canResearch && !state.question) {
+        if (await useDemo(false, text)) await beginRun();
+        else typing(false);
+      } else {
+        await api("/api/chat", { message: text });
+      }
+    } catch (err) { typing(false); toast(err.message); }
+  });
   $("input").addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); $("composer").requestSubmit(); } });
   $("input").addEventListener("input", e => { e.target.style.height = "auto"; e.target.style.height = Math.min(140, e.target.scrollHeight) + "px"; });
   for (const id of ["upload-label", "chip-upload"]) $(id).addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); $("file").click(); } });
@@ -1377,8 +1390,8 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
       const data = await api("/api/search", { query: $("web-query").value }); renderWebResults(data.results, $("web-query").value, false);
     } catch (err) { toast(err.message); } finally { button.disabled = false; button.textContent = "Find papers"; }
   });
-  const useDemo = async (showcase = false) => {
-    const prompt = $("input").value.trim();
+  const useDemo = async (showcase = false, suppliedPrompt = null) => {
+    const prompt = suppliedPrompt === null ? $("input").value.trim() : suppliedPrompt.trim();
     try {
       await api("/api/demo", { showcase, prompt });
       if (prompt) { $("input").value = ""; $("input").style.height = ""; }
@@ -1388,14 +1401,15 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
   };
   $("demo").addEventListener("click", () => useDemo()); $("chip-demo").addEventListener("click", () => useDemo()); $("chip-start").addEventListener("click", () => $("start").click());
   $("chat-fab").addEventListener("click", () => openChat(true)); $("chat-close").addEventListener("click", () => openChat(false));
-  $("start").addEventListener("click", async () => {
+  async function beginRun() {
     const why = missing(); if (why) { addTurn({ role: "assistant", who: "Res Loop", text: why }); openChat(true); toast(why); return; }
     state.running = true; updateStart(); runPending = true;
     try {
       const d = await api("/api/run", { test_run: $("test-run").checked });  // hosted: the answer carries the run's events
       if (d.status === "running" && d.streamEnded) { state.running = false; updateStart(); toast("This run is taking longer than the host allows. Try fewer or shorter sources."); }
     } catch (err) { state.running = false; updateStart(); toast(err.message); } finally { runPending = false; }
-  });
+  }
+  $("start").addEventListener("click", beginRun);
   $("showcase").addEventListener("click", async () => {
     if (state.running) return;
     $("showcase").disabled = true;
@@ -1408,7 +1422,9 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
   async function startStudio() {
     try {
       const attach = new URLSearchParams(location.search).get("session"); const s = attach ? { id: attach, ...(await api("/api/info")) } : await api("/api/session", {});
-      sid = s.id; const live = String(s.mode || "").startsWith("live"), label = live ? String(s.mode).replace(/^live\W+/, "") : "demo"; state.providerLabel = label; $("chat-mode").textContent = label; $("hud-mode").textContent = label.toUpperCase(); renderTeam();
+      sid = s.id; const live = String(s.mode || "").startsWith("live"), label = live ? String(s.mode).replace(/^live\W+/, "") : "demo"; state.canResearch = live; state.providerLabel = label; $("chat-mode").textContent = label; $("hud-mode").textContent = label.toUpperCase();
+      if (live) { $("input").placeholder = "ask anything — the team will research it"; } else { $("showcase").textContent = "Watch showcase"; }
+      renderTeam();
       unlock(); renderBrief({}, false); streamEvents(); if (location.hash === "#chat") openChat(true); else if (!narrow.matches) $("input").focus();
     } catch (err) { if (!$("lock").hidden) { if (attempted) $("lock-error").textContent = "Incorrect password."; } else toast("Could not reach the studio server."); }
   }
