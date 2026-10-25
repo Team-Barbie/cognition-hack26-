@@ -160,7 +160,7 @@ class Studio:
                 make_test_agent = lambda: LiveAgent(self._test_client())
                 test_model = self.test_model
             else:
-                make_test_agent = FakeAgent  # no GPT credentials: keep the demo free
+                make_test_agent = FakeAgent  # no GPT credentials: keep the fixed showcase free
         session = Session(self.workdir, make_agent, client=self._client(),
                           make_test_agent=make_test_agent, test_model=test_model)
         with self._lock:
@@ -291,6 +291,8 @@ def handle(studio: Studio, method: str, path: str, query: str, raw_body: bytes,
         reply: dict[str, Any] = {"ok": True}
         if path == "/api/chat":
             session.chat(str(data.get("message", ""))[:8000])
+        elif path == "/api/question":
+            session.set_question({key: value for key, value in data.items() if key not in {"id", "after"}})
         elif path == "/api/source":
             reply["id"] = session.add_source(str(data.get("name", "source"))[:120], str(data.get("text", "")))
         elif path == "/api/source/remove":

@@ -12,6 +12,8 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
 from ar.adapter import ChatClient, extract_json
 
 FIELDS = ("question", "context", "constraints", "open_questions")
@@ -40,6 +42,35 @@ SCRIPT = [
 
 _NONE = {"", "none", "no", "n/a", "na", "skip", "-"}
 _FILLER = re.compile(r"^(none|n/?a|no (other |further |additional )?(constraints?|questions?|open questions?)\b)", re.I)
+
+
+class ResearchRequest(BaseModel):
+    """A presenter's complete starting brief, without an intake model round trip."""
+
+    model_config = ConfigDict(extra="forbid")
+    question: str = Field(min_length=3, max_length=2000)
+    context: str = Field(default="", max_length=4000)
+    constraints: list[str] = Field(default_factory=list, max_length=20)
+    open_questions: list[str] = Field(default_factory=list, max_length=12)
+
+    @field_validator("question", "context")
+    @classmethod
+    def trim_text(cls, value: str) -> str:
+        return value.strip()
+
+    @field_validator("question")
+    @classmethod
+    def meaningful_question(cls, value: str) -> str:
+        if len(value) < 3:
+            raise ValueError("enter a research question of at least 3 characters")
+        return value
+
+    @field_validator("constraints", "open_questions")
+    @classmethod
+    def clean_items(cls, items: list[str]) -> list[str]:
+        if any(not item.strip() or len(item) > 2000 for item in items):
+            raise ValueError("each item must contain 1 to 2000 characters")
+        return list(dict.fromkeys(item.strip() for item in items))
 
 
 @dataclass

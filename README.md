@@ -80,6 +80,20 @@ retains its configured provider/model; explicit `--fake` and offline demo mode s
 The active test model appears in the page's mode label. API clients can pass `test_run: true` to
 `POST /api/run`, or `false` to return to normal research.
 
+For a presenter-led demo, enter a question in **Explore your question**, optionally add
+context, constraints and subquestions, then press **Explore question**. This starts a fresh
+investigation using the configured research model, automatically searches scholarly sources,
+retrieves available papers, and produces a report with verified citations and evidence gaps.
+No upload or intake conversation is required. The form clears the previous investigation's
+papers and reviews so a forecasting showcase cannot contaminate a new topic. It works after
+a showcase and supports another question after the run finishes.
+
+Set `OPENAI_API_KEY` or `ANTHROPIC_API_KEY` on the Studio server for custom questions.
+Without credentials, **Watch showcase** still runs the fixed offline example; custom questions
+show a configuration message and are never replaced with the fixture question. Custom questions
+always use a live worker; the fixed showcase keeps its free fixture fallback when GPT credentials
+are unavailable.
+
 To verify the complete research/synthesis handoff with real low-cost model calls:
 
 ```text

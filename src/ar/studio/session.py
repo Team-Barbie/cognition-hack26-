@@ -26,7 +26,7 @@ from ar.evidence import CITATION
 from ar.models import AgentResult, Role
 from ar.literature import ReviewConfig, ReviewSpec
 from ar.packet import Packet
-from ar.studio.intake import Brief, Intake
+from ar.studio.intake import Brief, Intake, ResearchRequest
 from ar.web_search import search_crossref
 
 FIXTURE = Path(__file__).resolve().parents[3] / "fixtures" / "baselines"
@@ -339,6 +339,36 @@ class Session:
 
     # intake and sources
 
+    def set_question(self, data: dict[str, Any]) -> None:
+        """Start a fresh live investigation with the presenter's own brief."""
+        if self.running:
+            raise RuntimeError("wait for the run to finish before starting a new question")
+        request = ResearchRequest.model_validate(data)
+        if self.make_agent is None:
+            raise ValueError("Exploring your own question requires a live research model. Configure OPENAI_API_KEY "
+                             "or ANTHROPIC_API_KEY on the server, then restart Studio. Watch showcase works offline.")
+        self.intake = Intake(client=self.client, brief=Brief(**request.model_dump()))
+        self.intake.resume(True)
+        self.sources.clear()
+        self.literature_reviews = []
+        self.web_results = []
+        self.open_questions.clear()
+        self.skipped.clear()
+        self.report = None
+        self.status = "intake"
+        self.showcase_mode = False
+        self.test_run = False
+        self.emit("research_setup", mode="custom")
+        self.emit("run_config", test_run=False, model=None)
+        self.emit("sources", sources=[])
+        self.emit("literature_config", reviews=[])
+        self.emit("web_results", query=request.question, results=[])
+        self.emit("brief", brief=self.intake.brief.as_dict(), ready=True)
+        self.emit("chat", role="user", who="You", text=request.question)
+        self.emit("chat", role="assistant", who="Intake",
+                  text="Your question is ready. The team will search for papers, read available passages, "
+                       "compare findings and report the evidence and remaining gaps.")
+
     def chat(self, message: str) -> None:
         message = message.strip()
         if not message:
@@ -390,15 +420,18 @@ class Session:
         if self.running:
             raise RuntimeError("wait for the run to finish before loading the demo")
         self.showcase_mode = showcase
+        self.sources.clear()
+        self.literature_reviews = []
+        self.open_questions.clear()
+        self.intake = Intake(client=self.client, brief=Brief(**DEMO_BRIEF.as_dict()))
+        self.intake.resume(True)
+        self.emit("research_setup", mode="fixture")
+        self.emit("literature_config", reviews=[])
         self.test_run = True
         self.emit("run_config", test_run=True, model=self.test_model)
         for path in sorted((FIXTURE / "input" / "papers").glob("*.md")):
             self.sources[path.stem] = path.read_text(encoding="utf-8")
-        if not self.intake.brief.question or self.make_agent is None:
-            self.intake.brief = Brief(**DEMO_BRIEF.as_dict())
-            self.intake.ready = True
-            self.emit("chat", role="assistant", who="Intake",
-                      text="Demo papers and question loaded.")
+        self.emit("chat", role="assistant", who="Intake", text="Demo papers and question loaded.")
         self.emit("brief", brief=self.intake.brief.as_dict(), ready=True)
         self.emit("sources", sources=self.source_list())
 
@@ -489,9 +522,16 @@ class Session:
             if not isinstance(test_run, bool):
                 raise ValueError("test_run must be a boolean")
             self.test_run = test_run
+        if (self.test_run and self.make_test_agent is FakeAgent
+                and self.intake.brief.question != DEMO_BRIEF.question):
+            # A fixture-only test worker cannot explore the presenter's topic.
+            self.test_run = False
         self.emit("run_config", test_run=self.test_run, model=self.test_model if self.test_run else None)
         if not self.intake.brief.question:
             raise ValueError("ask your question in the chat first")
+        if self.make_agent is None and self.intake.brief.question != DEMO_BRIEF.question:
+            raise ValueError("Exploring your own question requires a live research model. Configure OPENAI_API_KEY "
+                             "or ANTHROPIC_API_KEY on the server, or choose Watch showcase for the offline example.")
         if not self.sources and self.make_agent is None:
             self.use_demo()  # demo mode can only read the demo papers
             self.emit("chat", role="assistant", who="Res Loop",

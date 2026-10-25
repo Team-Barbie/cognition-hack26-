@@ -352,12 +352,12 @@ def test_studio_supports_multiple_independent_literature_specs(tmp_path):
         s.set_literature_reviews([{"id": "same", "question": "Question one?"}, {"id": "same", "question": "Question two?"}])
 
 
-def test_demo_mode_without_sources_loads_the_demo_papers(tmp_path):
+def test_offline_custom_question_is_never_replaced_with_the_demo(tmp_path):
     s = Session(tmp_path, None)
     s.intake.brief = Brief(question="Q?")
-    s.start()
-    s.wait(60)
-    assert set(s.sources) == {"paper-a", "paper-b", "paper-c"} and s.status == "done"
+    with pytest.raises(ValueError, match="live research model"):
+        s.start()
+    assert s.intake.brief.question == "Q?" and not s.sources and not s.running
 
 
 def test_a_reader_that_balks_is_retried_then_skipped_without_killing_the_run(tmp_path):

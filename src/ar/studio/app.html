@@ -77,7 +77,7 @@ main { display: grid; grid-template-columns: minmax(0, 1fr); gap: 30px; min-widt
 canvas.px { image-rendering: pixelated; max-width: 100%; filter: drop-shadow(0 0 9px var(--glow-s)); }
 #px-state.run { animation: pulse 1.4s ease-in-out infinite; }
 .hint { position: relative; margin: 6px 0 0; min-height: 1.5em; font: 13px var(--mono); color: var(--ph-2); letter-spacing: .04em; }
-.hero-cta { position: relative; display: flex; align-items: center; gap: 12px; margin-top: 8px; }
+.hero-cta { position: relative; display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 12px; margin-top: 8px; }
 .showcase { border: 2px solid var(--acc); border-radius: 10px; padding: 10px 18px; background: color-mix(in srgb, var(--acc) 10%, transparent); color: var(--acc-hi); cursor: pointer; font: 800 11px var(--mono); letter-spacing: .14em; text-transform: uppercase; box-shadow: 0 0 18px color-mix(in srgb, var(--acc) 24%, transparent); }
 .showcase:hover { background: var(--acc); color: var(--ink); text-shadow: none; }
 .showcase:disabled { opacity: .45; cursor: default; }
@@ -89,6 +89,16 @@ canvas.px { image-rendering: pixelated; max-width: 100%; filter: drop-shadow(0 0
 .scenario-card:hover { border-color: var(--acc); box-shadow: 0 0 16px color-mix(in srgb, var(--acc) 18%, transparent); }
 .scenario-card b { color: var(--ph-hi); font: 800 12px var(--mono); letter-spacing: .12em; text-transform: uppercase; }
 .scenario-card span { color: var(--ph-2); font: 12px/1.5 var(--mono); }
+.question-entry { padding: 22px; border: 1px solid var(--acc); border-radius: 12px; background: rgba(6,10,4,.85); }
+.question-entry h2 { margin: 0 0 8px; color: var(--ph-hi); font: 800 18px var(--mono); }
+.question-entry form { display: grid; gap: 12px; }
+.question-entry label { display: grid; gap: 6px; color: var(--ph-hi); font: 12px var(--mono); }
+.question-entry textarea { width: 100%; box-sizing: border-box; resize: vertical; min-height: 74px; padding: 12px; border: 1px solid var(--ph-3); border-radius: 6px; background: var(--ink); color: var(--ph-hi); font: 13px/1.5 var(--mono); }
+.question-entry textarea:focus { outline: 2px solid var(--acc); outline-offset: 2px; }
+.question-entry details { color: var(--ph-2); font: 12px/1.6 var(--mono); }
+.question-entry details label { margin-top: 12px; }
+.question-entry .question-actions { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.question-entry .question-error { margin: 0; color: var(--acc-hi); font: 12px/1.6 var(--mono); }
 @media (max-width: 720px) { .scenario-bar { grid-template-columns: 1fr; } }
 
 /* shelf: source spines and the agent team */
@@ -396,9 +406,26 @@ mark { background: rgba(185,240,74,.16); color: var(--ph-hi); border-bottom: 1px
           <canvas class="px" id="px-sub" aria-hidden="true"></canvas>
           <canvas class="px" id="px-state" aria-hidden="true"></canvas>
           <p class="hint" id="hint"></p>
-          <div class="hero-cta" id="hero-cta"><button class="showcase" id="showcase" type="button">Watch showcase</button></div>
+          <div class="hero-cta" id="hero-cta"><button class="showcase" id="question-focus" type="button">Ask your own question</button><button class="act" id="showcase" type="button">Watch showcase</button></div>
           <div class="proof-strip" id="proof-strip"><span><b>Verify</b> every claim</span><span><b>Expose</b> contradictions</span><span><b>Trace</b> exact quotes</span></div>
         </div>
+      </section>
+
+      <section class="question-entry" aria-labelledby="question-entry-title">
+        <h2 id="question-entry-title">Explore your question</h2>
+        <p class="web-note" id="question-help">Bring your own research question. The team searches for papers, reads available evidence and compares findings. Starting here opens a fresh investigation.</p>
+        <form id="question-form" aria-describedby="question-help">
+          <label for="research-question">Research question
+            <textarea id="research-question" rows="2" required minlength="3" maxlength="2000" placeholder="e.g. How does hybrid work affect productivity in software teams?"></textarea>
+          </label>
+          <details><summary>Add context, constraints or subquestions (optional)</summary>
+            <label for="research-context">Context<textarea id="research-context" rows="2" maxlength="4000" placeholder="Who is this for, and what decision should it inform?"></textarea></label>
+            <label for="research-constraints">Constraints · one per line<textarea id="research-constraints" rows="2" maxlength="10000" placeholder="e.g. Focus on peer-reviewed studies of software teams"></textarea></label>
+            <label for="research-subquestions">Subquestions · one per line<textarea id="research-subquestions" rows="2" maxlength="10000" placeholder="What else should the report address?"></textarea></label>
+          </details>
+          <div class="question-actions"><button class="go" id="explore-question" type="submit">Explore question</button><span class="web-note" id="question-mode-note">Uses the configured live research model. No paper uploads needed.</span></div>
+          <p class="question-error" id="question-error" role="alert" hidden></p>
+        </form>
       </section>
 
       <section class="scenario-bar" id="scenario-bar" aria-label="Start a research scenario">
@@ -962,8 +989,10 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
   function updateStart() {
     $("test-run").disabled = state.running;
     const label = state.running ? "Researching" : (state.reportShown ? "Run again" : "Run research");
-    for (const id of ["start", "chip-start"]) { $(id).disabled = state.running; $(id).textContent = label; }
+    for (const id of ["start", "chip-start"]) { $(id).disabled = state.running || runPending; $(id).textContent = label; }
     document.querySelectorAll("#literature-form input, #literature-form select, #literature-form button, #literature-list button").forEach(el => { el.disabled = state.running; });
+    document.querySelectorAll("#question-form textarea, #question-form button").forEach(el => { el.disabled = state.running || runPending; });
+    $("explore-question").textContent = state.running ? "Exploring…" : "Explore question";
   }
   const missing = () => state.briefReady ? null : "First ask your question in the chat.";
 
@@ -1291,6 +1320,7 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
     }
   }
   function apply(e) {
+    if (e.type === "research_setup") { snap.demo = e.mode === "fixture"; return; }
     if (e.type === "run_config") {
       snap.test_run = !!e.test_run;
       $("test-run").checked = snap.test_run;
@@ -1379,16 +1409,35 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
   const useDemo = async (showcase = false) => { try { await api("/api/demo", { showcase }); snap.demo = true; return true; } catch (err) { toast(err.message); return false; } };
   $("demo").addEventListener("click", () => useDemo()); $("chip-demo").addEventListener("click", () => useDemo()); $("chip-start").addEventListener("click", () => $("start").click());
   $("chat-fab").addEventListener("click", () => openChat(true)); $("chat-close").addEventListener("click", () => openChat(false));
-  $("start").addEventListener("click", async () => {
+  async function runResearch(testRun) {
+    if (state.running) return;
     const why = missing(); if (why) { addTurn({ role: "assistant", who: "Res Loop", text: why }); openChat(true); toast(why); return; }
-    state.running = true; updateStart(); runPending = true;
+    state.running = true; runPending = true; updateStart();
     try {
-      const d = await api("/api/run", { test_run: $("test-run").checked });  // hosted: the answer carries the run's events
+      const d = await api("/api/run", { test_run: testRun });  // hosted: the answer carries the run's events
       if (d.status === "running" && d.streamEnded) { state.running = false; updateStart(); toast("This run is taking longer than the host allows. Try fewer or shorter sources."); }
-    } catch (err) { state.running = false; updateStart(); toast(err.message); } finally { runPending = false; }
+    } catch (err) { state.running = false; updateStart(); toast(err.message); throw err; } finally { runPending = false; updateStart(); }
+  }
+  $("start").addEventListener("click", () => runResearch($("test-run").checked).catch(() => {}));
+  $("question-form").addEventListener("submit", async e => {
+    e.preventDefault(); if (state.running || runPending) return;
+    const error = $("question-error"); error.hidden = true;
+    const lines = id => $(id).value.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+    runPending = true; updateStart();
+    try {
+      await api("/api/question", { question: $("research-question").value.trim(), context: $("research-context").value.trim(), constraints: lines("research-constraints"), open_questions: lines("research-subquestions") });
+      runPending = false;
+      $("stage").scrollIntoView({ block: "start", behavior: reduce ? "instant" : "smooth" });
+      await runResearch(false);
+    } catch (err) { error.textContent = err.message; error.hidden = false; }
+    finally { runPending = false; updateStart(); }
+  });
+  $("question-focus").addEventListener("click", () => {
+    $("question-entry-title").scrollIntoView({ block: "start", behavior: reduce ? "instant" : "smooth" });
+    $("research-question").focus({ preventScroll: true });
   });
   $("showcase").addEventListener("click", async () => {
-    if (state.running) return;
+    if (state.running || runPending) return;
     $("showcase").disabled = true;
     if (await useDemo(true)) $("start").click();
     else $("showcase").disabled = false;
@@ -1400,6 +1449,7 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
     try {
       const attach = new URLSearchParams(location.search).get("session"); const s = attach ? { id: attach, ...(await api("/api/info")) } : await api("/api/session", {});
       sid = s.id; const live = String(s.mode || "").startsWith("live"), label = live ? String(s.mode).replace(/^live\W+/, "") : "demo"; state.providerLabel = label; $("chat-mode").textContent = label; $("hud-mode").textContent = label.toUpperCase(); renderTeam();
+      $("question-mode-note").textContent = live ? "Uses the configured live research model. No paper uploads needed." : "Custom questions need OPENAI_API_KEY or ANTHROPIC_API_KEY on the server. Watch showcase runs offline.";
       unlock(); renderBrief({}, false); streamEvents(); if (location.hash === "#chat") openChat(true); else if (!narrow.matches) $("input").focus();
     } catch (err) { if (!$("lock").hidden) { if (attempted) $("lock-error").textContent = "Incorrect password."; } else toast("Could not reach the studio server."); }
   }
