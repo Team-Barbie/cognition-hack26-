@@ -448,7 +448,7 @@ class Session:
             self.test_run = False
             fixture_ids = {path.stem for path in (FIXTURE / "input" / "papers").glob("*.md")}
             self.sources = {sid: text for sid, text in self.sources.items() if sid not in fixture_ids}
-            backends = ["crossref", "europe_pmc"]
+            backends = ["crossref", "europe_pmc", "openalex"]
             if os.environ.get("BRAVE_SEARCH_API_KEY"):
                 backends.append("brave")
             self.literature_reviews = [ReviewSpec(

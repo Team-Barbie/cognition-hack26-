@@ -444,10 +444,50 @@ def test_crossref_adapter_preserves_dates_cursors_references_and_abstract_origin
     api = API()
     page, raw = LiteratureSearch(api).search("crossref", "paper", cursor="previous", limit=1, year_from=2020, year_to=2025)
     params = parse_qs(urlsplit(api.url).query)
+    assert params["query.title"] == ["paper"] and "query.bibliographic" not in params
     assert params["cursor"] == ["previous"] and "from-pub-date:2020-01-01" in params["filter"][0]
     assert page.next_cursor == "next" and page.candidates[0].references == ["10.123/b"]
     assert page.candidates[0].abstract == "Original abstract."
     assert page.candidates[0].abstract_source_sha256 == page.raw_sha256
+
+
+def test_crossref_initial_search_uses_relevance_ranking_without_star_cursor():
+    from urllib.parse import parse_qs, urlsplit
+    class API:
+        def get(self, url, **kwargs):
+            self.url = url
+            return Fetched(url, "application/json", json.dumps({"message": {
+                "items": [{"title": ["Giant Radio Galaxies"], "DOI": "10.123/grg"}],
+                "total-results": 1,
+            }}).encode())
+
+    api = API()
+    page, _ = LiteratureSearch(api).search("crossref", "giant radio galaxies", limit=6)
+    params = parse_qs(urlsplit(api.url).query)
+    assert params["query.title"] == ["giant radio galaxies"]
+    assert "cursor" not in params
+    assert page.candidates[0].title == "Giant Radio Galaxies"
+
+
+def test_literature_model_dependency_request_falls_back_to_safe_runtime_actions():
+    from ar.literature import ReviewSpec, _ReviewExecution
+
+    spec = ReviewSpec(id="fallback", question="What do giant radio galaxies show?",
+                      backends=["crossref", "europe_pmc"])
+    plan = _ReviewExecution._fallback_action(
+        spec, "plan", {}, [], ["Need full text before proceeding."])
+    assert {query.backend for query in plan.queries} == {"crossref", "europe_pmc"}
+    assert any(query.intent == "contradictory" for query in plan.queries)
+    assert plan.gaps == ["Need full text before proceeding."]
+
+    screened = _ReviewExecution._fallback_action(spec, "screen", {"candidates": [
+        {"id": "with-abstract", "abstract": "Indexed abstract"},
+        {"id": "metadata-only", "abstract": ""},
+    ]}, [], ["Need more context."])
+    assert [(item.candidate_id, item.decision, item.basis) for item in screened.screening] == [
+        ("with-abstract", "uncertain", "abstract"),
+        ("metadata-only", "uncertain", "metadata"),
+    ]
 
 
 def test_europe_pmc_adapter_exposes_open_access_xml_and_never_promotes_snippets():
@@ -461,6 +501,32 @@ def test_europe_pmc_adapter_exposes_open_access_xml_and_never_promotes_snippets(
     hit = page.candidates[0]
     assert hit.document_urls == ["https://www.ebi.ac.uk/europepmc/webservices/rest/PMC123/fullTextXML"]
     assert hit.abstract == "Original abstract." and hit.year == 2024
+
+
+def test_openalex_adapter_reconstructs_abstract_and_exposes_open_access_pdf():
+    from urllib.parse import parse_qs, urlsplit
+    class API:
+        def get(self, url, **kwargs):
+            self.url = url
+            return Fetched(url, "application/json", json.dumps({
+                "meta": {"count": 1},
+                "results": [{
+                    "id": "https://openalex.org/W1", "doi": "https://doi.org/10.123/grg",
+                    "title": "Giant radio galaxies in deep fields", "publication_year": 2025,
+                    "authorships": [{"author": {"display_name": "A. Astronomer"}}],
+                    "abstract_inverted_index": {"Giant": [0], "radio": [1], "galaxies": [2]},
+                    "primary_location": {"landing_page_url": "https://example.org/work", "pdf_url": None},
+                    "open_access": {"oa_url": "https://arxiv.org/pdf/1234.5678"}, "type": "article",
+                }],
+            }).encode())
+
+    api = API()
+    page, _ = LiteratureSearch(api).search("openalex", "giant radio galaxies", limit=5)
+    params = parse_qs(urlsplit(api.url).query)
+    assert params["search"] == ["giant radio galaxies"] and "cursor" not in params
+    hit = page.candidates[0]
+    assert hit.abstract == "Giant radio galaxies" and hit.doi == "10.123/grg"
+    assert hit.authors == "A. Astronomer" and hit.document_urls == ["https://arxiv.org/pdf/1234.5678"]
 
 
 def test_brave_adapter_uses_a_header_for_the_key_and_keeps_snippets_separate(monkeypatch):

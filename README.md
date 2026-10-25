@@ -101,7 +101,7 @@ papers remain explicit limitations. Selection survives Studio session recovery; 
 paper using its **Selected · Remove** button or remove the `searched-papers` review.
 
 Literature reviews perform real discovery and acquisition before extracting evidence. They search
-Crossref and Europe PMC, deduplicate papers by DOI (or normalized title/year), keep screening decisions,
+Crossref, OpenAlex and Europe PMC, deduplicate papers by DOI (or normalized title/year), keep screening decisions,
 fetch open-access XML/PDF/HTML, and read bounded line windows through the evidence broker. General web
 search is available through the `brave` backend when `BRAVE_SEARCH_API_KEY` is set. Crossref and Europe PMC
 need no API key; choose databases appropriate to your subject. Set `WEB_SEARCH_CONTACT` for Crossref's

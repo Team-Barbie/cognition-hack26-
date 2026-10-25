@@ -235,7 +235,7 @@ def test_live_demo_researches_an_arbitrary_prompt_instead_of_loading_fixture_pap
     assert spec.question == s.intake.brief.question and spec.max_seconds == 180
     assert (spec.max_searches, spec.max_model_calls, spec.max_documents, spec.max_rounds) == (6, 12, 6, 2)
     assert s.test_run is False
-    assert spec.backends == ["crossref", "europe_pmc", "brave"]
+    assert spec.backends == ["crossref", "europe_pmc", "openalex", "brave"]
     assert any(e["type"] == "chat" and e["role"] == "user" and e["text"] == spec.question for e in s.events)
 
 

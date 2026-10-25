@@ -18,7 +18,7 @@ import yaml
 from pydantic import Field, field_validator, model_validator
 
 from ar import db
-from ar.agents.literature_review import ReviewAction, SearchQuery
+from ar.agents.literature_review import ReviewAction, Screening, SearchQuery
 from ar.broker import Broker
 from ar.evidence import CITATION, accept_claims, get_claim
 from ar.literature_search import Candidate, LiteratureSearch, SearchPage
@@ -36,7 +36,7 @@ class ReviewSpec(Record):
     inclusion: list[str] = Field(default_factory=list, max_length=20)
     exclusion: list[str] = Field(default_factory=list, max_length=20)
     seed_dois: list[str] = Field(default_factory=list, max_length=6)
-    backends: list[Literal["crossref", "europe_pmc", "brave"]] = Field(default_factory=lambda: ["crossref", "europe_pmc"], min_length=1)
+    backends: list[Literal["crossref", "europe_pmc", "openalex", "brave"]] = Field(default_factory=lambda: ["crossref", "europe_pmc"], min_length=1)
     year_from: int | None = Field(default=None, ge=1000, le=9999)
     year_to: int | None = Field(default=None, ge=1000, le=9999)
     max_searches: int = Field(default=8, ge=1, le=60)
@@ -332,8 +332,44 @@ class _ReviewExecution:
         if response.outcome != "produced":
             if any("model reply" in message for message in response.unresolved):
                 raise ValueError("; ".join(response.unresolved))
-            raise _Stop("review model could not complete: " + "; ".join(response.unresolved))
+            return self._fallback_action(spec, phase, context or {}, dependencies, response.unresolved)
         return ReviewAction.model_validate(response.payload)
+
+    @staticmethod
+    def _fallback_action(spec, phase, context, dependencies, unresolved):
+        """Continue bounded research when a model asks for unavailable inputs.
+
+        Search execution, acquisition and evidence validation remain deterministic.
+        The fallback never creates claims; it only supplies safe orchestration choices
+        so a model's request for full text cannot abort the whole review.
+        """
+        gaps = [str(item).strip() for item in unresolved if str(item).strip()]
+        if phase == "plan":
+            queries = []
+            questions = spec.questions
+            for index, question in enumerate(questions):
+                backend = spec.backends[index % len(spec.backends)]
+                queries.append(SearchQuery(query=question, backend=backend, question=question,
+                                           intent="contradictory" if index == 0 else "discovery"))
+            used = {query.backend for query in queries}
+            for backend in spec.backends:
+                if backend not in used and len(queries) < 12:
+                    queries.append(SearchQuery(query=spec.question, backend=backend,
+                                               question=questions[0], intent="discovery"))
+            return ReviewAction(queries=queries, gaps=gaps)
+        if phase == "screen":
+            return ReviewAction(screening=[Screening(
+                candidate_id=str(candidate["id"]), decision="uncertain",
+                reason="Included for source acquisition because automated screening requested unavailable context.",
+                basis="abstract" if candidate.get("abstract") else "metadata",
+            ) for candidate in context.get("candidates", [])], gaps=gaps)
+        coverage = {question: [] for question in spec.questions}
+        if phase == "synthesize":
+            bullets = [f"- [claim:{dep.id}] {dep.claim.statement}" for dep in dependencies if dep.claim is not None]
+            summary = "## Verified evidence\n\n" + ("\n".join(bullets) if bullets else
+                "No source-supported claims were accepted in this bounded search.")
+            return ReviewAction(gaps=gaps, coverage=coverage, summary_markdown=summary)
+        return ReviewAction(gaps=gaps, coverage=coverage)
 
     @staticmethod
     def _queries(spec, action, *, planning=False):
