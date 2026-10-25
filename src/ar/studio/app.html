@@ -404,7 +404,7 @@ mark { background: rgba(185,240,74,.16); color: var(--ph-hi); border-bottom: 1px
       <section class="scenario-bar" id="scenario-bar" aria-label="Start a research scenario">
         <button class="scenario-card" id="scenario-audit" type="button"><b>Evidence audit</b><span>Watch agents find a contradiction and reject a fabricated quote.</span></button>
         <button class="scenario-card" id="scenario-literature" type="button"><b>Literature scan</b><span>Configure focused reviews across scholarly search sources.</span></button>
-        <button class="scenario-card" id="scenario-upload" type="button"><b>Your papers</b><span>Upload source text and build a claim-level audit trail.</span></button>
+        <button class="scenario-card" id="scenario-upload" type="button"><b>Your papers</b><span>Upload PDFs or source text and build a claim-level audit trail.</span></button>
       </section>
 
       <section class="win" id="stage" style="--d:1.45s" aria-label="Research workspace">
@@ -418,7 +418,7 @@ mark { background: rgba(185,240,74,.16); color: var(--ph-hi); border-bottom: 1px
           <div class="foot">
             <p class="subhead">Source tools</p>
             <label class="act" for="file" tabindex="0" id="upload-label">Upload papers</label>
-            <input id="file" type="file" accept=".md,.txt,.markdown,text/plain,text/markdown" multiple hidden>
+            <input id="file" type="file" accept=".pdf,.md,.txt,.markdown,application/pdf,text/plain,text/markdown" multiple hidden aria-describedby="upload-help">
             <button class="act" id="paste-toggle" type="button">Paste source</button>
             <button class="act" id="search-toggle" type="button">Find papers</button>
             <button class="act" id="demo" type="button">Load demo</button>
@@ -427,6 +427,8 @@ mark { background: rgba(185,240,74,.16); color: var(--ph-hi); border-bottom: 1px
             <label class="web-note"><input id="test-run" type="checkbox" aria-label="Use low-cost model for workflow test"> Low-cost workflow test</label>
             <button class="go" id="start" type="button">Run research</button>
           </div>
+          <p class="web-note" id="upload-help">Drop or upload PDF, Markdown, or text files. PDFs: up to 3 MB; extracted text: up to 500 KB. Scanned PDFs need OCR first.</p>
+          <p class="web-note" id="upload-status" role="status" hidden></p>
           <form class="paste" id="paste" hidden>
             <input id="paste-name" placeholder="source name, e.g. smith-2024" required aria-label="Source name">
             <textarea id="paste-text" placeholder="paste the paper or source text" required aria-label="Source text"></textarea>
@@ -571,7 +573,7 @@ mark { background: rgba(185,240,74,.16); color: var(--ph-hi); border-bottom: 1px
   // What the page remembers, so a session the server lost can be rebuilt (serverless hosts keep sessions per instance).
   const snap = { brief: {}, ready: false, sources: {}, demo: false, literature_reviews: [], test_run: false };
   const attached = !!new URLSearchParams(location.search).get("session");
-  let runPending = false, restoring = null;
+  let runPending = false, restoring = null, pendingUploads = 0;
   async function api(path, body, retried) {
     const headers = { "Content-Type": "application/json", ...(password ? { Authorization: `Bearer ${password}` } : {}) };
     const res = await fetch(path, { method: body === undefined ? "GET" : "POST", headers, body: body === undefined ? undefined : JSON.stringify({ id: sid, after, ...body }) });
@@ -962,8 +964,8 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
   }
   function updateStart() {
     $("test-run").disabled = state.running;
-    const label = state.running ? "Researching" : (state.reportShown ? "Run again" : "Run research");
-    for (const id of ["start", "chip-start"]) { $(id).disabled = state.running; $(id).textContent = label; }
+    const label = state.running ? "Researching" : pendingUploads ? "Uploading papers" : (state.reportShown ? "Run again" : "Run research");
+    for (const id of ["start", "chip-start"]) { $(id).disabled = state.running || pendingUploads > 0; $(id).textContent = label; }
     document.querySelectorAll("#literature-form input, #literature-form select, #literature-form button, #literature-list button").forEach(el => { el.disabled = state.running; });
   }
   const missing = () => state.briefReady ? null : "First ask your question in the chat.";
@@ -1358,8 +1360,46 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
   $("input").addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); $("composer").requestSubmit(); } });
   $("input").addEventListener("input", e => { e.target.style.height = "auto"; e.target.style.height = Math.min(140, e.target.scrollHeight) + "px"; });
   for (const id of ["upload-label", "chip-upload"]) $(id).addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); $("file").click(); } });
-  async function addFiles(files) { for (const f of files) { try { const text = await f.text(); snap.sources[(await api("/api/source", { name: f.name, text })).id] = text; } catch (err) { toast(err.message); } } }
-  $("file").addEventListener("change", async e => { await addFiles(e.target.files); e.target.value = ""; });
+  function fileBase64(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result).split(",", 2)[1]);
+      reader.onerror = () => reject(new Error("Could not read the file"));
+      reader.onabort = () => reject(new Error("File reading was cancelled"));
+      reader.readAsDataURL(file);
+    });
+  }
+  // Serialize batches so session recovery always includes earlier successful uploads.
+  let uploadQueue = Promise.resolve();
+  function addFiles(files) {
+    const batch = Array.from(files);
+    if (!batch.length) return uploadQueue;
+    pendingUploads++; updateStart();
+    uploadQueue = uploadQueue.then(async () => {
+      const status = $("upload-status");
+      let added = 0; const errors = [];
+      status.hidden = false;
+      for (const f of batch) {
+        status.textContent = `Reading ${f.name}…`;
+        try {
+          const isPdf = /\.pdf$/i.test(f.name) || f.type === "application/pdf";
+          if (!isPdf && !/\.(md|markdown|txt)$/i.test(f.name) && !["text/plain", "text/markdown"].includes(f.type)) throw new Error("Use a PDF, Markdown, or text file");
+          if (f.size > (isPdf ? 3000000 : 500000)) throw new Error(isPdf ? "PDF is larger than 3 MB" : "Text file is larger than 500 KB");
+          if (isPdf) {
+            const result = await api("/api/source/pdf", { name: f.name, pdf_base64: await fileBase64(f) });
+            snap.sources[result.id] = result.text;
+          } else {
+            const text = await f.text();
+            snap.sources[(await api("/api/source", { name: f.name, text })).id] = text;
+          }
+          added++;
+        } catch (err) { errors.push(`${f.name}: ${err.message}`); }
+      }
+      status.textContent = `${added} file${added === 1 ? "" : "s"} added.${errors.length ? " " + errors.join("; ") : ""}`;
+    }).finally(() => { pendingUploads--; updateStart(); });
+    return uploadQueue;
+  }
+  $("file").addEventListener("change", e => { const files = Array.from(e.target.files); e.target.value = ""; addFiles(files); });
   const stage = $("stage");
   stage.addEventListener("dragover", e => { e.preventDefault(); stage.classList.add("drop"); }); stage.addEventListener("dragleave", e => { if (!stage.contains(e.relatedTarget)) stage.classList.remove("drop"); });
   stage.addEventListener("drop", async e => { e.preventDefault(); stage.classList.remove("drop"); await addFiles(e.dataTransfer.files); });

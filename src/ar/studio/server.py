@@ -21,6 +21,7 @@ from ar.adapter import LiveAgent, load_env, make_client
 from ar.agents.fake import FakeAgent
 from ar.openai_client import DEFAULT_TEST_MODEL, OpenAICompatClient
 from ar.studio.session import Session
+from ar.studio.uploads import MAX_PDF_BODY, pdf_text
 
 MAX_BODY = 1_000_000
 DEFAULT_WORKDIR = Path.home() / ".ar-studio" / "projects"
@@ -285,7 +286,9 @@ def handle(studio: Studio, method: str, path: str, query: str, raw_body: bytes,
 
     if method != "POST":
         return _json({"error": "not found"}, 404)
-    if len(raw_body) > MAX_BODY:
+    if path == "/api/source/pdf" and len(raw_body) > MAX_PDF_BODY:
+        return _json({"error": "PDF is larger than 3 MB"}, 400)
+    if path != "/api/source/pdf" and len(raw_body) > MAX_BODY:
         return _json({"error": "request is too large (1 MB max)"}, 400)
     try:
         data = json.loads(raw_body or b"{}")
@@ -302,6 +305,10 @@ def handle(studio: Studio, method: str, path: str, query: str, raw_body: bytes,
             session.chat(str(data.get("message", ""))[:8000])
         elif path == "/api/source":
             reply["id"] = session.add_source(str(data.get("name", "source"))[:120], str(data.get("text", "")))
+        elif path == "/api/source/pdf":
+            text = pdf_text(data.get("pdf_base64"))
+            reply["id"] = session.add_source(str(data.get("name", "paper.pdf"))[:120], text)
+            reply["text"] = session.sources[reply["id"]]
         elif path == "/api/source/remove":
             session.remove_source(str(data.get("source", "")))
         elif path == "/api/demo":
@@ -386,7 +393,9 @@ def make_handler(studio: Studio) -> type[BaseHTTPRequestHandler]:
                     pass
                 return
             length = int(self.headers.get("Content-Length") or 0) if method == "POST" else 0
-            if length > MAX_BODY:
+            if url.path == "/api/source/pdf" and length > MAX_PDF_BODY:
+                status, kind, payload = _json({"error": "PDF is larger than 3 MB"}, 400)
+            elif url.path != "/api/source/pdf" and length > MAX_BODY:
                 status, kind, payload = _json({"error": "request is too large (1 MB max)"}, 400)
             else:
                 raw = self.rfile.read(length) if method == "POST" else b""

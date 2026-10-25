@@ -391,6 +391,8 @@ class Session:
         self.emit("brief", brief=self.intake.brief.as_dict(), ready=self.intake.ready)
 
     def add_source(self, name: str, text: str) -> str:
+        if text.lstrip().startswith("%PDF-"):
+            raise ValueError("Use Upload papers to extract PDF text before adding this source")
         if len(text.encode("utf-8")) > MAX_SOURCE_BYTES:
             raise ValueError(f"{name} is larger than {MAX_SOURCE_BYTES // 1000} KB")
         if not text.strip():
