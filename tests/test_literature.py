@@ -131,6 +131,76 @@ def test_review_searches_deduplicates_reads_and_exports_verified_evidence(projec
     assert before == (len(search.calls), len(web.calls), len(agent.packets))
 
 
+def test_selected_papers_are_read_and_supplied_together_for_cross_reference(project):
+    class SeedSearch(Search):
+        def search(self, backend, query, **kwargs):
+            page, raw = super().search(backend, query, **kwargs)
+            if query == "10.1000/b":
+                hit = page.candidates[0]
+                hit.doi, hit.title = query, "A replication study"
+                hit.id = candidate_id(hit)
+            return page, raw
+
+    search, agent = SeedSearch(), Decisions()
+    spec = ReviewSpec(id="selected", question="Does treatment help?", seed_dois=["10.1000/b", "10.1000/a"])
+    runner = LiteratureReviewAgent(project, agent, search=search, web=Web())
+    result = runner.run(spec)
+    assert result.status == "finished", result
+    assert [call[1] for call in search.calls[:2]] == spec.seed_dois
+    assert result.documents == 2 and len(result.claim_ids) == 2
+    synthesis = next(p for p in agent.packets if p.review_context.get("phase") == "synthesize")
+    assert {dep.id for dep in synthesis.claim_items()} == set(result.claim_ids)
+    assert {s["doi"] for s in synthesis.review_context["source_overview"]} == set(spec.seed_dois)
+    with db.connect(project) as conn:
+        for cid in result.claim_ids:
+            claim = get_claim(conn, cid)
+            assert claim.evidence_links[0].read_receipt_id
+    before = len(search.calls)
+    assert runner.run(spec) == result and len(search.calls) == before
+
+
+def test_unresolved_selected_doi_is_reported_as_a_limitation(project):
+    result, _, search, _, _, _ = run_review(project, seed_dois=["10.1000/missing"])
+    assert search.calls[0][1] == "10.1000/missing"
+    assert any("10.1000/missing could not be resolved" in text for text in result.limitations)
+    assert result.status == "partial"
+
+
+def test_selected_doi_uses_exact_crossref_record_with_document_links():
+    class API:
+        def get(self, url, **kwargs):
+            assert url == "https://api.crossref.org/works/10.1000%2Fa"
+            return Fetched(url, "application/json", json.dumps({"message": {
+                "DOI": "10.1000/a", "title": ["Selected paper"],
+                "abstract": "<p>Indexed abstract.</p>",
+                "link": [{"URL": "https://papers.example/full.pdf"}],
+                "reference": [{"DOI": "10.1000/b"}],
+            }}).encode())
+
+    page, raw = LiteratureSearch(API()).search("crossref", "10.1000/a", doi="10.1000/a")
+    assert len(page.candidates) == 1 and page.next_cursor is None
+    hit = page.candidates[0]
+    assert hit.doi == "10.1000/a" and hit.document_urls == ["https://papers.example/full.pdf"]
+    assert hit.references == ["10.1000/b"] and hit.abstract_source_sha256 == page.raw_sha256
+
+
+@pytest.mark.parametrize("overrides", [
+    {"seed_dois": ["http://localhost/private"]},
+    {"seed_dois": ["10.1000/a"], "backends": ["europe_pmc"]},
+    {"seed_dois": [f"10.1000/{n}" for n in range(7)]},
+])
+def test_selected_paper_protocol_rejects_invalid_configuration(overrides):
+    with pytest.raises(ValueError):
+        ReviewSpec(id="selected", question="Compare findings?", **overrides)
+
+
+def test_unseeded_reviews_keep_their_existing_journal_identity():
+    spec = ReviewSpec(id="existing", question="Existing review?")
+    old_protocol = spec.model_dump(exclude={"seed_dois"})
+    assert spec.key == "existing-" + sha256_text(json.dumps(old_protocol, sort_keys=True))[:16]
+    assert spec.model_copy(update={"seed_dois": ["10.1000/a"]}).key != spec.key
+
+
 def test_multiple_instances_keep_evidence_and_decisions_separate(project):
     first, runner, search, web, agent, spec = run_review(project)
     second = runner.run(spec.model_copy(update={"id": "safety", "question": "Is treatment safe?"}))

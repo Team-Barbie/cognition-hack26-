@@ -435,7 +435,7 @@ mark { background: rgba(185,240,74,.16); color: var(--ph-hi); border-bottom: 1px
           <form class="paste" id="web-search" hidden>
             <input id="web-query" placeholder="paper topic or title" required minlength="3" maxlength="500" aria-label="Web search query">
             <div><button class="act" id="web-submit" type="submit">Find papers</button></div>
-            <p class="web-note">Crossref returns titles and DOI links. Upload a paper’s full text before using it as evidence.</p>
+            <p class="web-note">Choose up to 6 papers with Use in research, then Run research. Agents retrieve available text, compare findings and cite verified passages. Inaccessible papers are reported as limitations.</p>
             <div class="web-results" id="web-results" aria-live="polite"></div>
           </form>
           <div class="paste" id="literature-panel" hidden>
@@ -616,14 +616,31 @@ mark { background: rgba(185,240,74,.16); color: var(--ph-hi); border-bottom: 1px
   let recovering = false;
   function restarted() { if (recovering) return; recovering = true; toast("The server restarted. Reloading."); setTimeout(() => { location.href = location.pathname; }, 1600); }
   function toast(msg) { const t = $("toast"); t.textContent = msg; t.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => { t.hidden = true; }, 4500); }
+  let paperResults = [];
   function renderWebResults(results, query, reveal = true) {
+    paperResults = results;
     const box = $("web-results"); box.replaceChildren(); if (query) $("web-query").value = query;
     if (reveal) $("web-search").hidden = false;
     $("search-toggle").textContent = results.length ? `Related papers (${results.length})` : "Find papers";
     if (!results.length) { box.append(h("p", { class: "web-note" }, "No matching papers found. Try a broader search.")); return; }
-    for (const item of results) box.append(h("article", { class: "web-result" },
+    const selected = snap.literature_reviews.find(r => r.id === "searched-papers")?.seed_dois || [];
+    for (const item of results) {
+      const used = selected.includes((item.doi || "").toLowerCase());
+      const use = h("button", { class: "act", type: "button", disabled: state.running || !item.doi,
+        "aria-pressed": String(used), onclick: async () => {
+          use.disabled = true;
+          try {
+            const data = await api("/api/search/use", { doi: item.doi, remove: used });
+            renderLiterature(data.reviews);
+            toast(used ? "Paper removed from research." : "Paper queued. Run research to read and cross-reference it.");
+          } catch (err) { toast(err.message); }
+          finally { use.disabled = state.running || !item.doi; }
+        }
+      }, used ? "Selected · Remove" : "Use in research");
+      box.append(h("article", { class: "web-result" },
       h("b", {}, item.title), h("small", {}, `${item.authors} · ${item.year || "year unknown"} · ${item.publisher}`),
-      item.url ? h("a", { class: "act", href: item.url, target: "_blank", rel: "noopener noreferrer" }, "Open") : null));
+      item.url ? h("a", { class: "act", href: item.url, target: "_blank", rel: "noopener noreferrer" }, "Open") : null, use));
+    }
   }
 
   // ================= pixel font (5x7), sprites and renderers =================
@@ -1041,6 +1058,7 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
     for (const k of Object.keys(cards)) delete cards[k]; for (const k of Object.keys(seenStatus)) delete seenStatus[k]; for (const [k, el] of Object.entries(spines)) { el.remove(); delete spines[k]; }
     for (const k of Object.keys(runtimeTasks)) delete runtimeTasks[k];
     accepted = rejected = reviews = writerPasses = 0; runFinished = false; plannedReaders = null; setCount($("stat-claims"), 0, 6); setCount($("stat-rejected"), 0, 6); setCode([]); $("now").textContent = ""; progress(false);
+    paperResults = [];
     $("web-search").hidden = true; $("web-results").replaceChildren(); $("search-toggle").textContent = "Find papers";
     $("report").classList.add("hidden"); state.reportShown = false; state.t0 = Date.now(); state.tEnd = 0; renderTeam(); hudStats();
   }
@@ -1121,6 +1139,12 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
     inner.append(h("div", { class: "packet-note" }, "This is everything the agent received. It did not receive the full chat or unrelated sources."));
     inner.append(h("dl", { class: "facts" }, h("dt", {}, "Handoff ID"), h("dd", {}, packet.id), h("dt", {}, "Task ID"), h("dd", {}, packet.task), h("dt", {}, "Attempt"), h("dd", {}, packet.attempt)));
     inner.append(h("section", { class: "packet-section" }, h("h4", {}, "Objective"), h("p", { class: "packet-objective" }, packet.objective)));
+    if (packet.handoff) {
+      const state = packet.handoff;
+      inner.append(h("section", { class: "packet-section" }, h("h4", {}, "Project goal"), h("p", {}, state.goal)));
+      if (state.constraints?.length) inner.append(h("section", { class: "packet-section" }, h("h4", {}, "Constraints carried forward"), h("ul", {}, state.constraints.map(item => h("li", {}, item)))));
+      if (state.upstream?.length) inner.append(h("section", { class: "packet-section" }, h("h4", {}, `Upstream progress ${state.upstream.length}`), h("p", { class: "packet-note" }, "Prior outputs are context. Only accepted claim dependencies can serve as evidence."), state.upstream.map(item => h("div", { class: "packet-dep" }, h("b", {}, `${item.role.replaceAll("_", " ")} / ${item.outcome.replaceAll("_", " ")}`), h("div", {}, item.task_id), item.open_questions?.length ? h("div", {}, h("strong", {}, "Open questions"), h("ul", {}, item.open_questions.map(text => h("li", {}, text)))) : null, item.limitations?.length ? h("div", {}, h("strong", {}, "Limitations"), h("ul", {}, item.limitations.map(text => h("li", {}, text)))) : null, h("details", {}, h("summary", {}, "Partial outputs and follow-up tasks"), h("pre", {}, JSON.stringify({ partial_artifacts: item.partial_artifacts, proposed_tasks: item.proposed_tasks }, null, 2)))))));
+    }
     if (packet.requirements.length) inner.append(h("section", { class: "packet-section" }, h("h4", {}, `Instructions ${packet.requirements.length}`), packet.requirements.map(r => h("div", { class: "packet-dep" }, h("b", {}, `${r.id} r${r.revision}`), h("div", {}, r.interpretation), r.acceptance_checks.length ? h("div", {}, `Checks: ${r.acceptance_checks.join("; ")}`) : null))));
     if (packet.reads.length) inner.append(h("section", { class: "packet-section" }, h("h4", {}, `Source extracts ${packet.reads.length}`), packet.reads.map(read => h("div", { class: "packet-dep" }, h("b", {}, `${read.label || read.source} / ${read.source} r${read.revision}`), h("dl", { class: "facts" }, h("dt", {}, "Lines"), h("dd", {}, `${read.start}-${read.end}`), h("dt", {}, "Read record"), h("dd", {}, read.receipt)), packetLines(read)))));
     if (packet.dependencies.length) inner.append(h("section", { class: "packet-section" }, h("h4", {}, `Verified inputs ${packet.dependencies.length}`), packet.dependencies.map(dep => { const text = dep.kind === "claim" && dep.claim ? dep.claim.statement : dep.content; return h("div", { class: "packet-dep" }, h("b", {}, `${dep.id} / ${dep.kind} r${dep.revision}`), text ? h("pre", {}, text) : h("span", {}, "No text included")); })));
@@ -1330,8 +1354,9 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
   $("search-toggle").addEventListener("click", () => { $("web-search").hidden = !$("web-search").hidden; if (!$("web-search").hidden) { $("web-query").value ||= state.question; $("web-query").focus(); } });
   function renderLiterature(reviews) {
     snap.literature_reviews = reviews;
+    if (paperResults.length) renderWebResults(paperResults, "", false);
     $("literature-list").replaceChildren(...reviews.map(spec => h("div", { class: "web-note" },
-      `${spec.id}: ${spec.question} `, h("button", { class: "act", type: "button", "aria-label": `Remove review ${spec.id}`,
+      `${spec.id}: ${spec.question}${spec.seed_dois?.length ? ` · ${spec.seed_dois.length} selected papers to cross-reference` : ""} `, h("button", { class: "act", type: "button", "aria-label": `Remove review ${spec.id}`,
         onclick: async () => { try { await api("/api/literature", { reviews: snap.literature_reviews.filter(r => r.id !== spec.id) }); } catch (err) { toast(err.message); } }
       }, "Remove"))));
     renderTeam();

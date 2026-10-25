@@ -196,6 +196,10 @@ class StageAgent:
             if self.session.showcase_mode:
                 time.sleep(SHOWCASE_STEP_DELAY)
             result = self.inner.run(role, packet)
+            if any(item.startswith("HANDOFF_REJECTED:") for item in result.unresolved):
+                # A malformed delivery cannot be repaired by retrying the same packet,
+                # or relabeled as a successfully skipped evidence source.
+                return result
             if role == "planner" and result.outcome != "produced" and result.proposed_tasks:
                 # A plan was proposed; what it still wants (data, catalogues, an audience) are questions for
                 # the user, which the cards and the chat already show. They do not stop the run.
@@ -418,8 +422,37 @@ class Session:
         if announce:
             self.emit("chat", role="assistant", who="Web search",
                       text=(f"Found {len(results)} paper candidate{'s' if len(results) != 1 else ''}. "
-                            "These are catalogue details, not full papers—open a result and upload its text before the team cites it."))
+                            "Choose Use in research to have the team retrieve, read and cross-reference selected papers. "
+                            "Catalogue details alone are not evidence."))
         return results
+
+    def use_search_paper(self, doi: str, *, remove: bool = False) -> list[dict[str, Any]]:
+        """Queue selected catalogue results for the real literature evidence pipeline."""
+        if self.running:
+            raise RuntimeError("wait for the run to finish before changing selected papers")
+        doi = doi.strip().lower()
+        current = next((spec for spec in self.literature_reviews if spec.id == "searched-papers"), None)
+        selected = list(current.seed_dois) if current else []
+        if remove:
+            selected = [value for value in selected if value != doi]
+        else:
+            if not any(item.get("doi", "").lower() == doi and doi for item in self.web_results):
+                raise ValueError("search for this paper before selecting it")
+            if doi not in selected:
+                selected.append(doi)
+            if len(selected) > 6:
+                raise ValueError("choose up to 6 papers per research run")
+        reviews = [spec.model_dump(mode="json") for spec in self.literature_reviews if spec.id != "searched-papers"]
+        if selected:
+            question = self.intake.brief.question or "Compare the findings of the selected research papers."
+            reviews.append(ReviewSpec(
+                id="searched-papers", question=question, seed_dois=selected,
+                inclusion=["Prioritize the selected papers when relevant; explain any exclusions.",
+                           "Cross-reference findings across papers: identify agreement, contradictions, study differences and gaps."],
+                max_searches=8 + len(selected),
+            ).model_dump(mode="json"))
+        self.set_literature_reviews(reviews)
+        return [spec.model_dump(mode="json") for spec in self.literature_reviews]
 
     def _search_web_for_run(self) -> None:
         """Run the non-blocking research-candidate search beside the evidence pipeline."""
@@ -437,7 +470,7 @@ class Session:
         self.agent("scout", status="done", detail=f"Found {len(results)} related paper candidates")
         self.emit("chat", role="assistant", who="Web Scout",
                   text=(f"Found {len(results)} related paper candidate{'s' if len(results) != 1 else ''} while the readers worked. "
-                        "They are metadata only; upload full text before using one as evidence."))
+                        "Choose Use in research after this run to have the team retrieve and compare them in the next run."))
 
     def set_literature_reviews(self, reviews: list[dict]) -> None:
         if self.running:
@@ -499,6 +532,9 @@ class Session:
         for sid, text in self.sources.items():
             (papers / f"{sid}.md").write_text(text if text.endswith("\n") else text + "\n", encoding="utf-8")
         if self.literature_reviews:
+            # The brief can change after selection; bind the comparison to the final question.
+            self.literature_reviews = [spec.model_copy(update={"question": self.intake.brief.question})
+                                       if spec.id == "searched-papers" else spec for spec in self.literature_reviews]
             (project / "input" / "literature.yaml").write_text(yaml.safe_dump(
                 {"reviews": [spec.model_dump(mode="json") for spec in self.literature_reviews]}, sort_keys=False), encoding="utf-8")
         elif (project / "input" / "literature.yaml").exists():

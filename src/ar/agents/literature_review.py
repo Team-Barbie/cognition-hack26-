@@ -53,6 +53,9 @@ searches for supplied real titles/DOIs. Return no queries when the bounded searc
 Phase synthesize: write a literature synthesis from ONLY the supplied accepted claim dependencies.
 Cite [claim:ID], compare designs, population/data, effects and uncertainty, distinguish multiple reports
 of one study, discuss contrary results, methodological weaknesses, and inaccessible or abstract-only work.
+When protocol.seed_dois is supplied, prioritize those papers when relevant and explain exclusions.
+Cross-reference their findings using the supplied claim IDs and source_overview: identify agreement,
+contradictions and differences in study design or scope. Never infer a citation relationship from similarity.
 Never count paper totals as proof, and never describe a quote match as validation of a scientific conclusion.
 For reflect and synthesize, map each subquestion in coverage to supporting supplied claim IDs, or [].
 coverage is evidence support, not a declaration of exhaustiveness. Record missing evidence in gaps.

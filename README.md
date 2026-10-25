@@ -1,5 +1,8 @@
 # ar: autoresearch with explicit contracts
 
+Structured specialist packets preserve the project contract, partial outputs and open questions.
+See [the handoff protocol and comparison demo](HANDOFF.md) for validation, failure handling and metrics.
+
 Research, literature review, evidence extraction, planning and review use their own agents and model
 adapters. `ar run`, `ar resume`, `ar literature` and Studio run that research workflow.
 
@@ -88,6 +91,14 @@ writer and reviewer actually produce results. It retains the run journal under `
 and exits unsuccessfully if a specialist requests missing dependencies or the report cannot complete.
 
 ## Literature review agents
+
+In Studio, use **Find papers**, choose **Use in research** on up to six results, then
+**Run research**. Selected DOIs are resolved before broader discovery and routed through
+screening, document retrieval, passage reading and evidence validation. The literature
+agent cross-references accepted findings, including agreement, contradictions and study
+differences, and hands them to the research/report agents. Unavailable or abstract-only
+papers remain explicit limitations. Selection survives Studio session recovery; remove a
+paper using its **Selected · Remove** button or remove the `searched-papers` review.
 
 Literature reviews perform real discovery and acquisition before extracting evidence. They search
 Crossref and Europe PMC, deduplicate papers by DOI (or normalized title/year), keep screening decisions,

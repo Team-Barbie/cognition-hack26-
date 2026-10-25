@@ -48,7 +48,8 @@ class LiteratureSearch:
         self.web = web or PublicWeb()
 
     def search(self, backend: str, query: str, *, cursor: str | None = None, limit: int = 10,
-               year_from: int | None = None, year_to: int | None = None) -> tuple[SearchPage, Fetched]:
+               year_from: int | None = None, year_to: int | None = None,
+               doi: str | None = None) -> tuple[SearchPage, Fetched]:
         limit = max(1, min(limit, 20))
         if backend == "crossref":
             params = {"query.bibliographic": query, "rows": limit, "cursor": cursor or "*"}
@@ -62,8 +63,12 @@ class LiteratureSearch:
             contact = os.environ.get("WEB_SEARCH_CONTACT")
             if contact:
                 params["mailto"] = contact
-            raw = self.web.get("https://api.crossref.org/works?" + urlencode(params), max_bytes=2_000_000)
+            url = ("https://api.crossref.org/works/" + quote(doi, safe="") if doi else
+                   "https://api.crossref.org/works?" + urlencode(params))
+            raw = self.web.get(url, max_bytes=2_000_000)
             message = raw.json().get("message", {})
+            if doi and isinstance(message, dict) and message.get("DOI"):
+                message = {"items": [message], "total-results": 1}
             if not isinstance(message, dict) or not isinstance(message.get("items"), list):
                 raise RetrievalError("Crossref returned an invalid result page")
             found = []

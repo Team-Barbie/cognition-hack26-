@@ -24,7 +24,7 @@ from ar.evidence import accept_claims, list_claims
 from ar.experiment import ExperimentSpec, list_runs, run_experiment
 from ar.export import export_run
 from ar.models import AgentResult, ClaimDraft, EvidenceLink, Requirement, ReviewResult, Role
-from ar.packet import DependencyItem, Packet, SourceInfo
+from ar.packet import DependencyItem, HandoffState, Packet, SourceInfo
 from ar.permissions import load_policy
 from ar.review import GateDecision, gate
 from ar.snapshots import BlobStore, sha256_text
@@ -129,6 +129,30 @@ def _validate_workflow(steps: Sequence[WorkflowStep]) -> None:
         raise ValueError("reviewer must run immediately after writer")
 
 
+def _receive_packet(runner: AgentRunner, role: Role, packet: Packet) -> AgentResult:
+    try:
+        packet = packet.validate_delivery(role)
+    except ValueError as exc:
+        return AgentResult(role=role, task_id=packet.task_id, outcome="needs_dependency",
+                           unresolved=[f"HANDOFF_REJECTED: {exc}"], model_calls=0)
+    return runner(role, packet)
+
+
+def _record_handoff_result(database: Path, run_id: str, packet: Packet, result: AgentResult) -> None:
+    """Measured per attempt; these counters do not imply evidence validity or task success."""
+    db.record_event(database, "handoff.evaluated", {
+        "packet_id": packet.packet_id,
+        "attempt_id": packet.attempt_id,
+        "format": "structured",
+        "upstream_tasks": len(packet.handoff.upstream) if packet.handoff else 0,
+        "outcome": result.outcome,
+        "dependency_requests": int(result.outcome == "needs_dependency"),
+        "unresolved_items": len(result.unresolved),
+        "model_calls": result.model_calls,
+        "rejected": any(item.startswith("HANDOFF_REJECTED:") for item in result.unresolved),
+    }, run_id=run_id, task_id=packet.task_id)
+
+
 def run_workflow(
     database: Path,
     steps: Sequence[WorkflowStep],
@@ -211,6 +235,7 @@ def run_workflow(
             packet = packet.model_copy(update={"attempt_id": attempt_id})
         if packet_preparer is not None:
             packet = packet_preparer(step.role, packet)
+        packet = packet.with_handoff(tuple(previous))
         packet = packet.model_copy(update={"model_call_budget": min(
             allowance, packet.model_call_budget if packet.model_call_budget is not None else allowance)})
         lease = db.start_attempt(database, task_id, attempt_id)
@@ -227,7 +252,9 @@ def run_workflow(
         """Persist one completed call. Return False for a blocking agent outcome."""
 
         step, task_id, attempt_id, _packet, lease = prepared
-        if result.outcome != "produced" and step.role not in NON_BLOCKING_RESEARCH_ROLES:
+        _record_handoff_result(database, run_id, _packet, result)
+        rejected = any(item.startswith("HANDOFF_REJECTED:") for item in result.unresolved)
+        if rejected or (result.outcome != "produced" and step.role not in NON_BLOCKING_RESEARCH_ROLES):
             db.finish_attempt(database, task_id, attempt_id, "failed", result=result)
             return False
         result = result.model_copy(update={"task_id": task_id})
@@ -292,7 +319,7 @@ def run_workflow(
                         max_workers=min(max_reader_workers, len(prepared)),
                         thread_name_prefix="ar-reader",
                     ) as pool:
-                        futures = [pool.submit(agent_runner, item[0].role, item[3]) for item in prepared]
+                        futures = [pool.submit(_receive_packet, agent_runner, item[0].role, item[3]) for item in prepared]
                         completed = [future.result() for future in futures]
 
                     calls += sum(result.model_calls for result in completed)
@@ -325,7 +352,7 @@ def run_workflow(
                 results.append(prepared)
                 index += 1
                 continue
-            result = agent_runner(step.role, prepared[3])
+            result = _receive_packet(agent_runner, step.role, prepared[3])
             calls += result.model_calls
             db.record_model_calls(database, run_id, calls)
             if not commit(prepared, result):
@@ -908,7 +935,16 @@ def run_project(
                 check_conn.close()
         return result
 
-    prepare_packet = getattr(agent, "prepare_packet", None)
+    agent_preparer = getattr(agent, "prepare_packet", None)
+
+    def prepare_packet(role, packet):
+        if agent_preparer is not None:
+            packet = agent_preparer(role, packet)
+        # Keep the original project contract, including across resume and rewrites.
+        return packet.model_copy(update={"handoff": HandoffState(
+            goal=question, constraints=[r.interpretation for r in requirements],
+            requirements=requirements,
+        )})
 
     db.recover_expired_leases(database)
     active = None if changed else db.latest_active_run(database)
@@ -1086,6 +1122,7 @@ def run_project(
             packet = make_packet(task_id, attempt_id)
             if prepare_packet is not None:
                 packet = prepare_packet(role, packet)
+            packet = packet.with_handoff(tuple(results))
             packet = packet.model_copy(update={"model_call_budget": max_model_calls - calls})
             lease = db.start_attempt(database, task_id, attempt_id)
             db.record_event(
@@ -1095,7 +1132,8 @@ def run_project(
                 run_id=run.run_id,
                 task_id=task_id,
             )
-            result = checked_agent(role, packet)
+            result = _receive_packet(checked_agent, role, packet)
+            _record_handoff_result(database, run.run_id, packet, result)
             calls += result.model_calls
             db.record_model_calls(database, run.run_id, calls)
             if result.outcome != "produced":

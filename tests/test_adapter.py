@@ -48,8 +48,8 @@ def stub_role():
     roles.OVERRIDES.clear()
 
 
-def packet() -> Packet:
-    return Packet(packet_id="p1", task_id="t1", attempt_id="a1", role="writer", objective="go")
+def packet(role="writer") -> Packet:
+    return Packet(packet_id="p1", task_id="t1", attempt_id="a1", role=role, objective="go")
 
 
 def test_valid_first_reply():
@@ -114,12 +114,12 @@ def test_claims_and_tasks_validated():
         claims=[{"statement": "s"}],
         proposed_tasks=[{"role": "reviewer", "objective": "check"}],
     )
-    result = LiveAgent(ScriptedClient([good])).run("evidence_reader", packet())
+    result = LiveAgent(ScriptedClient([good])).run("evidence_reader", packet("evidence_reader"))
     assert result.claims[0].statement == "s"
     assert result.proposed_tasks[0].role == "reviewer"
 
     bad = envelope(claims=[{"statement": "s", "bogus": 1}])
-    result = LiveAgent(ScriptedClient([bad, bad])).run("evidence_reader", packet())
+    result = LiveAgent(ScriptedClient([bad, bad])).run("evidence_reader", packet("evidence_reader"))
     assert result.outcome == "unable_to_complete"
     assert result.model_calls == 2
 

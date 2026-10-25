@@ -8,6 +8,7 @@ from ar.studio.intake import Brief
 from ar.studio.session import Session
 from ar.web_search import SearchResult
 from ar.web_search import WebSearchError, search_crossref
+from ar.agents.fake import FakeAgent
 
 
 class Response(io.BytesIO):
@@ -71,3 +72,51 @@ def test_run_web_scout_emits_candidates_without_turning_them_into_evidence(tmp_p
     assert next(e for e in session.events if e["type"] == "web_results")["query"].endswith("Research systems")
     scout = [e for e in session.events if e["type"] == "agent" and e["id"] == "scout"]
     assert [e["status"] for e in scout] == ["running", "done"]
+
+
+def test_selected_search_papers_create_one_restorable_comparison_review(tmp_path):
+    import yaml
+
+    session = Session(tmp_path, make_agent=FakeAgent)
+    session.intake.brief = Brief(question="Which treatment works?")
+    session.web_results = [{"doi": "10.1000/a"}, {"doi": "10.1000/b"}]
+    session.set_literature_reviews([{"id": "other", "question": "Other review?"}])
+    session.use_search_paper("10.1000/a")
+    session.use_search_paper("10.1000/a")
+    reviews = session.use_search_paper("10.1000/b")
+    assert len(reviews) == 2 and reviews[-1]["seed_dois"] == ["10.1000/a", "10.1000/b"]
+    assert not session.sources  # Search metadata is never presented as paper text.
+    restored = Session(tmp_path, make_agent=FakeAgent)
+    restored.restore({"brief": {"question": "Updated question?"}, "literature_reviews": reviews})
+    project = restored.root / "run-1"
+    restored._write_project(project)
+    specs = yaml.safe_load((project / "input/literature.yaml").read_text())["reviews"]
+    assert specs[-1]["question"] == "Updated question?"
+    assert specs[-1]["seed_dois"] == ["10.1000/a", "10.1000/b"]
+    restored.use_search_paper("10.1000/a", remove=True)
+    assert restored.literature_reviews[-1].seed_dois == ["10.1000/b"]
+    restored.use_search_paper("10.1000/b", remove=True)
+    assert [r.id for r in restored.literature_reviews] == ["other"]
+
+
+def test_selection_endpoint_validates_results_and_demo_mode(tmp_path):
+    studio = Studio(tmp_path, fake=True)
+    session = studio.new_session()
+
+    def select(**fields):
+        status, _, body = handle(studio, "POST", "/api/search/use", "",
+                                 json.dumps({"id": session.id, **fields}).encode())
+        return status, json.loads(body)
+
+    assert select(doi="10.1000/unknown")[0] == 400
+    session.web_results = [{"doi": "10.1000/a"}]
+    assert "live model" in select(doi="10.1000/a")[1]["error"]
+    session.make_agent = FakeAgent
+    assert select(doi="10.1000/a", remove="false")[0] == 400
+    status, data = select(doi="10.1000/a")
+    assert status == 200 and data["reviews"][0]["seed_dois"] == ["10.1000/a"]
+    session.web_results = [{"doi": f"10.1000/{i}"} for i in range(7)]
+    for i in range(5):
+        assert select(doi=f"10.1000/{i}")[0] == 200
+    assert select(doi="10.1000/6")[0] == 400
+    assert len(session.literature_reviews[0].seed_dois) == 6

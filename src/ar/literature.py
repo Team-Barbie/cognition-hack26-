@@ -18,7 +18,7 @@ import yaml
 from pydantic import Field, field_validator, model_validator
 
 from ar import db
-from ar.agents.literature_review import ReviewAction
+from ar.agents.literature_review import ReviewAction, SearchQuery
 from ar.broker import Broker
 from ar.evidence import CITATION, accept_claims, get_claim
 from ar.literature_search import Candidate, LiteratureSearch, SearchPage
@@ -35,6 +35,7 @@ class ReviewSpec(Record):
     subquestions: list[str] = Field(default_factory=list, max_length=12)
     inclusion: list[str] = Field(default_factory=list, max_length=20)
     exclusion: list[str] = Field(default_factory=list, max_length=20)
+    seed_dois: list[str] = Field(default_factory=list, max_length=6)
     backends: list[Literal["crossref", "europe_pmc", "brave"]] = Field(default_factory=lambda: ["crossref", "europe_pmc"], min_length=1)
     year_from: int | None = Field(default=None, ge=1000, le=9999)
     year_to: int | None = Field(default=None, ge=1000, le=9999)
@@ -65,6 +66,12 @@ class ReviewSpec(Record):
         if self.year_from and self.year_to and self.year_from > self.year_to:
             raise ValueError("year_from must not be after year_to")
         self.backends = list(dict.fromkeys(self.backends))
+        self.seed_dois = list(dict.fromkeys(doi.strip().lower() for doi in self.seed_dois))
+        if any(not doi.startswith("10.") or "/" not in doi or len(doi) > 240 or any(c.isspace() for c in doi)
+               for doi in self.seed_dois):
+            raise ValueError("seed_dois must contain valid DOI identifiers")
+        if self.seed_dois and "crossref" not in self.backends:
+            raise ValueError("selected papers require the crossref backend")
         return self
 
     @property
@@ -73,7 +80,10 @@ class ReviewSpec(Record):
 
     @property
     def key(self) -> str:
-        fingerprint = sha256_text(json.dumps(self.model_dump(), sort_keys=True))[:16]
+        protocol = self.model_dump()
+        if not self.seed_dois:
+            protocol.pop("seed_dois")  # Preserve journals created before paper selection existed.
+        fingerprint = sha256_text(json.dumps(protocol, sort_keys=True))[:16]
         return f"{self.id}-{fingerprint}"
 
 
@@ -347,6 +357,10 @@ class _ReviewExecution:
             broker.check_capability("literature_review", [cap], cap)
         plan = self._model(conn, broker, spec, "plan", "plan")
         queries = self._queries(spec, plan, planning=True)
+        # Resolve the user's exact selections before broader discovery. Metadata still
+        # passes screening, acquisition and receipt-backed reading before becoming evidence.
+        queries = [SearchQuery(query=doi, backend="crossref", question=spec.questions[0], intent="citation")
+                   for doi in spec.seed_dois] + list(queries)
         known: dict[str, Candidate] = {}
         source_refs: list[SourceRef] = []
         claims: list[str] = []
@@ -361,7 +375,8 @@ class _ReviewExecution:
                 def do_search(query=query, cursor=cursor):
                     broker.check_capability("literature_review", ["network.search"], "network.search")
                     page, raw = self.search.search(query.backend, query.query, cursor=cursor, limit=spec.results_per_search,
-                                                  year_from=spec.year_from, year_to=spec.year_to)
+                                                  year_from=spec.year_from, year_to=spec.year_to,
+                                                  **({"doi": query.query} if query.backend == "crossref" and query.query in spec.seed_dois else {}))
                     broker.blobs.put(raw.body)
                     return {"query": query.model_dump(), "cursor": cursor, "page": page.model_dump(mode="json"),
                             "retrieved_at": datetime.now(UTC).isoformat()}
@@ -376,9 +391,14 @@ class _ReviewExecution:
                     pending.clear()
                     break
                 if "error" in data:
-                    result.limitations.append(f"Search failed on {query.backend}: {data['error']}")
+                    result.limitations.append(f"Search failed on {query.backend} for {query.query!r}: {data['error']}")
                     continue
                 page = SearchPage.model_validate(data["page"])
+                if query.backend == "crossref" and query.query in spec.seed_dois:
+                    page.candidates = [hit for hit in page.candidates if hit.doi.lower().strip() == query.query]
+                    page.next_cursor = None
+                    if not page.candidates:
+                        result.limitations.append(f"Selected paper {query.query} could not be resolved in Crossref.")
                 for hit in page.candidates:
                     if hit.id in known:
                         # Enrich metadata-only duplicates with an abstract / open-access link.

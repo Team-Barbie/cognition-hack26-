@@ -299,6 +299,10 @@ def handle(studio: Studio, method: str, path: str, query: str, raw_body: bytes,
             session.use_demo(showcase=bool(data.get("showcase")))
         elif path == "/api/search":
             reply["results"] = session.search_web(str(data.get("query", ""))[:500])
+        elif path == "/api/search/use":
+            if not isinstance(data.get("remove", False), bool):
+                raise ValueError("remove must be a boolean")
+            reply["reviews"] = session.use_search_paper(str(data.get("doi", "")), remove=data.get("remove", False))
         elif path == "/api/literature":
             session.set_literature_reviews(data.get("reviews", []))
             reply["reviews"] = [spec.model_dump(mode="json") for spec in session.literature_reviews]
