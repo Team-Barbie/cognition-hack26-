@@ -53,8 +53,8 @@ ROLE_TITLES = {
 }
 MAX_SOURCE_BYTES = 400_000
 SHOWCASE_STEP_DELAY = 1.15
-PROMPT_DEMO_MODEL_CALLS = 14
-PROMPT_DEMO_SECONDS = 120
+PROMPT_DEMO_MODEL_CALLS = 24
+PROMPT_DEMO_SECONDS = 180
 SCOPE_NOTE = (
     "Scope note: research agents may make evidence claims only from supplied or retrieved document snapshots. "
     "Literature specialists acquire sources and provide accepted claims with access limitations. "
@@ -375,6 +375,17 @@ class Session:
             self.emit("chat", role="assistant", who="Intake",
                       text="Noted. Run again to use it.")
             return
+        if not self.intake.brief.question:
+            # A research question is sufficient to start. Optional context can be
+            # added later, but never make the user repeat the same question.
+            self.intake.brief.merge({"question": message})
+            self.intake.resume(True)
+            reply = ("Question captured. Starting from this exact question is enough; add optional context or run research."
+                     if self.make_agent is not None else
+                     "Question captured. This server is in offline fixture mode; configure OPENAI_API_KEY to research it on the web.")
+            self.emit("chat", role="assistant", who="Intake", text=reply)
+            self.emit("brief", brief=self.intake.brief.as_dict(), ready=True)
+            return
         reply = self.intake.reply(message)
         self.emit("chat", role="assistant", who="Intake", text=reply)
         self.emit("brief", brief=self.intake.brief.as_dict(), ready=self.intake.ready)
@@ -421,6 +432,8 @@ class Session:
         if prompt:
             if len(prompt) > 2000:
                 raise ValueError("demo prompt must be at most 2000 characters")
+            if self.make_agent is None:
+                raise ValueError("This server is in offline fixture mode. Configure OPENAI_API_KEY to research a custom prompt.")
             self.emit("chat", role="user", who="You", text=prompt)
             self.intake.brief = Brief(question=prompt)
             self.intake.ready = True
@@ -430,10 +443,9 @@ class Session:
         # so it comfortably fits inside a hosted request.
         custom_question = self.intake.brief.question.strip()
         if self.make_agent is not None and custom_question and custom_question != DEMO_BRIEF.question:
-            # Prefer the low-cost OpenAI test model when configured. If this Studio
-            # only has another live provider, use it rather than the offline fixture
-            # agent, which cannot answer an arbitrary question.
-            self.test_run = self.test_model is not None
+            # Arbitrary research uses the configured research model. The fixture/test
+            # model is intentionally reserved for the fixed showcase workflow.
+            self.test_run = False
             fixture_ids = {path.stem for path in (FIXTURE / "input" / "papers").glob("*.md")}
             self.sources = {sid: text for sid, text in self.sources.items() if sid not in fixture_ids}
             backends = ["crossref", "europe_pmc"]
@@ -445,13 +457,13 @@ class Session:
                 subquestions=self.intake.brief.open_questions[:4],
                 inclusion=self.intake.brief.constraints[:8],
                 backends=backends,
-                max_searches=4,
-                max_model_calls=8,
-                max_documents=4,
+                max_searches=6,
+                max_model_calls=12,
+                max_documents=6,
                 results_per_search=6,
-                max_rounds=1,
+                max_rounds=2,
                 max_seconds=PROMPT_DEMO_SECONDS,
-                max_read_chunks=8,
+                max_read_chunks=12,
             )]
             self.emit("literature_config", reviews=[spec.model_dump(mode="json") for spec in self.literature_reviews])
             self.emit("chat", role="assistant", who="Intake",
@@ -560,9 +572,10 @@ class Session:
         if not self.intake.brief.question:
             raise ValueError("ask your question in the chat first")
         if not self.sources and self.make_agent is None:
-            self.use_demo()  # demo mode can only read the demo papers
-            self.emit("chat", role="assistant", who="Res Loop",
-                      text="No papers, so I loaded the demo ones. Add OPENAI_API_KEY to .env to start without papers.")
+            if self.intake.brief.question != DEMO_BRIEF.question:
+                raise ValueError("This server is in offline fixture mode and cannot research an arbitrary question. "
+                                 "Configure OPENAI_API_KEY and restart it.")
+            self.use_demo()  # the explicit fixture question can use the fixture papers
         if self.make_agent is None and set(self.sources) - {p.stem for p in (FIXTURE / "input" / "papers").glob("*.md")}:
             raise ValueError("Demo mode only reads the demo papers. Add OPENAI_API_KEY to .env to use your own.")
         if not self.sources and not self.literature_reviews:

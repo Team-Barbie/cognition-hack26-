@@ -11,7 +11,7 @@ from ar.studio.intake import Brief, Intake
 from ar.studio.server import SlidingWindowLimiter, Studio, event_stream, handle, serve
 from ar.models import LineSelector, Requirement, SourceRef
 from ar.packet import DeliveredRead, Packet
-from ar.studio.session import DEMO_BRIEF, Session, packet_view
+from ar.studio.session import Session, packet_view
 
 
 @pytest.fixture(autouse=True)
@@ -232,17 +232,18 @@ def test_live_demo_researches_an_arbitrary_prompt_instead_of_loading_fixture_pap
     assert s.sources == {}
     assert [spec.id for spec in s.literature_reviews] == ["prompt-research"]
     spec = s.literature_reviews[0]
-    assert spec.question == s.intake.brief.question and spec.max_seconds == 120
+    assert spec.question == s.intake.brief.question and spec.max_seconds == 180
+    assert (spec.max_searches, spec.max_model_calls, spec.max_documents, spec.max_rounds) == (6, 12, 6, 2)
+    assert s.test_run is False
     assert spec.backends == ["crossref", "europe_pmc", "brave"]
     assert any(e["type"] == "chat" and e["role"] == "user" and e["text"] == spec.question for e in s.events)
 
 
-def test_offline_demo_keeps_its_evidence_backed_fixture_for_an_arbitrary_prompt(tmp_path):
+def test_offline_demo_rejects_an_arbitrary_prompt_instead_of_faking_an_answer(tmp_path):
     s = Session(tmp_path, None)
-    s.use_demo(prompt="A question the fixture cannot answer")
-
-    assert s.intake.brief.question == DEMO_BRIEF.question
-    assert set(s.sources) == {"paper-a", "paper-b", "paper-c"}
+    with pytest.raises(ValueError, match="offline fixture mode"):
+        s.use_demo(prompt="A question the fixture cannot answer")
+    assert s.sources == {}
 
 
 def test_hosted_run_deadline_stops_cleanly_and_emits_a_partial_report(tmp_path):
@@ -389,12 +390,25 @@ def test_studio_supports_multiple_independent_literature_specs(tmp_path):
         s.set_literature_reviews([{"id": "same", "question": "Question one?"}, {"id": "same", "question": "Question two?"}])
 
 
-def test_demo_mode_without_sources_loads_the_demo_papers(tmp_path):
+def test_offline_mode_never_answers_an_arbitrary_question_from_demo_papers(tmp_path):
     s = Session(tmp_path, None)
     s.intake.brief = Brief(question="Q?")
-    s.start()
-    s.wait(60)
-    assert set(s.sources) == {"paper-a", "paper-b", "paper-c"} and s.status == "done"
+    with pytest.raises(ValueError, match="offline fixture mode"):
+        s.start()
+    assert s.sources == {}
+
+
+def test_session_accepts_the_first_question_without_asking_for_it_again(tmp_path):
+    from ar.agents.fake import FakeAgent
+
+    s = Session(tmp_path, make_agent=FakeAgent)
+    s.chat("What evidence links urban trees to lower heat mortality?")
+
+    assert s.intake.ready is True
+    assert s.intake.brief.question == "What evidence links urban trees to lower heat mortality?"
+    assert s.events[-1]["type"] == "brief" and s.events[-1]["ready"] is True
+    replies = [e["text"] for e in s.events if e["type"] == "chat" and e["role"] == "assistant"]
+    assert "repeat" not in replies[-1].lower() and "question captured" in replies[-1].lower()
 
 
 def test_a_reader_that_balks_is_retried_then_skipped_without_killing_the_run(tmp_path):
