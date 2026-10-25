@@ -11,7 +11,7 @@ from ar.studio.intake import Brief, Intake
 from ar.studio.server import SlidingWindowLimiter, Studio, event_stream, handle, serve
 from ar.models import LineSelector, Requirement, SourceRef
 from ar.packet import DeliveredRead, Packet
-from ar.studio.session import Session, packet_view
+from ar.studio.session import DEMO_BRIEF, Session, packet_view
 
 
 @pytest.fixture(autouse=True)
@@ -218,6 +218,40 @@ def test_showcase_mode_is_explicit_and_normal_demo_resets_it(tmp_path):
     assert s.showcase_mode is True
     s.use_demo()
     assert s.showcase_mode is False
+
+
+def test_live_demo_researches_an_arbitrary_prompt_instead_of_loading_fixture_papers(tmp_path):
+    from ar.agents.fake import FakeAgent
+
+    s = Session(tmp_path, make_agent=FakeAgent)
+    s.use_demo(prompt="How do urban trees affect heat-related mortality?")
+
+    assert s.intake.ready is True
+    assert s.intake.brief.question == "How do urban trees affect heat-related mortality?"
+    assert s.sources == {}
+    assert [spec.id for spec in s.literature_reviews] == ["prompt-research"]
+    spec = s.literature_reviews[0]
+    assert spec.question == s.intake.brief.question and spec.max_seconds == 120
+
+
+def test_offline_demo_keeps_its_evidence_backed_fixture_for_an_arbitrary_prompt(tmp_path):
+    s = Session(tmp_path, None)
+    s.use_demo(prompt="A question the fixture cannot answer")
+
+    assert s.intake.brief.question == DEMO_BRIEF.question
+    assert set(s.sources) == {"paper-a", "paper-b", "paper-c"}
+
+
+def test_hosted_run_deadline_stops_cleanly_and_emits_a_partial_report(tmp_path):
+    s = Session(tmp_path, None, run_timeout_seconds=-1)
+    s.use_demo()
+    s.start()
+    s.wait(30)
+
+    assert s.status == "timed_out"
+    assert s.report["outcome"] == "timed_out"
+    assert any(e["type"] == "chat" and "time budget" in e["text"] for e in s.events)
+    assert any(e["type"] == "report" for e in s.events)
 
 
 def test_demo_run_shows_every_agent_and_a_verified_report(tmp_path):

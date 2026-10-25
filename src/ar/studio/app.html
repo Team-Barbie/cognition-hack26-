@@ -396,7 +396,7 @@ mark { background: rgba(185,240,74,.16); color: var(--ph-hi); border-bottom: 1px
           <canvas class="px" id="px-sub" aria-hidden="true"></canvas>
           <canvas class="px" id="px-state" aria-hidden="true"></canvas>
           <p class="hint" id="hint"></p>
-          <div class="hero-cta" id="hero-cta"><button class="showcase" id="showcase" type="button">Watch showcase</button></div>
+          <div class="hero-cta" id="hero-cta"><button class="showcase" id="showcase" type="button">Research any prompt</button></div>
           <div class="proof-strip" id="proof-strip"><span><b>Verify</b> every claim</span><span><b>Expose</b> contradictions</span><span><b>Trace</b> exact quotes</span></div>
         </div>
       </section>
@@ -1376,7 +1376,15 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
       const data = await api("/api/search", { query: $("web-query").value }); renderWebResults(data.results, $("web-query").value, false);
     } catch (err) { toast(err.message); } finally { button.disabled = false; button.textContent = "Find papers"; }
   });
-  const useDemo = async (showcase = false) => { try { await api("/api/demo", { showcase }); snap.demo = true; return true; } catch (err) { toast(err.message); return false; } };
+  const useDemo = async (showcase = false) => {
+    const prompt = $("input").value.trim();
+    try {
+      await api("/api/demo", { showcase, prompt });
+      if (prompt) { $("input").value = ""; $("input").style.height = ""; }
+      snap.demo = true;
+      return true;
+    } catch (err) { toast(err.message); return false; }
+  };
   $("demo").addEventListener("click", () => useDemo()); $("chip-demo").addEventListener("click", () => useDemo()); $("chip-start").addEventListener("click", () => $("start").click());
   $("chat-fab").addEventListener("click", () => openChat(true)); $("chat-close").addEventListener("click", () => openChat(false));
   $("start").addEventListener("click", async () => {

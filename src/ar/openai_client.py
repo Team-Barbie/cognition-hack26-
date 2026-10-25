@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import ssl
+import time
 import urllib.error
 import urllib.request
 
@@ -48,11 +49,13 @@ class OpenAICompatClient:
         self, base_url: str = DEFAULT_BASE_URL, api_key: str = "", model: str = DEFAULT_MODEL,
         timeout: float = 120,
         reasoning_effort: str | None = None,
+        max_retries: int = 1,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.model = model
         self.timeout = timeout
         self.reasoning_effort = reasoning_effort
+        self.max_retries = max(0, max_retries)
         self._api_key = api_key
 
     @classmethod
@@ -85,17 +88,24 @@ class OpenAICompatClient:
             },
             method="POST",
         )
-        try:
-            if self.base_url.startswith("https://"):
-                _install_tls_opener()
-            with urllib.request.urlopen(request, timeout=self.timeout) as response:
-                data = json.loads(response.read().decode("utf-8"))
-            return data["choices"][0]["message"]["content"]
-        except urllib.error.HTTPError as exc:
+        for attempt in range(self.max_retries + 1):
             try:
-                detail = json.loads(exc.read()).get("error", {}).get("message", "")
-            except (ValueError, AttributeError, OSError):
-                detail = ""
-            raise AdapterError(f"model endpoint returned HTTP {exc.code}" + (f": {detail}" if detail else "")) from exc
-        except (OSError, ValueError, KeyError, IndexError, TypeError) as exc:
-            raise AdapterError(f"model call failed: {type(exc).__name__}") from exc
+                if self.base_url.startswith("https://"):
+                    _install_tls_opener()
+                with urllib.request.urlopen(request, timeout=self.timeout) as response:
+                    data = json.loads(response.read().decode("utf-8"))
+                return data["choices"][0]["message"]["content"]
+            except urllib.error.HTTPError as exc:
+                try:
+                    detail = json.loads(exc.read()).get("error", {}).get("message", "")
+                except (ValueError, AttributeError, OSError):
+                    detail = ""
+                raise AdapterError(f"model endpoint returned HTTP {exc.code}" + (f": {detail}" if detail else "")) from exc
+            except (urllib.error.URLError, TimeoutError, OSError) as exc:
+                if attempt < self.max_retries:
+                    time.sleep(0.25 * (attempt + 1))
+                    continue
+                raise AdapterError(f"model call failed after {attempt + 1} attempts: {type(exc).__name__}") from exc
+            except (ValueError, KeyError, IndexError, TypeError) as exc:
+                raise AdapterError(f"model call failed: {type(exc).__name__}") from exc
+        raise AssertionError("unreachable")

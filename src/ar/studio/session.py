@@ -52,6 +52,8 @@ ROLE_TITLES = {
 }
 MAX_SOURCE_BYTES = 400_000
 SHOWCASE_STEP_DELAY = 1.15
+PROMPT_DEMO_MODEL_CALLS = 14
+PROMPT_DEMO_SECONDS = 120
 SCOPE_NOTE = (
     "Scope note: research agents may make evidence claims only from supplied or retrieved document snapshots. "
     "Literature specialists acquire sources and provide accepted claims with access limitations. "
@@ -78,6 +80,10 @@ SCOPE_CONSTRAINT = (
 )
 
 
+class ResearchRunTimeout(RuntimeError):
+    """The Studio's hosted run budget expired before another model call could start."""
+
+
 def packet_view(packet: Packet) -> dict[str, Any]:
     """A JSON-safe audit view of the exact context dispatched to one agent attempt."""
     return packet.audit_view()
@@ -95,6 +101,18 @@ class StageAgent:
         self.inner = inner
         self.session = session
         self.writer_passes = 0
+
+    def _apply_run_deadline(self) -> None:
+        remaining = self.session.remaining_run_seconds
+        if remaining is None:
+            return
+        if remaining <= 2:
+            raise ResearchRunTimeout("research exceeded the hosted run time budget")
+        # A role may use one call plus one schema-repair call. Keep either call from
+        # consuming the entire request, so the run can finish or fail cleanly.
+        client = getattr(self.inner, "client", None)
+        if client is not None and hasattr(client, "timeout"):
+            client.timeout = min(float(client.timeout), max(2.0, remaining / 2))
 
     def _card(self, role: Role, packet: Packet) -> tuple[str, str]:
         if role == "evidence_reader":
@@ -190,6 +208,7 @@ class StageAgent:
     def run(self, role: Role, packet: Packet) -> AgentResult:
         _, title = self._card(role, packet)
         try:
+            self._apply_run_deadline()
             # The deterministic demo is otherwise over before the browser can paint a
             # single running card. Showcase mode deliberately gives each stage one
             # visible beat; normal demo and live runs remain unthrottled.
@@ -215,6 +234,7 @@ class StageAgent:
                         "The previous response requested: " + "; ".join(result.unresolved), BOUNDED_RESEARCH_NOTE]})
                 if remaining is not None:
                     again = again.model_copy(update={"model_call_budget": remaining})
+                self._apply_run_deadline()
                 retry = self.inner.run(role, again)
                 result = retry.model_copy(update={"model_calls": retry.model_calls + result.model_calls})
         except Exception:
@@ -240,7 +260,8 @@ MAX_RESTORED_SOURCES = 40
 
 class Session:
     def __init__(self, workdir: Path, make_agent: Callable[[], Any] | None, client=None, *,
-                 make_test_agent: Callable[[], Any] | None = None, test_model: str | None = None) -> None:
+                 make_test_agent: Callable[[], Any] | None = None, test_model: str | None = None,
+                 run_timeout_seconds: float | None = None) -> None:
         self.id = uuid.uuid4().hex[:12]
         self.root = workdir / self.id
         self.root.mkdir(parents=True, exist_ok=True)
@@ -248,6 +269,8 @@ class Session:
         self.make_agent = make_agent  # None means demo mode with the fake agent
         self.make_test_agent = make_test_agent
         self.test_model = test_model
+        self.run_timeout_seconds = run_timeout_seconds
+        self._run_deadline: float | None = None
         self.test_run = False
         self.client = client  # live chat client for intake and the scout; None in demo mode
         self.intake = Intake(client=client)
@@ -386,19 +409,55 @@ class Session:
             self.set_literature_reviews(state["literature_reviews"])
         self.intake.resume(bool(state.get("ready")))
 
-    def use_demo(self, *, showcase: bool = False) -> None:
+    def use_demo(self, *, showcase: bool = False, prompt: str = "") -> None:
         if self.running:
             raise RuntimeError("wait for the run to finish before loading the demo")
         self.showcase_mode = showcase
-        self.test_run = True
-        self.emit("run_config", test_run=True, model=self.test_model)
-        for path in sorted((FIXTURE / "input" / "papers").glob("*.md")):
-            self.sources[path.stem] = path.read_text(encoding="utf-8")
-        if not self.intake.brief.question or self.make_agent is None:
+
+        prompt = prompt.strip()
+        if prompt:
+            if len(prompt) > 2000:
+                raise ValueError("demo prompt must be at most 2000 characters")
+            self.intake.brief = Brief(question=prompt)
+            self.intake.ready = True
+
+        # A live demo may research any question. Do not quietly answer it from the
+        # unrelated forecasting fixture: give it a small, bounded literature review
+        # so it comfortably fits inside a hosted request.
+        custom_question = self.intake.brief.question.strip()
+        if self.make_agent is not None and custom_question and custom_question != DEMO_BRIEF.question:
+            # Prefer the low-cost OpenAI test model when configured. If this Studio
+            # only has another live provider, use it rather than the offline fixture
+            # agent, which cannot answer an arbitrary question.
+            self.test_run = self.test_model is not None
+            fixture_ids = {path.stem for path in (FIXTURE / "input" / "papers").glob("*.md")}
+            self.sources = {sid: text for sid, text in self.sources.items() if sid not in fixture_ids}
+            self.literature_reviews = [ReviewSpec(
+                id="prompt-research",
+                question=custom_question,
+                subquestions=self.intake.brief.open_questions[:4],
+                inclusion=self.intake.brief.constraints[:8],
+                max_searches=4,
+                max_model_calls=8,
+                max_documents=4,
+                results_per_search=6,
+                max_rounds=1,
+                max_seconds=PROMPT_DEMO_SECONDS,
+                max_read_chunks=8,
+            )]
+            self.emit("literature_config", reviews=[spec.model_dump(mode="json") for spec in self.literature_reviews])
+            self.emit("chat", role="assistant", who="Intake",
+                      text="Prompt loaded. The demo will find and read research for this question, then write a cited report.")
+        else:
+            self.test_run = True
+            for path in sorted((FIXTURE / "input" / "papers").glob("*.md")):
+                self.sources[path.stem] = path.read_text(encoding="utf-8")
+            self.literature_reviews = []
             self.intake.brief = Brief(**DEMO_BRIEF.as_dict())
             self.intake.ready = True
             self.emit("chat", role="assistant", who="Intake",
                       text="Demo papers and question loaded.")
+        self.emit("run_config", test_run=self.test_run, model=self.test_model if self.test_run else None)
         self.emit("brief", brief=self.intake.brief.as_dict(), ready=True)
         self.emit("sources", sources=self.source_list())
 
@@ -502,6 +561,8 @@ class Session:
             self.set_literature_reviews([ReviewSpec(id="literature", question=self.intake.brief.question,
                                                   subquestions=self.intake.brief.open_questions[:12],
                                                   inclusion=self.intake.brief.constraints[:20]).model_dump()])
+        if any(spec.id == "prompt-research" for spec in self.literature_reviews):
+            max_model_calls = min(max_model_calls, PROMPT_DEMO_MODEL_CALLS)
         self.runs += 1
         self.status = "running"
         self.report = None
@@ -510,6 +571,8 @@ class Session:
         self.skipped.clear()
         self.web_results = []
         project = self.root / f"run-{self.runs}"
+        self._run_deadline = (time.monotonic() + self.run_timeout_seconds
+                              if self.run_timeout_seconds is not None else None)
         self._thread = threading.Thread(target=self._run, args=(project, max_model_calls), daemon=True)
         self._thread.start()
 
@@ -517,6 +580,10 @@ class Session:
     @property
     def running(self) -> bool:
         return bool(self._thread and self._thread.is_alive())
+
+    @property
+    def remaining_run_seconds(self) -> float | None:
+        return None if self._run_deadline is None else self._run_deadline - time.monotonic()
 
     def wait(self, timeout: float | None = None) -> None:
         if self._thread:
@@ -567,8 +634,10 @@ class Session:
             status = str(outcome.value)
         except Exception as exc:  # surface any runtime failure in the feed
             stop.set()
-            status = "failed"
-            self.emit("chat", role="assistant", who="Orchestrator", text=f"The run stopped: {exc}")
+            status = "timed_out" if isinstance(exc, ResearchRunTimeout) else "failed"
+            message = ("The hosted time budget was reached. Partial findings were preserved; run again to continue."
+                       if status == "timed_out" else f"The run stopped: {exc}")
+            self.emit("chat", role="assistant", who="Orchestrator", text=message)
         if web_scout is not None:
             web_scout.join(14)
         self.report = build_report(project, status, self.open_questions)
@@ -578,6 +647,7 @@ class Session:
         self.emit("run", status=status, run=self.runs)
         self.emit("report", report=self.report)
         self.emit("chat", role="assistant", who="Orchestrator", text=_closing(self.report))
+        self._run_deadline = None
 
     # quality feed
 

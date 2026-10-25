@@ -137,16 +137,24 @@ class Studio:
         self.provider = provider
         self.model = model
         self.test_model = os.environ.get("STUDIO_TEST_MODEL", DEFAULT_TEST_MODEL)
+        self.model_timeout = max(5.0, float(os.environ.get("STUDIO_MODEL_TIMEOUT_SECONDS", "45")))
+        self.run_timeout = max(30.0, float(os.environ.get("STUDIO_RUN_TIMEOUT_SECONDS", "255"))) \
+            if os.environ.get("VERCEL") == "1" else None
 
     @property
     def mode(self) -> str:
         return f"live · {self.provider}" if self.provider else "demo · fake agent"
 
     def _client(self):
-        return make_client(self.provider, self.model) if self.provider in {"openai", "anthropic"} else None
+        client = make_client(self.provider, self.model) if self.provider in {"openai", "anthropic"} else None
+        if client is not None and hasattr(client, "timeout"):
+            client.timeout = min(float(client.timeout), self.model_timeout)
+        return client
 
     def _test_client(self):
         client = make_client("openai", self.test_model)
+        if hasattr(client, "timeout"):
+            client.timeout = min(float(client.timeout), self.model_timeout)
         if isinstance(client, OpenAICompatClient) and client.model == DEFAULT_TEST_MODEL:
             client.reasoning_effort = "minimal"
         return client
@@ -162,7 +170,8 @@ class Studio:
             else:
                 make_test_agent = FakeAgent  # no GPT credentials: keep the demo free
         session = Session(self.workdir, make_agent, client=self._client(),
-                          make_test_agent=make_test_agent, test_model=test_model)
+                          make_test_agent=make_test_agent, test_model=test_model,
+                          run_timeout_seconds=self.run_timeout)
         with self._lock:
             self.sessions[session.id] = session
         return session
@@ -296,7 +305,10 @@ def handle(studio: Studio, method: str, path: str, query: str, raw_body: bytes,
         elif path == "/api/source/remove":
             session.remove_source(str(data.get("source", "")))
         elif path == "/api/demo":
-            session.use_demo(showcase=bool(data.get("showcase")))
+            prompt = data.get("prompt", "")
+            if not isinstance(prompt, str):
+                raise ValueError("prompt must be a string")
+            session.use_demo(showcase=bool(data.get("showcase")), prompt=prompt)
         elif path == "/api/search":
             reply["results"] = session.search_web(str(data.get("query", ""))[:500])
         elif path == "/api/search/use":

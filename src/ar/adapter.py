@@ -45,15 +45,17 @@ class AnthropicClient:
         model: str = DEFAULT_MODEL,
         effort: str = "medium",
         max_tokens: int = 16000,
+        timeout: float = 120,
     ) -> None:
         self._sdk = sdk
         self.model = model
         self.effort = effort
         self.max_tokens = max_tokens
+        self.timeout = timeout
 
     def complete(self, system: str, user: str) -> str:
         try:
-            sdk = self._sdk or anthropic.Anthropic()
+            sdk = self._sdk or anthropic.Anthropic(timeout=self.timeout, max_retries=1)
             response = sdk.beta.messages.create(
                 model=self.model,
                 max_tokens=self.max_tokens,

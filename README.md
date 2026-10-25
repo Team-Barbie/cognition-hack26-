@@ -159,7 +159,10 @@ with ThreadPoolExecutor(max_workers=2) as pool:
 
 In Studio, **Literature reviews** adds/removes named review instances. An API-provider
 run without uploaded papers automatically creates a review of the brief. Search and acquisition progress appears separately for each
-instance on the stage. Demo mode continues to use the built-in fixture and does not perform web research.
+instance on the stage. To demo an arbitrary topic, type a prompt in Chat and choose **Research any prompt** (or **Load demo**,
+then **Run research**). With a live provider this creates a bounded literature search for that prompt; offline demo mode keeps using
+the evidence-backed built-in fixture instead of pretending the fixture answers an unrelated question. Hosted Studio calls are bounded
+to 45 seconds per provider attempt and retry one transient timeout. Set `STUDIO_MODEL_TIMEOUT_SECONDS` to tune that bound.
 These are bounded automated reviews, not a claim of exhaustive or formally systematic coverage.
 
 Literature specialists run through the research controller or their own service. Their retrieval,

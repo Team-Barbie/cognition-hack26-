@@ -81,6 +81,22 @@ def test_http_error_wrapped_without_key(monkeypatch):
     assert "401" in str(info.value) and "secret" not in str(info.value)
 
 
+def test_transient_timeout_is_retried_once_with_the_configured_bound(monkeypatch):
+    calls = []
+
+    def fake_urlopen(request, timeout=None):
+        calls.append(timeout)
+        if len(calls) == 1:
+            raise TimeoutError("slow")
+        return FakeResponse({"choices": [{"message": {"content": "{}"}}]})
+
+    monkeypatch.setattr(openai_client.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(openai_client.time, "sleep", lambda _: None)
+    client = OpenAICompatClient("http://host/v1", "secret", "mod", timeout=17)
+    assert client.complete("sys", "usr") == "{}"
+    assert calls == [17, 17]
+
+
 def test_make_client_picks_provider(monkeypatch):
     monkeypatch.setenv("OPENAI_API_KEY", "k")
     claude = make_client("anthropic", effort="high")
