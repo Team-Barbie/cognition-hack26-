@@ -13,7 +13,7 @@ from ar.adapter import AdapterError
 
 DEFAULT_BASE_URL = "https://api.openai.com/v1"
 DEFAULT_MODEL = "gpt-5.6-terra"
-DEFAULT_TEST_MODEL = "gpt-5-nano"
+DEFAULT_TEST_MODEL = "gpt-5.6-terra"
 
 
 def _tls_context() -> ssl.SSLContext:

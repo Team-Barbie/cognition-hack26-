@@ -102,12 +102,12 @@ def test_demo_without_gpt_credentials_uses_fixture_instead_of_expensive_provider
     assert session.test_model is None
 
 
-def test_nano_test_client_uses_minimal_reasoning_and_normal_client_keeps_its_default(tmp_path, monkeypatch):
+def test_terra_test_client_uses_low_reasoning_and_normal_client_keeps_its_default(tmp_path, monkeypatch):
     monkeypatch.setenv("OPENAI_API_KEY", "fixture-token")
     monkeypatch.delenv("STUDIO_TEST_MODEL", raising=False)
     studio = server.Studio(tmp_path, provider="openai")
     session = studio.new_session()
-    assert session.make_test_agent().client.reasoning_effort == "minimal"
+    assert session.make_test_agent().client.reasoning_effort == "low"
     assert session.make_agent().client.reasoning_effort is None
 
 

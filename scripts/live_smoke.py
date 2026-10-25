@@ -1,6 +1,6 @@
 """Run the evidence reader live on the baselines fixture and check it against the answer key.
 
-Defaults to OpenAI GPT-5 nano for inexpensive workflow checks. Anthropic is available with --provider.
+Defaults to OpenAI GPT-5.6 Terra for workflow checks. Anthropic is available with --provider.
 Not part of pytest: it calls a real model using the selected provider's credentials.
 """
 
@@ -29,7 +29,7 @@ def main() -> int:
     parser.add_argument("--effort", choices=["minimal", "low", "medium", "high", "xhigh", "max"])
     args = parser.parse_args()
     model = args.model or (DEFAULT_TEST_MODEL if args.provider == "openai" else None)
-    effort = args.effort or ("minimal" if args.provider == "openai" and model == DEFAULT_TEST_MODEL else "medium")
+    effort = args.effort or ("low" if args.provider == "openai" and model == DEFAULT_TEST_MODEL else "medium")
     client = make_client(args.provider, model, effort, args.base_url)
     if isinstance(client, OpenAICompatClient) and model == DEFAULT_TEST_MODEL:
         client.reasoning_effort = effort

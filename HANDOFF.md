@@ -42,7 +42,7 @@ The offline demo uses deterministic fixture agents and checks wiring only. For a
 live comparison using configured credentials:
 
 ```text
-.venv/Scripts/python scripts/handoff_benchmark.py --live --model gpt-5-nano --output .research/handoff-live
+.venv/Scripts/python scripts/handoff_benchmark.py --live --model gpt-5.6-terra --output .research/handoff-live
 ```
 
 Both arms receive the same fixture and the same state values. The baseline renders

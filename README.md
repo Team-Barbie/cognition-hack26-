@@ -68,13 +68,13 @@ python -m venv .venv
   `ANTHROPIC_API_KEY` (or sign in once with `ant auth login`). Options: `--model <id>`,
   `--effort low|medium|high|xhigh|max`, `--max-model-calls N`.
 - `python scripts/live_smoke.py [--model M] [--effort E]` runs the evidence reader live on the fixture and
-  compares it to the answer key. It defaults to OpenAI `gpt-5-nano`; another provider/model can be selected
+  compares it to the answer key. It defaults to OpenAI `gpt-5.6-terra`; another provider/model can be selected
   explicitly. It calls a real model and is not part of pytest.
 
 Both paths share the same packet and the same `AgentResult` schema.
 
-Studio's **Load demo**, **Watch showcase**, and **Low-cost workflow test** use `gpt-5-nano` when an
-OpenAI API key is configured. Nano workflow checks use minimal reasoning to limit latency and token use.
+Studio's **Load demo**, **Watch showcase**, and **Low-cost workflow test** use `gpt-5.6-terra` when an
+OpenAI API key is configured. Terra workflow checks use low reasoning to limit latency and token use.
 Set `STUDIO_TEST_MODEL` to override only that test model. Normal research
 retains its configured provider/model; explicit `--fake` and offline demo mode still make no model calls.
 The active test model appears in the page's mode label. API clients can pass `test_run: true` to

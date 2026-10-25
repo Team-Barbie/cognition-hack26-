@@ -45,7 +45,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--live", action="store_true")
     parser.add_argument("--provider", choices=["openai", "anthropic"], default="openai")
-    parser.add_argument("--model", default="gpt-5-nano")
+    parser.add_argument("--model", default="gpt-5.6-terra")
     parser.add_argument("--env-file", type=Path, default=ROOT / ".env")
     parser.add_argument("--output", type=Path, required=True, help="A new directory for this comparison")
     args = parser.parse_args()

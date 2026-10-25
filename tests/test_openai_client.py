@@ -65,9 +65,9 @@ def test_explicit_test_reasoning_is_sent_without_changing_normal_requests(monkey
         return FakeResponse({"choices": [{"message": {"content": "{}"}}]})
 
     monkeypatch.setattr(openai_client.urllib.request, "urlopen", urlopen)
-    OpenAICompatClient("http://host/v1", "key", "gpt-5-nano", reasoning_effort="minimal").complete("JSON", "JSON")
-    OpenAICompatClient("http://host/v1", "key", "gpt-5.6-terra").complete("JSON", "JSON")
-    assert bodies[0]["reasoning_effort"] == "minimal"
+    OpenAICompatClient("http://host/v1", "key", "gpt-5.6-terra", reasoning_effort="low").complete("JSON", "JSON")
+    OpenAICompatClient("http://host/v1", "key", "gpt-5.6-sol").complete("JSON", "JSON")
+    assert bodies[0]["reasoning_effort"] == "low"
     assert "reasoning_effort" not in bodies[1]
 
 

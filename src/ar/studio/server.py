@@ -156,7 +156,7 @@ class Studio:
         if hasattr(client, "timeout"):
             client.timeout = min(float(client.timeout), self.model_timeout)
         if isinstance(client, OpenAICompatClient) and client.model == DEFAULT_TEST_MODEL:
-            client.reasoning_effort = "minimal"
+            client.reasoning_effort = "low"
         return client
 
     def new_session(self) -> Session:

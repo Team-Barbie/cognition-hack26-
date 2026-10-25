@@ -1,4 +1,4 @@
-"""Exercise research and synthesis handoffs with real GPT-5 nano calls on the demo papers."""
+"""Exercise research and synthesis handoffs with real GPT-5.6 Terra calls on the demo papers."""
 
 import argparse
 import json
@@ -21,7 +21,7 @@ def main():
     args = parser.parse_args()
     load_env(args.env_file)
     client = OpenAICompatClient.from_env(model=args.model,
-                                       reasoning_effort="minimal" if args.model == DEFAULT_TEST_MODEL else None)
+                                       reasoning_effort="low" if args.model == DEFAULT_TEST_MODEL else None)
     session = Session(args.workdir, lambda: LiveAgent(client),
                       make_test_agent=lambda: LiveAgent(client), test_model=args.model)
     session.use_demo()
