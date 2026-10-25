@@ -758,6 +758,7 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
   const SPECIALISTS = ["source_scout", "research_agent", "theorist", "experiment_runner", "reproducer", "analyst", "synthesis_agent", "adversarial_effect_agent"];
   const ROLE_DESCRIPTION = {
     orchestrator: "Coordinates the research team and its handoffs.",
+    scout: "Searches the web for related research candidates while the evidence pipeline runs.",
     literature_review: "Searches scholarly databases, acquires sources and extracts evidence for a review question.",
     planner: "Chooses the research tasks and specialists needed to answer your question.",
     source_scout: "Screens candidate papers for relevance to the research question.",
@@ -997,7 +998,7 @@ _ ..... ..... ..... ..... ..... ..... XXXXX
   const ROLE_RANK = { source_scout: 3, research_agent: 5, theorist: 6, experiment_runner: 7, reproducer: 8, analyst: 9, synthesis_agent: 10, adversarial_effect_agent: 11 };
   const rankOf = (key, src) => key === "orchestrator" ? [0, 0] : (key === "scout" || key.startsWith("literature:")) ? [1, 0] : key === "planner" ? [2, 0] : key.startsWith("reader:") ? [4, Math.max(0, src.indexOf(key.slice(7)))] : ROLE_RANK[key] ? [ROLE_RANK[key], 0] : key.startsWith("writer:") ? [12, +key.split(":")[1] || 1] : key === "reviewer" ? [13, 0] : [14, 0];
   function teamKeys() {
-    const src = state.sourceList.map(s => s.id), set = new Set(["orchestrator", "planner", ...SPECIALISTS, "writer:1", "reviewer", "quality"]);
+    const src = state.sourceList.map(s => s.id), set = new Set(["orchestrator", "scout", "planner", ...SPECIALISTS, "writer:1", "reviewer", "quality"]);
     snap.literature_reviews.forEach(r => set.add(`literature:${r.id}`));
     {
       if (!src.length && !snap.literature_reviews.length) set.add("literature:literature");
